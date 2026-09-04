@@ -28,7 +28,7 @@ export async function saveMemberFile(ctx: Ctx, input: SaveFileInput, storage: Fi
   const version = (v ?? 0) + 1;
   const safeName = input.fileName.replace(/[^\w.\-가-힣]/g, "_").slice(0, 100);
   const storageKey = `${ctx.branchId}/${input.memberId}/${randomUUID()}-${safeName}`;
-  await storage.put(storageKey, input.data);
+  await storage.put(storageKey, input.data, input.mimeType);
   const [row] = await db
     .insert(memberFiles)
     .values({ branchId: ctx.branchId, memberId: input.memberId, kind: input.kind, title, fileName: input.fileName, mimeType: input.mimeType, size: input.data.length, storageKey, version, uploadedBy: ctx.userId })
