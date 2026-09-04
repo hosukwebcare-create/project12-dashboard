@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 업로드 파일(로컬 저장소)·테스트 산출물
+/storage
+/test-results
+/playwright-report

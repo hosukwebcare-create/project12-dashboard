@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 프로젝트12 통합관리 플랫폼 (코드명: 별하)
 
-## Getting Started
+관리형 스터디카페 체인의 회원 관련 업무를 구글 시트 6종에서 하나의 웹 플랫폼으로 통합한다. RFP의 1·2·3단계 범위가 모두 구현되어 있다.
 
-First, run the development server:
+## 문서
+
+| 문서 | 내용 |
+|---|---|
+| [docs/01_프로젝트_기획서.md](docs/01_프로젝트_기획서.md) | 현행 분석, 목표·KPI, 단계별 범위, 개발 방식 비교·결정, 일정·M/M, 검수 기준, 위험, 확인 필요 사항 |
+| [docs/02_시스템_설계서.md](docs/02_시스템_설계서.md) | 아키텍처, 데이터 모델(ERD·테이블), 권한·다지점 격리, 화면 설계, 업무 규칙, API, 이관, 보안, 테스트, 운영 |
+| [docs/superpowers/plans/2026-09-05-phase1-core.md](docs/superpowers/plans/2026-09-05-phase1-core.md) | 1단계 코어 구현 계획 |
+| [docs/03_운영_가이드.md](docs/03_운영_가이드.md) | 환경 변수, 배포, 배치, 외부 연동(알림톡·HERO·메신저) 설정 |
+
+## 실행 방법
+
+요구 사항: Node 22+, pnpm, PostgreSQL 16+ (로컬은 brew 서비스).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+createdb byeolha_dev && createdb byeolha_test && createdb byeolha_e2e
+cp .env.example .env.local        # DATABASE_URL, DATABASE_URL_TEST, SESSION_SECRET 확인
+pnpm install
+pnpm db:migrate                   # 개발 DB 마이그레이션
+pnpm db:push:test                 # 테스트 DB 스키마
+pnpm seed                         # 가상 데이터 (실제 인물 정보 없음)
+pnpm dev                          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+검증:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm test                         # 단위·통합 테스트 (테스트 DB)
+pnpm exec playwright test         # E2E (운영 빌드 + 전용 DB byeolha_e2e, 자동 시드)
+pnpm lint && pnpm build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+시드 계정 (괄호 안이 비밀번호):
 
-## Learn More
+| 아이디 | 역할 | 지점 | 비고 |
+|---|---|---|---|
+| `hq` (hq1234) | 본사 관리자 | 전 지점 전환 | 전 지점 요약, 기본 규칙·템플릿·커스텀 필드 관리 |
+| `manager` (1234) | 지점장 | 동탄2 | |
+| `mentor` (1234) | 멘토 | 동탄2 · 수원1 겸임 | |
+| `assistant` (1234) | 조교 | 동탄2 | PIN 1111 |
+| `assistant2` (1234) | 조교 | 동탄2 | PIN 2222 (태블릿 전환 시연) |
+| `manager2` (1234) | 지점장 | 수원1 | |
 
-To learn more about Next.js, take a look at the following resources:
+현황판 링크는 `pnpm seed` 출력 또는 설정 › 지점·현황판에서 발급한다. 형식: `/board/{지점ID}?t={토큰}`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 구현 범위
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**1단계 · 코어**
+- 인증·역할·지점 격리, 본사 지점 전환, 조교 PIN 전환(공용 태블릿), 조교에게 연락처·학부모 정보 비노출
+- 회원 마스터: 목록·상세·등록·수정·상태·좌석·타임라인·라운딩/벌점 주간표·파일, CSV 이관 마법사(자동 매핑·검증·갱신), 모의고사 회차·신청·결제
+- 집중관리일지: 주간 그리드(최근 4주·월별), 집중관리 개인 일지, 원장·멘토 2열, 코멘트·@멘션 알림
+- 라운딩(모바일): 회차 시작·예외만 탭 입력·벌점 규칙·이슈 보고·회차 완료, 오프라인 재전송 큐, 일별 체크, 회차 조회
+- 현황판: 지점 토큰 URL, 주간 좌석 × 항목 그리드, 60초 갱신, 이름 마스킹
+- 이슈함·알림함, 대시보드(지점장·본사 전 지점 요약)
+- 설정: 지점, 사용자·PIN, 좌석, 벌점 규칙, 현황판 항목, 커스텀 필드(비개발자 양식 조정), 감사 로그
 
-## Deploy on Vercel
+**2단계 · 운영 확장**
+- 식사주문: 월별 그리드(중·석식), 전일 마감·요일·휴무 규칙, 단가 스냅샷, 일별 발주서(인쇄), 월 정산·결제 처리
+- 근무일지: 지점별 타임 정의, 출근 체크·초과근무 사유, 지점장 대리 입력, 본사 확인 잠금, 월 집계·예상 급여·CSV
+- 알림톡: 템플릿(#{변수}), 대상 그룹(전체/집중관리/선택 × 회원/학부모), 미리보기, 발송 큐·재시도, 이력. 공급자 어댑터(mock/HTTP 딜러)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**3단계 · 외부 연동**
+- HERO 학습진단 웹훅 수신(HMAC 서명) → 회원 프로필 연결
+- 회원 파일(AI 컨설팅 리포트 PDF 등) 업로드·버전·다운로드(접근 로그)
+- 메신저 웹훅 아웃박스: 이슈 보고·고벌점 이벤트를 Rocket.Chat/Mattermost/Slack 인커밍 웹훅으로 게시, 배치 전송·재시도
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+미구현: 실제 알림톡 딜러 계정 연동(어댑터만 준비), GCS 저장소 어댑터(로컬 디스크 구현), 사내 메신저 서버 설치 자체(RFP 3-3 별도 견적 항목).
+
+## 기술 스택
+
+Next.js 16 (App Router) · TypeScript · Tailwind v4 · shadcn/ui · Drizzle ORM · PostgreSQL · jose(세션) · bcryptjs · Vitest · Playwright
+
+## 폴더 구조
+
+```
+src/app            라우트 (app: 인증 필요 화면, auth: 로그인, board: 공개 현황판, api: 현황판·파일·연동·배치)
+src/modules/*      모듈별 repo(데이터 접근·권한)·actions(서버 액션)·schema(검증)
+src/lib/rules      순수 업무 규칙 (주차, 벌점, 등록기간, 마스킹, 회차, CSV, 식사, 근무, 템플릿, 커스텀 필드)
+src/lib/auth       세션·컨텍스트·비밀번호
+src/db             Drizzle 스키마·클라이언트·시드
+tests/unit         규칙·세션 단위 테스트
+tests/integration  DB를 사용하는 모듈 테스트 (지점 격리·권한 포함)
+tests/e2e          Playwright 브라우저 시나리오 (역할별 전 화면)
+```
