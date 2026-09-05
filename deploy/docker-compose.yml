@@ -46,6 +46,7 @@ services:
       ALIMTALK_SENDER_KEY: ${ALIMTALK_SENDER_KEY:-}
       HERO_WEBHOOK_SECRET: ${HERO_WEBHOOK_SECRET:-}
       RETENTION_DAYS: ${RETENTION_DAYS:-365}
+      WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-false}
     volumes:
       - storage:/app/storage
     depends_on:
@@ -69,7 +70,7 @@ services:
     depends_on:
       - app
 
-  # 배치: 알림톡 5분 · 웹훅 1분 · 보관기간 매일 03:00
+  # 배치: 알림톡 5분 · 웹훅 1분 · 보관기간 매일 03:00 (DB 백업은 아래 backup 서비스)
   scheduler:
     image: alpine:3.20
     restart: unless-stopped
@@ -80,10 +81,26 @@ services:
       echo '*/5 * * * * curl -s -X POST -H \"x-job-secret: $$JOB_SECRET\" http://app:3000/api/jobs/alimtalk' > /etc/crontabs/root &&
       echo '* * * * * curl -s -X POST -H \"x-job-secret: $$JOB_SECRET\" http://app:3000/api/jobs/outbox' >> /etc/crontabs/root &&
       echo '0 3 * * * curl -s -X POST -H \"x-job-secret: $$JOB_SECRET\" http://app:3000/api/jobs/retention' >> /etc/crontabs/root &&
-      echo '30 3 * * * pg_dump_placeholder' >/dev/null &&
       crond -f -l 2"
     depends_on:
       - app
+
+  # DB 백업: 매일 03:30 pg_dump → ./backups (90일 보존). BACKUP_GCS 를 주면 gsutil 이 있는 이미지로 바꿔 업로드
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://byeolha:${POSTGRES_PASSWORD}@postgres:5432/byeolha
+      BACKUP_GCS: ${BACKUP_GCS:-}
+    volumes:
+      - ./backups:/backups
+      - ../scripts/backup.sh:/backup.sh:ro
+    command: >
+      sh -c "echo '30 3 * * * /backup.sh /backups $$BACKUP_GCS >> /backups/backup.log 2>&1' > /etc/crontabs/root &&
+      crond -f -l 2"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

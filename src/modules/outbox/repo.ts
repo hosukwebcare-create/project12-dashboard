@@ -3,6 +3,7 @@ import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { eventOutbox, webhookEndpoints } from "@/db/schema";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { assertResolvesSafe, assertSafeWebhookUrl } from "@/lib/net";
 
 export const OUTBOX_EVENTS = [
   { key: "issue.created", label: "이슈 보고" },
@@ -23,9 +24,10 @@ export async function listWebhookEndpoints(ctx: Ctx, db: Db = defaultDb): Promis
 export async function upsertWebhookEndpoint(ctx: Ctx, input: WebhookInput, db: Db = defaultDb): Promise<string> {
   requireRole(ctx, ...MANAGER_ROLES);
   if (!input.name.trim()) throw new ValidationError("이름을 입력하세요");
-  if (!/^https?:\/\/\S+$/.test(input.url.trim())) throw new ValidationError("웹훅 URL 형식이 올바르지 않습니다");
+  const url = assertSafeWebhookUrl(input.url);
+  await assertResolvesSafe(url);
   const events = input.events.filter((e) => OUTBOX_EVENTS.some((x) => x.key === e));
-  const vals = { name: input.name.trim(), url: input.url.trim(), events, active: input.active };
+  const vals = { name: input.name.trim(), url: url.toString(), events, active: input.active };
   if (input.id) {
     const [existing] = await db.select().from(webhookEndpoints).where(and(eq(webhookEndpoints.id, input.id), eq(webhookEndpoints.branchId, ctx.branchId))).limit(1);
     if (!existing) throw new NotFoundError("웹훅을 찾을 수 없습니다");
@@ -47,6 +49,8 @@ export async function enqueueEvent(tx: Db | Tx, branchId: string, type: OutboxEv
 export type Sender = (url: string, body: string) => Promise<{ ok: boolean; status: number }>;
 
 export const fetchSender: Sender = async (url, body) => {
+  // 저장 시점 검증과 별개로, DNS 리바인딩에 대비해 전송 직전에도 해석 결과를 확인한다
+  await assertResolvesSafe(new URL(url));
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(10_000) });
   return { ok: res.ok, status: res.status };
 };

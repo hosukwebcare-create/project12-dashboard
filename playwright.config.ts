@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export const E2E_DATABASE_URL = "postgres://localhost:5432/byeolha_e2e";
+/** 앱 서버는 비superuser 역할로 접속해 RLS 정책이 실제로 적용된 상태로 E2E 를 돈다 (scripts/db-local-app-role.sql) */
+export const E2E_APP_DATABASE_URL = "postgres://byeolha_app:byeolha_app@localhost:5432/byeolha_e2e";
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -24,7 +26,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 300_000,
     env: {
-      DATABASE_URL: E2E_DATABASE_URL,
+      DATABASE_URL: E2E_APP_DATABASE_URL,
       SESSION_SECRET: "e2e-secret-e2e-secret-e2e-secret-1234",
     },
   },

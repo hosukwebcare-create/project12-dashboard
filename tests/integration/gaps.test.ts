@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { auditLogs } from "@/db/schema";
 import { ValidationError } from "@/lib/errors";
+import { upsertLog } from "@/modules/counsel/repo";
 import { createIssue, getIssue } from "@/modules/issues/repo";
 import { createMember } from "@/modules/members/repo";
 import { sheetRows, startSession, upsertCheck } from "@/modules/rounding/repo";
@@ -69,5 +73,38 @@ describe("비밀번호 정책", () => {
     await expect(upsertUser(t.mgrCtx1, { loginId: "newone", name: "x", password: "short1", role: "assistant", active: true })).rejects.toThrow(/10자/);
     await expect(upsertUser(t.mgrCtx1, { loginId: "newone", name: "x", password: "onlyletters", role: "assistant", active: true })).rejects.toThrow(/숫자/);
     await expect(upsertUser(t.mgrCtx1, { loginId: "newone", name: "x", password: "goodpass12", role: "assistant", active: true })).resolves.toBeTruthy();
+  });
+});
+
+describe("상담일지·라운딩 체크 수정 이력", () => {
+  beforeEach(resetDb);
+
+  it("상담일지 본문을 덮어쓰면 이전 본문이 감사 로그에 남고, 처음 작성·같은 내용 재저장은 남지 않는다", async () => {
+    const t = await seedTwoBranches();
+    const m = await createMember(t.mgrCtx1, { name: "가", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false });
+    const base = { memberId: m, logType: "weekly" as const, periodDate: "2026-09-07" };
+    const id = await upsertLog(t.mgrCtx1, { ...base, field: "issue", text: "첫 상담" });
+    await upsertLog(t.mgrCtx1, { ...base, field: "issue", text: "첫 상담" });
+    await upsertLog(t.mentorCtx1, { ...base, field: "resolution", text: "멘토 의견" });
+    expect(await db.select().from(auditLogs).where(eq(auditLogs.entity, "counsel_log"))).toHaveLength(0);
+    await upsertLog(t.mgrCtx1, { ...base, field: "issue", text: "수정된 상담" });
+    const rows = await db.select().from(auditLogs).where(eq(auditLogs.entity, "counsel_log"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ entityId: id, action: "update", actorId: t.users.mgr1.id, before: { field: "issue", text: "첫 상담" }, after: { field: "issue", text: "수정된 상담" } });
+  });
+
+  it("저장된 체크의 등급·점수가 바뀌면 이전 값이 감사 로그에 남는다", async () => {
+    const t = await seedTwoBranches();
+    const m = await createMember(t.mgrCtx1, { name: "가", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false });
+    const sid = await startSession(t.asstCtx1, "2026-09-05");
+    const sleepy = t.rules.find((r) => r.name === "졸음")!;
+    const input = { memberId: m, date: "2026-09-05", itemKey: "round", roundNo: 1, sessionId: sid };
+    await upsertCheck(t.asstCtx1, { ...input, grade: "p", penaltyRuleId: sleepy.id });
+    await upsertCheck(t.asstCtx1, { ...input, grade: "p", penaltyRuleId: sleepy.id });
+    expect(await db.select().from(auditLogs).where(eq(auditLogs.entity, "check"))).toHaveLength(0);
+    await upsertCheck(t.mgrCtx1, { ...input, grade: "a" });
+    const rows = await db.select().from(auditLogs).where(eq(auditLogs.entity, "check"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "update", actorId: t.users.mgr1.id, before: { grade: "p", points: sleepy.points, penaltyRuleId: sleepy.id }, after: { grade: "a", points: 0, penaltyRuleId: null } });
   });
 });

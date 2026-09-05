@@ -35,7 +35,10 @@ describe("회원 파일", () => {
   it("허용되지 않은 형식·크기는 거부한다", async () => {
     const t = await seedTwoBranches();
     const m = await createMember(t.mgrCtx1, { name: "가", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false });
-    await expect(saveMemberFile(t.mgrCtx1, { memberId: m, kind: "other", title: "x", fileName: "x.exe", mimeType: "application/x-msdownload", data: pdf }, storage)).rejects.toThrow(ValidationError);
+    await expect(saveMemberFile(t.mgrCtx1, { memberId: m, kind: "other", title: "x", fileName: "x.pdf", mimeType: "application/pdf", data: Buffer.from("MZ\x90\x00 not a pdf") }, storage)).rejects.toThrow(ValidationError);
+    await expect(saveMemberFile(t.mgrCtx1, { memberId: m, kind: "other", title: "x", fileName: "x.pdf", mimeType: "application/pdf", data: Buffer.from("<html><script>alert(1)</script>") }, storage)).rejects.toThrow(/내용/);
+    const pngAsPdf = await saveMemberFile(t.mgrCtx1, { memberId: m, kind: "other", title: "png", fileName: "x.pdf", mimeType: "application/pdf", data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]) }, storage);
+    expect((await getMemberFile(t.mgrCtx1, pngAsPdf, storage)).meta.mimeType).toBe("image/png");
     await expect(saveMemberFile(t.mgrCtx1, { memberId: m, kind: "other", title: "x", fileName: "big.pdf", mimeType: "application/pdf", data: Buffer.alloc(21 * 1024 * 1024) }, storage)).rejects.toThrow(/20MB/);
     await expect(saveMemberFile(t.mentorCtx1, { memberId: m, kind: "other", title: "x", fileName: "x.pdf", mimeType: "application/pdf", data: pdf }, storage)).resolves.toBeDefined();
     await expect(saveMemberFile(t.asstCtx1, { memberId: m, kind: "other", title: "x", fileName: "x.pdf", mimeType: "application/pdf", data: pdf }, storage)).rejects.toThrow(ForbiddenError);

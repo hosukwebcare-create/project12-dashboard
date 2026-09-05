@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  pgPolicy,
   pgTable,
   primaryKey,
   text,
@@ -12,6 +13,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ---------- 공용 타입 ----------
@@ -30,6 +32,17 @@ export type BranchSettings = {
 };
 
 const DEFAULT_BRANCH_SETTINGS: BranchSettings = { roundsPerDay: 12, maskNames: false };
+
+
+/**
+ * 지점 격리 RLS 정책. 앱이 요청 트랜잭션에 app.rls='on' 과 app.branch_id 를 설정했을 때만 검사한다(withRls).
+ * 컨텍스트가 없는 경로(로그인, 배치, 마이그레이션)는 통과하고, 본사 관리자(app.is_hq='true')는 전체를 본다.
+ * nullable 지점 컬럼(본사 기본값 행)은 null 이면 모두에게 보인다.
+ */
+function branchRls(table: string, col: AnyPgColumn, nullable = false) {
+  const scoped = sql`current_setting('app.rls', true) is distinct from 'on' or current_setting('app.is_hq', true) = 'true' or ${col} = nullif(current_setting('app.branch_id', true), '')::uuid`;
+  return pgPolicy(`${table}_branch_rls`, { for: "all", to: "public", using: nullable ? sql`${col} is null or (${scoped})` : scoped });
+}
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -92,8 +105,8 @@ export const seats = pgTable(
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
   },
-  (t) => [uniqueIndex("seats_branch_seat_no_uq").on(t.branchId, t.seatNo)],
-);
+  (t) => [branchRls("seats", t.branchId), uniqueIndex("seats_branch_seat_no_uq").on(t.branchId, t.seatNo)],
+).enableRLS();
 
 // ---------- 회원 마스터 ----------
 export const members = pgTable(
@@ -131,12 +144,13 @@ export const members = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    branchRls("members", t.branchId),
     uniqueIndex("members_seat_enrolled_uq")
       .on(t.seatId)
       .where(sql`${t.status} = 'enrolled' and ${t.seatId} is not null`),
     index("members_branch_status_idx").on(t.branchId, t.status),
   ],
-);
+).enableRLS();
 
 export const memberEnrollments = pgTable("member_enrollments", {
   id: id(),
@@ -173,8 +187,8 @@ export const mockExamRounds = pgTable(
     price: integer("price").notNull().default(0),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("mock_exam_rounds_uq").on(t.branchId, t.yearMonth, t.name)],
-);
+  (t) => [branchRls("mock_exam_rounds", t.branchId), uniqueIndex("mock_exam_rounds_uq").on(t.branchId, t.yearMonth, t.name)],
+).enableRLS();
 
 export const mockExamApplications = pgTable(
   "mock_exam_applications",
@@ -205,7 +219,7 @@ export const penaltyRules = pgTable("penalty_rules", {
   points: integer("points").notNull(),
   sort: integer("sort").notNull().default(0),
   active: boolean("active").notNull().default(true),
-});
+}, (t) => [branchRls("penalty_rules", t.branchId, true)]).enableRLS();
 
 export const boardItems = pgTable("board_items", {
   id: id(),
@@ -215,7 +229,7 @@ export const boardItems = pgTable("board_items", {
   kind: text("kind").$type<BoardItemKind>().notNull().default("daily"),
   sort: integer("sort").notNull().default(0),
   active: boolean("active").notNull().default(true),
-});
+}, (t) => [branchRls("board_items", t.branchId, true)]).enableRLS();
 
 export const customFieldDefs = pgTable("custom_field_defs", {
   id: id(),
@@ -228,7 +242,7 @@ export const customFieldDefs = pgTable("custom_field_defs", {
   required: boolean("required").notNull().default(false),
   sort: integer("sort").notNull().default(0),
   active: boolean("active").notNull().default(true),
-});
+}, (t) => [branchRls("custom_field_defs", t.branchId, true)]).enableRLS();
 
 // ---------- 집중관리일지 ----------
 export const counselLogs = pgTable(
@@ -255,10 +269,11 @@ export const counselLogs = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    branchRls("counsel_logs", t.branchId),
     uniqueIndex("counsel_logs_uq").on(t.memberId, t.logType, t.periodDate),
     index("counsel_logs_branch_period_idx").on(t.branchId, t.periodDate),
   ],
-);
+).enableRLS();
 
 export const counselComments = pgTable("counsel_comments", {
   id: id(),
@@ -287,8 +302,8 @@ export const roundingSessions = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("rounding_sessions_uq").on(t.branchId, t.date, t.roundNo)],
-);
+  (t) => [branchRls("rounding_sessions", t.branchId), uniqueIndex("rounding_sessions_uq").on(t.branchId, t.date, t.roundNo)],
+).enableRLS();
 
 export const checks = pgTable(
   "checks",
@@ -319,10 +334,11 @@ export const checks = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    branchRls("checks", t.branchId),
     uniqueIndex("checks_uq").on(t.memberId, t.date, t.itemKey, t.roundNo),
     index("checks_branch_date_idx").on(t.branchId, t.date),
   ],
-);
+).enableRLS();
 
 // ---------- 이슈 · 알림 · 감사 ----------
 export const issues = pgTable(
@@ -346,8 +362,8 @@ export const issues = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("issues_branch_status_idx").on(t.branchId, t.status)],
-);
+  (t) => [branchRls("issues", t.branchId), index("issues_branch_status_idx").on(t.branchId, t.status)],
+).enableRLS();
 
 export const issueComments = pgTable("issue_comments", {
   id: id(),
@@ -374,8 +390,8 @@ export const notifications = pgTable(
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("notifications_user_read_idx").on(t.userId, t.readAt)],
-);
+  (t) => [branchRls("notifications", t.branchId, true), index("notifications_user_read_idx").on(t.userId, t.readAt)],
+).enableRLS();
 
 export const auditLogs = pgTable(
   "audit_logs",
@@ -390,8 +406,8 @@ export const auditLogs = pgTable(
     after: jsonb("after"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("audit_logs_entity_idx").on(t.entity, t.entityId)],
-);
+  (t) => [branchRls("audit_logs", t.branchId, true), index("audit_logs_entity_idx").on(t.entity, t.entityId)],
+).enableRLS();
 
 export const accessLogs = pgTable("access_logs", {
   id: id(),
@@ -400,7 +416,7 @@ export const accessLogs = pgTable("access_logs", {
   entity: text("entity").notNull(),
   entityId: uuid("entity_id").notNull(),
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [branchRls("access_logs", t.branchId, true)]).enableRLS();
 
 // ---------- 2단계: 식사주문 · 정산 ----------
 export type MealKind = "lunch" | "dinner";
@@ -422,7 +438,7 @@ export const mealSettings = pgTable("meal_settings", {
   vendorName: text("vendor_name"),
   vendorPhone: text("vendor_phone"),
   updatedAt: updatedAt(),
-});
+}, (t) => [branchRls("meal_settings", t.branchId, true)]).enableRLS();
 
 export const mealOrders = pgTable(
   "meal_orders",
@@ -441,8 +457,8 @@ export const mealOrders = pgTable(
     changedBy: uuid("changed_by").references(() => users.id),
     changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("meal_orders_uq").on(t.memberId, t.date, t.meal), index("meal_orders_branch_date_idx").on(t.branchId, t.date)],
-);
+  (t) => [branchRls("meal_orders", t.branchId), uniqueIndex("meal_orders_uq").on(t.memberId, t.date, t.meal), index("meal_orders_branch_date_idx").on(t.branchId, t.date)],
+).enableRLS();
 
 export const mealSettlements = pgTable(
   "meal_settlements",
@@ -462,8 +478,8 @@ export const mealSettlements = pgTable(
     note: text("note"),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("meal_settlements_uq").on(t.memberId, t.yearMonth)],
-);
+  (t) => [branchRls("meal_settlements", t.branchId), uniqueIndex("meal_settlements_uq").on(t.memberId, t.yearMonth)],
+).enableRLS();
 
 // ---------- 2단계: 근무일지 · 급여 ----------
 export const staffProfiles = pgTable("staff_profiles", {
@@ -478,7 +494,7 @@ export const staffProfiles = pgTable("staff_profiles", {
   workDays: text("work_days"),
   direct: boolean("direct").notNull().default(true),
   updatedAt: updatedAt(),
-});
+}, (t) => [branchRls("staff_profiles", t.branchId, true)]).enableRLS();
 
 export const shiftSlots = pgTable(
   "shift_slots",
@@ -497,8 +513,8 @@ export const shiftSlots = pgTable(
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
   },
-  (t) => [uniqueIndex("shift_slots_uq").on(t.branchId, t.key)],
-);
+  (t) => [branchRls("shift_slots", t.branchId), uniqueIndex("shift_slots_uq").on(t.branchId, t.key)],
+).enableRLS();
 
 export const workLogs = pgTable(
   "work_logs",
@@ -522,8 +538,8 @@ export const workLogs = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("work_logs_uq").on(t.branchId, t.userId, t.date), index("work_logs_branch_date_idx").on(t.branchId, t.date)],
-);
+  (t) => [branchRls("work_logs", t.branchId), uniqueIndex("work_logs_uq").on(t.branchId, t.userId, t.date), index("work_logs_branch_date_idx").on(t.branchId, t.date)],
+).enableRLS();
 
 // ---------- 2단계: 알림톡 ----------
 export const alimtalkTemplates = pgTable("alimtalk_templates", {
@@ -562,8 +578,8 @@ export const alimtalkMessages = pgTable(
     createdAt: createdAt(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
   },
-  (t) => [index("alimtalk_messages_branch_idx").on(t.branchId, t.createdAt), index("alimtalk_messages_status_idx").on(t.status)],
-);
+  (t) => [branchRls("alimtalk_messages", t.branchId), index("alimtalk_messages_branch_idx").on(t.branchId, t.createdAt), index("alimtalk_messages_status_idx").on(t.status)],
+).enableRLS();
 
 // ---------- 3단계: 파일 · HERO · 외부 알림 ----------
 export type MemberFileKind = "hero_result" | "ai_report" | "other";
@@ -588,8 +604,8 @@ export const memberFiles = pgTable(
     uploadedBy: uuid("uploaded_by").references(() => users.id),
     createdAt: createdAt(),
   },
-  (t) => [index("member_files_member_idx").on(t.memberId, t.kind)],
-);
+  (t) => [branchRls("member_files", t.branchId), index("member_files_member_idx").on(t.memberId, t.kind)],
+).enableRLS();
 
 export const heroLinks = pgTable(
   "hero_links",
@@ -607,8 +623,8 @@ export const heroLinks = pgTable(
     takenAt: timestamp("taken_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("hero_links_external_uq").on(t.externalId)],
-);
+  (t) => [branchRls("hero_links", t.branchId), uniqueIndex("hero_links_external_uq").on(t.externalId)],
+).enableRLS();
 
 export const webhookEndpoints = pgTable("webhook_endpoints", {
   id: id(),
@@ -620,7 +636,7 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
   events: jsonb("events").$type<string[]>().notNull().default(["issue.created", "penalty.high"]),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),
-});
+}, (t) => [branchRls("webhook_endpoints", t.branchId)]).enableRLS();
 
 export type OutboxStatus = "pending" | "sent" | "failed";
 
@@ -640,5 +656,5 @@ export const eventOutbox = pgTable(
     createdAt: createdAt(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
   },
-  (t) => [index("event_outbox_status_idx").on(t.status, t.createdAt)],
-);
+  (t) => [branchRls("event_outbox", t.branchId), index("event_outbox_status_idx").on(t.status, t.createdAt)],
+).enableRLS();

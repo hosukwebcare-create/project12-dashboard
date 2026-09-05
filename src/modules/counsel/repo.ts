@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { counselComments, counselLogs, members, memberships, seats, users, type CounselLogType } from "@/db/schema";
 import { requireRole, STAFF_ROLES, type Ctx } from "@/lib/auth/ctx";
+import { writeAudit } from "@/lib/audit";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { toDate } from "@/lib/rules/week";
 import { notify } from "@/modules/notifications/repo";
@@ -133,11 +134,21 @@ export async function upsertLog(ctx: Ctx, input: LogInput, db: Db = defaultDb): 
     input.field === "issue"
       ? { issueText: input.text, issueBy: ctx.userId, issueAt: now }
       : { resolutionText: input.text, resolutionBy: ctx.userId, resolutionAt: now };
+  const [existing] = await db
+    .select({ id: counselLogs.id, issueText: counselLogs.issueText, resolutionText: counselLogs.resolutionText })
+    .from(counselLogs)
+    .where(and(eq(counselLogs.memberId, input.memberId), eq(counselLogs.logType, input.logType), eq(counselLogs.periodDate, input.periodDate)))
+    .limit(1);
   const [row] = await db
     .insert(counselLogs)
     .values({ branchId: ctx.branchId, memberId: input.memberId, logType: input.logType, periodDate: input.periodDate, ...fieldSet })
     .onConflictDoUpdate({ target: [counselLogs.memberId, counselLogs.logType, counselLogs.periodDate], set: { ...fieldSet, updatedAt: now } })
     .returning({ id: counselLogs.id });
+  // 이미 쓴 내용을 덮어쓰면 이전 본문을 감사 로그에 남긴다 (처음 작성은 기록 자체가 이력)
+  const beforeText = existing ? (input.field === "issue" ? existing.issueText : existing.resolutionText) : null;
+  if (existing && beforeText !== null && beforeText !== input.text) {
+    await writeAudit(db, ctx, "counsel_log", row.id, "update", { field: input.field, text: beforeText }, { field: input.field, text: input.text });
+  }
   return row.id;
 }
 

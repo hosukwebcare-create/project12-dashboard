@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/db/client";
 import { eventOutbox } from "@/db/schema";
-import { ForbiddenError } from "@/lib/errors";
+import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { createIssue } from "@/modules/issues/repo";
 import { createMember } from "@/modules/members/repo";
 import { dispatchOutbox, listWebhookEndpoints, upsertWebhookEndpoint } from "@/modules/outbox/repo";
@@ -59,5 +59,14 @@ describe("메신저 웹훅 아웃박스", () => {
     expect(r).toEqual({ sent: 0, failed: 1 });
     const [row] = await db.select().from(eventOutbox);
     expect(row).toMatchObject({ status: "failed", attempts: 1 });
+  });
+
+  it("SSRF: 로컬·메타데이터·사설망 주소의 웹훅은 저장할 수 없고, 저장된 URL 은 정규화된다", async () => {
+    const t = await seedTwoBranches();
+    for (const url of ["http://localhost:3000/hook", "http://169.254.169.254/latest/meta-data/", "http://127.0.0.1/", "http://10.0.0.1/hook", "http://metadata.google.internal/", "https://u:p@hooks.example/x", "ftp://hooks.example/x"]) {
+      await expect(upsertWebhookEndpoint(t.mgrCtx1, { name: "x", url, events: ["issue.created"], active: true }), url).rejects.toThrow(ValidationError);
+    }
+    await upsertWebhookEndpoint(t.mgrCtx1, { name: "ok", url: "  HTTPS://Hooks.Example/services/ABC  ", events: ["issue.created"], active: true });
+    expect((await listWebhookEndpoints(t.mgrCtx1)).map((w) => w.url)).toEqual(["https://hooks.example/services/ABC"]);
   });
 });

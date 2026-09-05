@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { db as defaultDb, type Db } from "@/db/client";
 import { branches, memberships, users, type BranchRole, type BranchSettings } from "@/db/schema";
@@ -73,12 +74,13 @@ export async function getCtx(): Promise<Ctx> {
   return ctx;
 }
 
-export async function tryGetCtx(): Promise<Ctx | null> {
+/** 같은 요청 안에서는 한 번만 계산한다 (guarded 래퍼와 페이지가 각각 호출하므로) */
+export const tryGetCtx = cache(async (): Promise<Ctx | null> => {
   const store = await cookies();
   const session = await verifySession(store.get(sessionCookie.name)?.value);
   if (!session) return null;
   return buildCtx(session.userId, session.branchId);
-}
+});
 
 export function requireRole(ctx: Ctx, ...roles: Role[]): void {
   if (!roles.includes(ctx.role)) throw new ForbiddenError();

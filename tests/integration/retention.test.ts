@@ -22,7 +22,7 @@ describe("개인정보 보관기간 · 퇴원 회원 익명화", () => {
     const old = await createMember(t.mgrCtx1, { name: "옛회원", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false, phone: "010-1111-2222", address: "주소", guardian: { name: "보호자", relation: "모", phone: "010-3333-4444" } });
     const recent = await createMember(t.mgrCtx1, { name: "최근퇴원", status: "enrolled", seatId: t.seats1[1].id, memberKind: "student", focusCare: false, phone: "010-5555-6666" });
     const active = await createMember(t.mgrCtx1, { name: "재원", status: "enrolled", seatId: t.seats1[2].id, memberKind: "student", focusCare: false, phone: "010-7777-8888" });
-    await saveMemberFile(t.mgrCtx1, { memberId: old, kind: "ai_report", title: "리포트", fileName: "r.pdf", mimeType: "application/pdf", data: Buffer.from("%PDF") }, storage);
+    await saveMemberFile(t.mgrCtx1, { memberId: old, kind: "ai_report", title: "리포트", fileName: "r.pdf", mimeType: "application/pdf", data: Buffer.from("%PDF-1.4") }, storage);
 
     await changeStatus(t.mgrCtx1, old, "withdrawn");
     await changeStatus(t.mgrCtx1, recent, "withdrawn");

@@ -22,7 +22,7 @@ createdb byeolha_dev && createdb byeolha_test && createdb byeolha_e2e
 cp .env.example .env.local        # DATABASE_URL, DATABASE_URL_TEST, SESSION_SECRET 확인
 pnpm install
 pnpm db:migrate                   # 개발 DB 마이그레이션
-pnpm db:push:test                 # 테스트 DB 스키마
+pnpm db:reset:test                 # 테스트 DB 스키마
 pnpm seed                         # 가상 데이터 (실제 인물 정보 없음)
 pnpm dev                          # http://localhost:3000
 ```
@@ -72,7 +72,9 @@ pnpm perf:seed && pnpm perf:measure   # 대량 데이터 성능 점검 (byeolha_
 
 파일 저장소는 로컬 디스크와 GCS(`STORAGE_DRIVER=gcs`)를 모두 지원한다. `GET /api/health` 가 DB 연결까지 확인하는 헬스체크다.
 
-미구현·미검증: 알림톡 딜러 계정 실연동(NHN Cloud·Solapi 어댑터는 있으나 실계정 검증 전), 사내 메신저 서버 설치 자체(RFP 3-3 별도 견적 항목), PostgreSQL RLS(현재는 애플리케이션 계층 격리만), 에러 모니터링(Sentry 등) 연동, 실데이터 이관 리허설.
+보안: 지점 격리는 앱 계층 스코핑 + PostgreSQL RLS(요청 트랜잭션에 지점 컨텍스트 설정, 24개 테이블 정책) 두 겹. 로그인·PIN 5회 실패 잠금, 웹훅 SSRF 차단(로컬·메타데이터·사설망), 업로드 매직 바이트 검사, 상담일지·라운딩 체크 수정 이력.
+
+미구현·미검증: 알림톡 딜러 계정 실연동(NHN Cloud·Solapi 어댑터는 있으나 실계정 검증 전), 사내 메신저 서버 설치 자체(RFP 3-3 별도 견적 항목), 에러 모니터링(Sentry 등) 연동, 실데이터 이관 리허설, 오프라인 상태에서 앱 실행(서비스 워커 없음, 열린 시트의 입력 유실 방지만 됨).
 
 ## 기술 스택
 

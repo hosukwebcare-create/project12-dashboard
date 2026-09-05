@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm
 import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { checks, issues, members, penaltyRules, roundingSessions, seats, users, type Grade } from "@/db/schema";
 import { requireRole, type Ctx, type Role } from "@/lib/auth/ctx";
+import { writeAudit } from "@/lib/audit";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { pointsFor } from "@/lib/rules/penalty";
 import { nextRoundNo } from "@/lib/rules/rounding";
@@ -185,6 +186,11 @@ export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultD
       called: input.called ?? null,
       createdBy: ctx.userId,
     };
+    const [prev] = await tx
+      .select({ id: checks.id, grade: checks.grade, points: checks.points, penaltyRuleId: checks.penaltyRuleId, note: checks.note })
+      .from(checks)
+      .where(and(eq(checks.memberId, input.memberId), eq(checks.date, input.date), eq(checks.itemKey, input.itemKey), eq(checks.roundNo, input.roundNo)))
+      .limit(1);
     const [row] = await tx
       .insert(checks)
       .values(values)
@@ -193,6 +199,10 @@ export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultD
         set: { ...values, updatedAt: new Date() },
       })
       .returning({ id: checks.id });
+    // 저장된 체크의 등급·점수·메모가 바뀌면 이전 값을 감사 로그에 남긴다
+    if (prev && (prev.grade !== values.grade || prev.points !== values.points || prev.penaltyRuleId !== values.penaltyRuleId || (prev.note ?? null) !== values.note)) {
+      await writeAudit(tx, ctx, "check", row.id, "update", { grade: prev.grade, points: prev.points, penaltyRuleId: prev.penaltyRuleId, note: prev.note }, { grade: values.grade, points: values.points, penaltyRuleId: values.penaltyRuleId, note: values.note });
+    }
 
     if (values.grade === "p" && values.points >= HIGH_PENALTY_THRESHOLD) {
       const where = input.itemKey === "round" ? `R${input.roundNo}` : input.itemKey;

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { tryGetCtx } from "@/lib/auth/ctx";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { formatHours } from "@/lib/rules/worklog";
+import { withRequestRls } from "@/lib/rls";
 import { monthlySummary } from "@/modules/worklog/repo";
 
 function csvCell(v: string | number | null): string {
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
   const month = req.nextUrl.searchParams.get("month") ?? "";
   try {
-    const rows = await monthlySummary(ctx, month);
+    const rows = await withRequestRls(() => monthlySummary(ctx, month));
     const header = ["지점", "월", "근무자", "근무형태", "근무일수", "근무시간", "초과근무", "본사확인시간", "시급", "예상급여"];
     const lines = rows.map((r) =>
       [ctx.branchName, month, r.userName, r.employmentType, r.days, formatHours(r.hoursX100), formatHours(r.overtimeX100), formatHours(r.confirmedX100), r.hourlyRate, r.estimatedPay].map(csvCell).join(","),
