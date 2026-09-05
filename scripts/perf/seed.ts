@@ -157,7 +157,18 @@ async function main() {
     for (let i = 0; i < logs.length; i += BATCH) await db.insert(s.counselLogs).values(logs.slice(i, i + BATCH));
 
     // 이슈 몇 건
-    await db.insert(s.issues).values(enrolled.slice(0, 8).map((m, i) => ({ branchId: branch.id, memberId: m.id, source: "rounding", title: `회원${b}-${i + 1} · 이동금지 위반`, severity: i % 3 ? "normal" : "high", status: i % 4 === 0 ? "resolved" : "open", reportedBy: a1.id, assignedTo: manager.id })));
+    await db.insert(s.issues).values(
+      enrolled.slice(0, 8).map((m, i) => ({
+        branchId: branch.id,
+        memberId: m.id,
+        source: "rounding",
+        title: `회원${b}-${i + 1} · 이동금지 위반`,
+        severity: i % 3 ? "normal" : "high",
+        status: (i % 4 === 0 ? "resolved" : "open") as "resolved" | "open",
+        reportedBy: a1.id,
+        assignedTo: manager.id,
+      })),
+    );
 
     console.log(`${code} 완료 · 누적 체크 ${totalChecks.toLocaleString()}건 · ${Math.round((Date.now() - t0) / 1000)}s`);
   }

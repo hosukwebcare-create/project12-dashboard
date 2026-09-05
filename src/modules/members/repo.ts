@@ -246,7 +246,8 @@ export async function changeStatus(ctx: Ctx, id: string, status: MemberStatus, d
     const before = await findOwned(ctx, id, tx);
     const keepSeat = status === "enrolled" || status === "paused";
     const seatId = keepSeat ? before.m.seatId : null;
-    await tx.update(members).set({ status, seatId }).where(eq(members.id, id));
+    const withdrawnAt = status === "withdrawn" ? (before.m.withdrawnAt ?? todayKey()) : null;
+    await tx.update(members).set({ status, seatId, withdrawnAt }).where(eq(members.id, id));
     await writeAudit(tx, ctx, "member", id, "status", { status: before.m.status, seatId: before.m.seatId }, { status, seatId });
   });
 }

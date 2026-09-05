@@ -1,0 +1,11 @@
+# SITE_ADDRESS 가 공인 도메인이면 Let's Encrypt 인증서를 자동 발급한다.
+# 사내망 IP·localhost 면 자체 서명 인증서(tls internal)로 HTTPS 를 제공한다.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy app:3000
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+	@internal expression {$SITE_ADDRESS} == "localhost" || {$SITE_ADDRESS}.matches("^[0-9.]+$")
+	tls internal
+}

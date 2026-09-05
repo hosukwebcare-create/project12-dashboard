@@ -44,3 +44,18 @@ test("본사 관리자는 지점을 전환할 수 있다", async ({ page }) => {
   await expect(page.getByRole("link", { name: "백서준" })).toBeVisible();
   await expect(page.getByRole("link", { name: "강하늘" })).toHaveCount(0);
 });
+
+test("비밀번호 5회 실패 시 10분 잠금", async ({ page }) => {
+  await page.goto("/login");
+  for (let i = 0; i < 5; i++) {
+    await page.getByLabel("아이디").fill("manager2");
+    await page.getByLabel("비밀번호").fill("wrong-" + i);
+    await page.getByRole("button", { name: "로그인" }).click();
+    await expect(page.getByRole("button", { name: "로그인" })).toBeEnabled();
+  }
+  await expect(page.getByText(/잠겼습니다/)).toBeVisible();
+  await page.getByLabel("비밀번호").fill("1234");
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText(/잠겼습니다/)).toBeVisible();
+  await expect(page).toHaveURL(/\/login/);
+});

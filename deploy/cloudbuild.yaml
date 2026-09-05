@@ -1,0 +1,49 @@
+# GCP 배포: Cloud Build → Artifact Registry → Cloud Run (asia-northeast3)
+#   gcloud builds submit --config deploy/cloudbuild.yaml --substitutions=_SERVICE=byeolha,_REGION=asia-northeast3
+# 사전 준비: Artifact Registry 저장소(byeolha), Cloud SQL 인스턴스, Secret Manager 에 DATABASE_URL·SESSION_SECRET·JOB_SECRET
+substitutions:
+  _SERVICE: byeolha
+  _REGION: asia-northeast3
+  _REPO: byeolha
+  _SQL_INSTANCE: "" # 예: my-project:asia-northeast3:byeolha-db
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "--target", "runner", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "--target", "migrate", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}-migrate:$SHORT_SHA", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA"]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}-migrate:$SHORT_SHA"]
+  # 마이그레이션은 Cloud Run Job 으로 1회 실행
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud run jobs deploy ${_SERVICE}-migrate \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}-migrate:$SHORT_SHA \
+          --region ${_REGION} \
+          --set-secrets DATABASE_URL=DATABASE_URL:latest \
+          --set-cloudsql-instances ${_SQL_INSTANCE} \
+          --execute-now --wait
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud run deploy ${_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA \
+          --region ${_REGION} \
+          --platform managed \
+          --min-instances 1 \
+          --cpu 1 --memory 1Gi \
+          --set-cloudsql-instances ${_SQL_INSTANCE} \
+          --set-secrets DATABASE_URL=DATABASE_URL:latest,SESSION_SECRET=SESSION_SECRET:latest,JOB_SECRET=JOB_SECRET:latest \
+          --set-env-vars STORAGE_DRIVER=gcs,GCS_BUCKET=${_SERVICE}-files,ALIMTALK_PROVIDER=mock,RETENTION_DAYS=365
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}-migrate:$SHORT_SHA
+options:
+  logging: CLOUD_LOGGING_ONLY

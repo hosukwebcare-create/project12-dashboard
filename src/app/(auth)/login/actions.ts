@@ -1,12 +1,9 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
 import { clearSessionCookie, setSessionCookie } from "@/lib/auth/cookies";
 import { buildCtx, getCtx } from "@/lib/auth/ctx";
-import { verifyPassword } from "@/lib/auth/password";
+import { authenticate, LOCK_MINUTES } from "@/modules/auth/login";
 
 export type LoginState = { error?: string };
 
@@ -16,14 +13,20 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const next = String(formData.get("next") ?? "");
   if (!loginId || !password) return { error: "아이디와 비밀번호를 입력하세요" };
 
-  const [user] = await db.select().from(users).where(eq(users.loginId, loginId)).limit(1);
-  const ok = user && user.active && (await verifyPassword(password, user.passwordHash));
-  if (!ok) return { error: "아이디 또는 비밀번호가 올바르지 않습니다" };
+  const result = await authenticate(loginId, password);
+  if (!result.ok) {
+    if (result.reason === "locked") {
+      const minutes = Math.max(1, Math.ceil((result.until.getTime() - Date.now()) / 60_000));
+      return { error: `로그인 시도가 너무 많아 잠겼습니다. ${minutes}분 후 다시 시도하세요` };
+    }
+    const hint = result.remaining !== undefined && result.remaining <= 2 ? ` (${result.remaining}회 더 실패하면 ${LOCK_MINUTES}분 잠깁니다)` : "";
+    return { error: `아이디 또는 비밀번호가 올바르지 않습니다${hint}` };
+  }
 
-  const ctx = await buildCtx(user.id, null);
+  const ctx = await buildCtx(result.userId, null);
   if (!ctx) return { error: "소속 지점이 없습니다. 관리자에게 문의하세요" };
 
-  await setSessionCookie({ userId: user.id, branchId: ctx.branchId });
+  await setSessionCookie({ userId: result.userId, branchId: ctx.branchId });
   const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : null;
   redirect(safeNext ?? (ctx.role === "assistant" ? "/rounding" : "/"));
 }

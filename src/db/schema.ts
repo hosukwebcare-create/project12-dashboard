@@ -58,6 +58,8 @@ export const users = pgTable("users", {
   phone: text("phone"),
   passwordHash: text("password_hash").notNull(),
   pinHash: text("pin_hash"),
+  failedLogins: integer("failed_logins").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   isHqAdmin: boolean("is_hq_admin").notNull().default(false),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),
@@ -121,6 +123,10 @@ export const members = pgTable(
     /** 라운딩 목록에 항상 표시되는 짧은 특이사항 */
     fieldNote: text("field_note"),
     custom: jsonb("custom").$type<Record<string, unknown>>().notNull().default({}),
+    /** 퇴원 처리일. 보관기간 계산 기준 */
+    withdrawnAt: date("withdrawn_at"),
+    /** 개인정보 익명화 시각 */
+    anonymizedAt: timestamp("anonymized_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
