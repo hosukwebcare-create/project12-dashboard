@@ -165,3 +165,26 @@ export async function monthLogsForUser(ctx: Ctx, userId: string, yearMonth: stri
     .where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, userId), gte(workLogs.date, dates[0]), lte(workLogs.date, dates[dates.length - 1])))
     .orderBy(asc(workLogs.date));
 }
+
+export type BranchWorkSummary = { branchId: string; branchName: string; staff: number; hoursX100: number; overtimeX100: number; confirmedX100: number; estimatedPay: number };
+
+/** 본사용 지점별 월 근무 집계 */
+export async function hqWorklogSummary(ctx: Ctx, yearMonth: string, db: Db = defaultDb): Promise<BranchWorkSummary[]> {
+  if (!ctx.isHqAdmin) throw new ForbiddenError("본사 관리자만 볼 수 있습니다");
+  const { branches } = await import("@/db/schema");
+  const list = await db.select({ id: branches.id, name: branches.name, settings: branches.settings }).from(branches).where(eq(branches.active, true)).orderBy(asc(branches.code));
+  const out: BranchWorkSummary[] = [];
+  for (const b of list) {
+    const rows = await monthlySummary({ ...ctx, branchId: b.id, branchName: b.name, settings: b.settings }, yearMonth, db);
+    out.push({
+      branchId: b.id,
+      branchName: b.name,
+      staff: rows.length,
+      hoursX100: rows.reduce((a, r) => a + r.hoursX100, 0),
+      overtimeX100: rows.reduce((a, r) => a + r.overtimeX100, 0),
+      confirmedX100: rows.reduce((a, r) => a + r.confirmedX100, 0),
+      estimatedPay: rows.reduce((a, r) => a + (r.estimatedPay ?? 0), 0),
+    });
+  }
+  return out;
+}

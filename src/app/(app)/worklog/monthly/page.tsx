@@ -4,7 +4,7 @@ import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
 import { guarded } from "@/lib/page-guard";
 import { todayKey } from "@/lib/rules/week";
 import { formatHours } from "@/lib/rules/worklog";
-import { monthlySummary } from "@/modules/worklog/repo";
+import { hqWorklogSummary, monthlySummary } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무 월 집계" };
 
@@ -19,7 +19,7 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
   requireRole(ctx, ...MANAGER_ROLES);
   const sp = await searchParams;
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayKey().slice(0, 7);
-  const rows = await monthlySummary(ctx, month);
+  const [rows, hq] = await Promise.all([monthlySummary(ctx, month), ctx.isHqAdmin ? hqWorklogSummary(ctx, month) : Promise.resolve(null)]);
   const totalPay = rows.reduce((a, r) => a + (r.estimatedPay ?? 0), 0);
   return (
     <div className="mx-auto max-w-4xl">
@@ -35,6 +35,34 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
           <a href={`/api/worklog/export?month=${month}`}>급여 기초자료 CSV</a>
         </Button>
       </div>
+      {hq ? (
+        <div className="mb-4 overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">지점별 합계 (본사)</th>
+                <th className="px-3 py-2 text-right">근무자</th>
+                <th className="px-3 py-2 text-right">근무시간</th>
+                <th className="px-3 py-2 text-right">초과</th>
+                <th className="px-3 py-2 text-right">본사확인</th>
+                <th className="px-3 py-2 text-right">예상 급여</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hq.map((b) => (
+                <tr key={b.branchId} className={b.branchId === ctx.branchId ? "bg-muted/40 font-medium" : ""}>
+                  <td className="px-3 py-1.5">{b.branchName}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{b.staff}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{formatHours(b.hoursX100)}h</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{formatHours(b.overtimeX100)}h</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{formatHours(b.confirmedX100)}h</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{b.estimatedPay.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">이 달의 근무 기록이 없습니다</p>
       ) : (

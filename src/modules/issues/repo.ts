@@ -7,6 +7,8 @@ import { ALL_ROLES, MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx"
 import { NotFoundError } from "@/lib/errors";
 import { notify } from "@/modules/notifications/repo";
 import { enqueueEvent } from "@/modules/outbox/repo";
+import { validateCustomValues } from "@/lib/rules/custom-fields";
+import { customFieldsFor } from "@/modules/settings/repo";
 
 export type IssueInput = {
   memberId: string | null;
@@ -15,6 +17,7 @@ export type IssueInput = {
   severity: "low" | "normal" | "high";
   source: "rounding" | "counsel" | "manual";
   checkId?: string | null;
+  custom?: Record<string, unknown>;
 };
 
 export type IssueRow = typeof issues.$inferSelect & {
@@ -45,6 +48,9 @@ export async function createIssue(ctx: Ctx, input: IssueInput, db: Db | Tx = def
     const [m] = await db.select({ id: members.id }).from(members).where(and(eq(members.id, input.memberId), eq(members.branchId, ctx.branchId))).limit(1);
     if (!m) throw new NotFoundError("회원을 찾을 수 없습니다");
   }
+  // 자동 생성(라운딩)은 필수 커스텀 필드를 요구하지 않는다
+  const defs = input.source === "manual" ? await customFieldsFor(ctx, "issue", db) : [];
+  const custom = input.source === "manual" ? validateCustomValues(defs, input.custom ?? {}) : {};
   const [row] = await db
     .insert(issues)
     .values({
@@ -56,6 +62,7 @@ export async function createIssue(ctx: Ctx, input: IssueInput, db: Db | Tx = def
       body: input.body,
       severity: input.severity,
       reportedBy: ctx.userId,
+      custom,
     })
     .returning({ id: issues.id });
   const managers = (await branchManagerIds(ctx.branchId, db)).filter((id) => id !== ctx.userId);

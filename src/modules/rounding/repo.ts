@@ -28,6 +28,8 @@ export type SheetRow = {
   isIssue: boolean;
   arrivalTime: string | null;
   called: boolean | null;
+  /** 같은 날 이전 회차(일별 항목이면 당일 전체)의 벌점 규칙 이름. 연속 졸음 추천에 쓴다 */
+  priorPenalties: string[];
 };
 
 export type CheckInput = {
@@ -124,7 +126,18 @@ export async function sheetRows(ctx: Ctx, date: string, itemKey: string, roundNo
     )
     .where(and(eq(members.branchId, ctx.branchId), eq(members.status, "enrolled")))
     .orderBy(sql`${seats.seatNo} asc nulls last`, asc(members.name));
-  return rows.map((r) => ({ ...r, points: r.points ?? 0, isIssue: r.isIssue ?? false }));
+  const priorConds = [eq(checks.branchId, ctx.branchId), eq(checks.date, date), eq(checks.grade, "p")];
+  if (itemKey === "round") priorConds.push(sql`${checks.itemKey} = 'round' and ${checks.roundNo} < ${roundNo}`);
+  else priorConds.push(sql`not (${checks.itemKey} = ${itemKey} and ${checks.roundNo} = ${roundNo})`);
+  const prior = await db
+    .select({ memberId: checks.memberId, roundNo: checks.roundNo, name: penaltyRules.name })
+    .from(checks)
+    .leftJoin(penaltyRules, eq(penaltyRules.id, checks.penaltyRuleId))
+    .where(and(...priorConds))
+    .orderBy(asc(checks.roundNo));
+  const priorByMember = new Map<string, string[]>();
+  for (const p of prior) priorByMember.set(p.memberId, [...(priorByMember.get(p.memberId) ?? []), p.name ?? "벌점"]);
+  return rows.map((r) => ({ ...r, points: r.points ?? 0, isIssue: r.isIssue ?? false, priorPenalties: priorByMember.get(r.memberId) ?? [] }));
 }
 
 export async function sessionSheet(ctx: Ctx, sessionId: string, db: Db = defaultDb) {

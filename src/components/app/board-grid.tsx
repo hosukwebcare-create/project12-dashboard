@@ -42,6 +42,11 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
     };
   }, [branchId, token, refreshMs]);
 
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else document.documentElement.requestFullscreen?.();
+  }
+
   const rounds = Array.from({ length: data.roundsPerDay }, (_, i) => i + 1);
   const rowsPerDay: { key: string; roundNo: number; label: string }[] = [];
   for (const item of data.items) {
@@ -71,9 +76,13 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
         <div className="text-lg font-bold">
           {data.branchName} 생활관리 현황 · {dayLabel(data.days[0])} ~ {dayLabel(data.days[6])}
         </div>
-        <div className="text-sm text-gray-600">
-          {data.rules.map((r) => `${r.name}[${r.points}점]`).join(" / ")}
-          {error ? <span className="ml-3 text-red-600">갱신 실패</span> : null}
+        <div className="flex items-center gap-3 text-sm text-gray-600">
+          <span>{data.rules.map((r) => `${r.name}[${r.points}점]`).join(" / ")}</span>
+          <span className="text-xs text-gray-400">갱신 {new Date(data.generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+          {error ? <span className="text-red-600">갱신 실패</span> : null}
+          <button type="button" onClick={toggleFullscreen} className="rounded border px-2 py-0.5 text-xs hover:bg-gray-100 print:hidden">
+            전체화면
+          </button>
         </div>
       </div>
       <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 56px)" }}>

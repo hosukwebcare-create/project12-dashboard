@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const ITEMS: { href: string; label: string; hqOnly?: boolean }[] = [
   { href: "/settings/branch", label: "지점·현황판" },
+  { href: "/settings/branches", label: "지점 관리", hqOnly: true },
   { href: "/settings/users", label: "사용자" },
   { href: "/settings/seats", label: "좌석" },
   { href: "/settings/penalty-rules", label: "벌점 규칙" },

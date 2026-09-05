@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { IssueCommentForm } from "@/components/app/issue-comment-form";
 import { IssueStatusBadge, SeverityBadge } from "@/components/app/issue-badges";
 import { PageHeader } from "@/components/app/page-header";
@@ -9,7 +10,8 @@ import { getCtx, MANAGER_ROLES } from "@/lib/auth/ctx";
 import { fmtDateTime } from "@/lib/format";
 import { updateIssueAction } from "@/modules/issues/actions";
 import { getIssue, ISSUE_STATUS_LABEL } from "@/modules/issues/repo";
-import { listUsers } from "@/modules/settings/repo";
+import { customFieldsFor, listUsers } from "@/modules/settings/repo";
+import { formatCustomValue } from "@/components/app/custom-fields";
 import { guarded } from "@/lib/page-guard";
 
 async function IssueDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +20,7 @@ async function IssueDetailPage({ params }: { params: Promise<{ id: string }> }) 
   const issue = await getIssue(ctx, id);
   const canManage = MANAGER_ROLES.includes(ctx.role);
   const staff = canManage ? (await listUsers(ctx)).filter((u) => u.active && u.role !== "assistant") : [];
+  const customDefs = await customFieldsFor(ctx, "issue");
   const statuses: IssueStatus[] = ["open", "in_progress", "resolved"];
 
   return (
@@ -46,7 +49,19 @@ async function IssueDetailPage({ params }: { params: Promise<{ id: string }> }) 
       <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
         <div className="space-y-4">
           <Card>
-            <CardContent className="pt-6 text-sm whitespace-pre-wrap">{issue.body ?? <span className="text-muted-foreground">내용 없음</span>}</CardContent>
+            <CardContent className="pt-6 text-sm whitespace-pre-wrap">
+              {issue.body ?? <span className="text-muted-foreground">내용 없음</span>}
+              {customDefs.length ? (
+                <dl className="mt-4 grid grid-cols-[8rem_1fr] gap-y-1 border-t pt-3 text-sm">
+                  {customDefs.map((d) => (
+                    <Fragment key={d.key}>
+                      <dt className="text-muted-foreground">{d.label}</dt>
+                      <dd>{formatCustomValue(d, issue.custom[d.key])}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              ) : null}
+            </CardContent>
           </Card>
           <Card>
             <CardHeader>

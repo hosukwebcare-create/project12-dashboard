@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sessionCookie, verifySession } from "@/lib/auth/session";
 
 /** 로그인 없이 접근 가능한 경로 */
-const PUBLIC_PREFIXES = ["/login", "/board/", "/api/board/", "/api/integrations/", "/api/jobs/"];
+const PUBLIC_PREFIXES = ["/login", "/board/", "/api/board/", "/api/integrations/", "/api/jobs/", "/api/health"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

@@ -81,7 +81,7 @@ test.describe("설정", () => {
     const form = page.locator("form").filter({ has: page.getByPlaceholder("아이디") });
     await form.getByPlaceholder("아이디").fill("e2easst");
     await form.getByPlaceholder("이름").fill("이투이조교");
-    await form.getByPlaceholder("비밀번호 (6자+)").fill("secret123");
+    await form.getByPlaceholder("비밀번호 (6자+)").fill("secret1234");
     await form.getByRole("button", { name: "추가" }).click();
     await expect(page.getByText("사용자 목록 (5)")).toBeVisible();
     // 지점장은 지점장 역할을 만들 수 없다
@@ -91,7 +91,7 @@ test.describe("설정", () => {
     const p2 = await ctx2.newPage();
     await p2.goto("/login");
     await p2.getByLabel("아이디").fill("e2easst");
-    await p2.getByLabel("비밀번호").fill("secret123");
+    await p2.getByLabel("비밀번호").fill("secret1234");
     await p2.getByRole("button", { name: "로그인" }).click();
     await expect(p2).toHaveURL("/rounding");
     await expect(p2.getByText("이투이조교")).toBeVisible();

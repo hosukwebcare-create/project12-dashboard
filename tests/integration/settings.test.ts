@@ -67,10 +67,10 @@ describe("설정 · 사용자", () => {
 
   it("지점장은 멘토·조교만 만들 수 있고, 만든 계정으로 로그인 검증이 된다", async () => {
     const t = await seedTwoBranches();
-    await expect(upsertUser(t.mgrCtx1, { loginId: "newmgr", name: "새지점장", password: "pw123456", role: "branch_manager", active: true })).rejects.toThrow(ForbiddenError);
-    const id = await upsertUser(t.mgrCtx1, { loginId: "newasst", name: "새조교", password: "pw123456", role: "assistant", active: true });
+    await expect(upsertUser(t.mgrCtx1, { loginId: "newmgr", name: "새지점장", password: "pw12345678", role: "branch_manager", active: true })).rejects.toThrow(ForbiddenError);
+    const id = await upsertUser(t.mgrCtx1, { loginId: "newasst", name: "새조교", password: "pw12345678", role: "assistant", active: true });
     const [u] = await db.select().from(users).where(eq(users.id, id));
-    expect(await verifyPassword("pw123456", u.passwordHash)).toBe(true);
+    expect(await verifyPassword("pw12345678", u.passwordHash)).toBe(true);
     const ctx = await buildCtx(id, null);
     expect(ctx?.role).toBe("assistant");
     expect(ctx?.branchId).toBe(t.b1.id);
@@ -80,7 +80,7 @@ describe("설정 · 사용자", () => {
 
   it("본사 관리자는 지점장을 만들고, 기존 사용자의 역할·비활성을 바꾼다", async () => {
     const t = await seedTwoBranches();
-    const id = await upsertUser(t.hqCtx1, { loginId: "mgr3", name: "지점장3", password: "pw123456", role: "branch_manager", active: true });
+    const id = await upsertUser(t.hqCtx1, { loginId: "mgr3", name: "지점장3", password: "pw12345678", role: "branch_manager", active: true });
     await upsertUser(t.hqCtx1, { id, loginId: "mgr3", name: "지점장3", role: "mentor", active: false });
     const [ms] = await db.select().from(memberships).where(eq(memberships.userId, id));
     expect(ms.role).toBe("mentor");
@@ -89,7 +89,7 @@ describe("설정 · 사용자", () => {
 
   it("아이디 중복은 오류", async () => {
     const t = await seedTwoBranches();
-    await expect(upsertUser(t.mgrCtx1, { loginId: "mentor1", name: "x", password: "pw123456", role: "assistant", active: true })).rejects.toThrow(ValidationError);
+    await expect(upsertUser(t.mgrCtx1, { loginId: "mentor1", name: "x", password: "pw12345678", role: "assistant", active: true })).rejects.toThrow(ValidationError);
   });
 });
 

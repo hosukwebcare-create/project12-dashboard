@@ -10,7 +10,7 @@ import { guarded } from "@/lib/page-guard";
 export const metadata = { title: "커스텀 필드" };
 
 const selectClass = "h-8 rounded-md border bg-background px-2 text-sm";
-const ENTITIES: CustomFieldEntity[] = ["member", "issue", "counsel_log"];
+const ENTITIES: CustomFieldEntity[] = ["member", "issue"];
 
 function TypeSelect({ name, value, disabled }: { name: string; value?: string; disabled?: boolean }) {
   return (
@@ -34,7 +34,7 @@ async function CustomFieldsPage() {
       <Card>
         <CardHeader>
           <CardTitle>새 필드</CardTitle>
-          <CardDescription>회원 등록·수정 양식에 개발 없이 항목을 추가합니다. 선택형은 선택지를 쉼표로 구분합니다. 전 지점에 적용됩니다.</CardDescription>
+          <CardDescription>회원 등록·수정 양식과 이슈 등록 양식에 개발 없이 항목을 추가합니다. 선택형은 선택지를 쉼표로 구분합니다. 전 지점에 적용됩니다.</CardDescription>
         </CardHeader>
         <CardContent>
           <InlineForm action={upsertCustomFieldDefAction} submitLabel="추가">

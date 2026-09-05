@@ -342,6 +342,7 @@ export const issues = pgTable(
     reportedBy: uuid("reported_by").references(() => users.id),
     assignedTo: uuid("assigned_to").references(() => users.id),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    custom: jsonb("custom").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

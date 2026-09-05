@@ -3,7 +3,7 @@ import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { auditLogs, boardItems, branches, customFieldDefs, memberships, penaltyRules, seats, users, type BoardItemKind, type BranchRole, type BranchSettings } from "@/db/schema";
 import { CUSTOM_FIELD_TYPES, type CustomFieldType } from "@/lib/rules/custom-fields";
 import { writeAudit } from "@/lib/audit";
-import { hashPassword } from "@/lib/auth/password";
+import { hashPassword, validatePassword } from "@/lib/auth/password";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 
@@ -144,7 +144,10 @@ export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb)
   const loginId = input.loginId.trim();
   if (!/^[a-z0-9_.-]{3,30}$/i.test(loginId)) throw new ValidationError("아이디는 영문·숫자 3~30자");
   if (!input.name.trim()) throw new ValidationError("이름을 입력하세요");
-  if (input.password !== undefined && input.password.length < 6) throw new ValidationError("비밀번호는 6자 이상");
+  if (input.password !== undefined) {
+    const err = validatePassword(input.password);
+    if (err) throw new ValidationError(err);
+  }
 
   return db.transaction(async (tx) => {
     const dupConds = [eq(users.loginId, loginId)];

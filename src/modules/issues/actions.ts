@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { IssueStatus } from "@/db/schema";
 import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
+import { formToObject } from "@/lib/form";
 import { addIssueComment, createIssue, updateIssue } from "./repo";
 
 export async function createIssueAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -20,6 +21,7 @@ export async function createIssueAction(_prev: ActionState, fd: FormData): Promi
       body: String(fd.get("body") ?? "").trim() || null,
       severity: severity === "low" || severity === "high" ? severity : "normal",
       source: "manual",
+      custom: (formToObject(fd).custom as Record<string, unknown> | undefined) ?? {},
     });
   } catch (e) {
     return { error: toMessage(e) };

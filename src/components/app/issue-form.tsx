@@ -7,8 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { ActionState } from "@/lib/action-utils";
 import { createIssueAction } from "@/modules/issues/actions";
+import type { CustomFieldDef } from "@/modules/settings/repo";
+import { CustomFields } from "./custom-fields";
 
-export function IssueForm({ members }: { members: { id: string; label: string }[] }) {
+export function IssueForm({ members, customFields = [] }: { members: { id: string; label: string }[]; customFields?: CustomFieldDef[] }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(createIssueAction, {});
   return (
     <form action={action} className="space-y-4">
@@ -39,6 +41,7 @@ export function IssueForm({ members }: { members: { id: string; label: string }[
           <option value="high">높음</option>
         </select>
       </div>
+      {customFields.length ? <CustomFields defs={customFields} values={{}} className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-2" /> : null}
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
       <Button type="submit" disabled={pending}>
         {pending ? "등록 중…" : "이슈 등록"}

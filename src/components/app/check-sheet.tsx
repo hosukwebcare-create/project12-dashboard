@@ -158,9 +158,19 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
     });
   }
 
+  /** 오늘 이미 졸음 벌점이 있으면 "연속 졸음" 규칙을 먼저 고른다 */
+  function suggestedRule(row: SheetRow): string | null {
+    if (row.penaltyRuleId) return row.penaltyRuleId;
+    if (row.priorPenalties.some((n) => n.includes("졸음"))) {
+      const consecutive = rules.find((r) => r.name.includes("연속"));
+      if (consecutive) return consecutive.id;
+    }
+    return rules[0]?.id ?? null;
+  }
+
   function quick(row: SheetRow, grade: Grade) {
     if (grade === "p") {
-      setEditing({ ...row, grade: "p", penaltyRuleId: row.penaltyRuleId ?? rules[0]?.id ?? null });
+      setEditing({ ...row, grade: "p", penaltyRuleId: suggestedRule(row) });
       return;
     }
     apply(row, { grade, penaltyRuleId: null, points: 0 });
@@ -208,6 +218,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                       {r.focusCare ? <span className="ml-1 text-[10px] text-violet-700">집중</span> : null}
                     </span>
                     {r.fieldNote ? <span className="block truncate text-xs text-muted-foreground">{r.fieldNote}</span> : null}
+                    {r.priorPenalties.length ? <span className="block truncate text-xs text-amber-700">오늘 이전 벌점: {r.priorPenalties.join(", ")}</span> : null}
                     {r.grade === "p" ? (
                       <span className="block truncate text-xs text-red-600">
                         {rules.find((x) => x.id === r.penaltyRuleId)?.name ?? "벌점"} {r.points}점{r.isIssue ? " · 이슈" : ""}
@@ -264,7 +275,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     <button
                       key={qk.grade}
                       type="button"
-                      onClick={() => setEditing({ ...editing, grade: qk.grade, penaltyRuleId: qk.grade === "p" ? (editing.penaltyRuleId ?? rules[0]?.id ?? null) : null })}
+                      onClick={() => setEditing({ ...editing, grade: qk.grade, penaltyRuleId: qk.grade === "p" ? suggestedRule(editing) : null })}
                       className={cn("h-11 rounded-md border text-sm font-semibold", editing.grade === qk.grade ? cn(GRADE_STYLE[qk.grade], "border-transparent") : "")}
                     >
                       {qk.label}
