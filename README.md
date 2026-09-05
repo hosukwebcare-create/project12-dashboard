@@ -10,6 +10,7 @@
 | [docs/02_시스템_설계서.md](docs/02_시스템_설계서.md) | 아키텍처, 데이터 모델(ERD·테이블), 권한·다지점 격리, 화면 설계, 업무 규칙, API, 이관, 보안, 테스트, 운영 |
 | [docs/superpowers/plans/2026-09-05-phase1-core.md](docs/superpowers/plans/2026-09-05-phase1-core.md) | 1단계 코어 구현 계획 |
 | [docs/03_운영_가이드.md](docs/03_운영_가이드.md) | 환경 변수, 배포, 배치, 외부 연동(알림톡·HERO·메신저) 설정 |
+| [docs/04_성능_점검.md](docs/04_성능_점검.md) | 지점 10 · 회원 900 · 체크 105만 건 기준 응답 시간과 용량 전망 |
 
 ## 실행 방법
 
@@ -31,6 +32,7 @@ pnpm dev                          # http://localhost:3000
 pnpm test                         # 단위·통합 테스트 (테스트 DB)
 pnpm exec playwright test         # E2E (운영 빌드 + 전용 DB byeolha_e2e, 자동 시드)
 pnpm lint && pnpm build
+pnpm perf:seed && pnpm perf:measure   # 대량 데이터 성능 점검 (byeolha_perf DB)
 ```
 
 시드 계정 (괄호 안이 비밀번호):

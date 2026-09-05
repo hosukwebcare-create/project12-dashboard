@@ -13,7 +13,10 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:push:test": "DATABASE_URL=postgres://localhost:5432/byeolha_test drizzle-kit push",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "perf:seed": "DATABASE_URL=postgres://localhost:5432/byeolha_perf tsx scripts/perf/seed.ts",
+    "perf:measure": "DATABASE_URL=postgres://localhost:5432/byeolha_perf tsx scripts/perf/measure.ts",
+    "db:push:perf": "DATABASE_URL=postgres://localhost:5432/byeolha_perf drizzle-kit push"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.0.1",
