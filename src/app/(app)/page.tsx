@@ -1,4 +1,3 @@
-import { AlertTriangle, BookOpen, Building2, CalendarClock, Footprints, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IssueStatusBadge, SeverityBadge } from "@/components/app/issue-badges";
@@ -17,18 +16,15 @@ async function DashboardPage() {
   if (ctx.role === "assistant") redirect("/rounding");
   const today = todayKey();
   const [d, overview] = await Promise.all([dashboard(ctx, today), ctx.isHqAdmin ? hqOverview(ctx, today) : Promise.resolve(null)]);
-  const roundPct = d.roundsPerDay ? Math.round((d.sessionsDone / d.roundsPerDay) * 100) : 0;
 
   return (
     <div>
       <PageHeader title="대시보드" description={`${ctx.branchName} · ${fmtShortDate(today)} · ${ROLE_LABEL[ctx.role]} ${ctx.userName}`} />
 
       {overview ? (
-        <Card className="mb-5">
+        <Card className="mb-6">
           <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="size-4 text-muted-foreground" /> 전 지점 요약
-            </CardTitle>
+            <CardTitle>전 지점 요약</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -45,7 +41,7 @@ async function DashboardPage() {
                 </thead>
                 <tbody>
                   {overview.map((b) => (
-                    <tr key={b.branchId} className={cn("border-t border-border/60", b.branchId === ctx.branchId && "bg-accent/40 font-medium")}>
+                    <tr key={b.branchId} className={cn("border-t border-border", b.branchId === ctx.branchId && "font-medium")}>
                       <td className="py-2 pr-3">{b.branchName}</td>
                       <td className="py-2 pr-3 text-right">{b.enrolled}</td>
                       <td className="py-2 pr-3 text-right">
@@ -59,19 +55,16 @@ async function DashboardPage() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">상단의 지점 선택으로 전환하면 아래 카드가 그 지점 기준으로 바뀝니다.</p>
+            <p className="mt-3 text-xs text-muted-foreground">상단의 지점 선택으로 전환하면 아래 내용이 그 지점 기준으로 바뀝니다.</p>
           </CardContent>
         </Card>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard icon={Footprints} label="오늘 라운딩" value={d.sessionsDone} unit={`/ ${d.roundsPerDay} 회차`} href="/rounding/history" hint="회차별 결과 보기">
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${roundPct}%` }} />
-          </div>
-        </StatCard>
-        <StatCard icon={BookOpen} label="이번 주 상담일지" value={d.missingWeekly} unit="명 미작성" tone={d.missingWeekly > 0 ? "warning" : "default"} href={`/counsel/weekly?week=${d.weekStart}`} hint={`${fmtShortDate(d.weekStart)} 주 상담일지 열기`} />
-        <StatCard icon={CalendarClock} label="등록 만료 임박 (7일)" value={d.expiring.length} unit="명" tone={d.expiring.length > 0 ? "warning" : "default"}>
+      {/* 지표 행: 카드 대신 얇은 세로선으로 나눈다 */}
+      <div className="grid gap-6 border-b border-border pb-6 md:grid-cols-3 md:gap-0">
+        <StatCard label="오늘 라운딩" value={d.sessionsDone} unit={`/ ${d.roundsPerDay} 회차`} href="/rounding/history" hint="회차별 결과 보기" />
+        <StatCard label="이번 주 상담일지 미작성" value={d.missingWeekly} unit="명" tone={d.missingWeekly > 0 ? "warning" : "default"} href={`/counsel/weekly?week=${d.weekStart}`} hint={`${fmtShortDate(d.weekStart)} 주 상담일지 열기`} />
+        <StatCard label="등록 만료 임박 (7일)" value={d.expiring.length} unit="명" tone={d.expiring.length > 0 ? "warning" : "default"}>
           {d.expiring.length ? (
             <ul className="space-y-1 text-[13px]">
               {d.expiring.slice(0, 4).map((e) => (
@@ -91,61 +84,51 @@ async function DashboardPage() {
         </StatCard>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <Card className="md:col-span-2">
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="size-4 text-muted-foreground" /> 미해결 이슈
-              <span className="ml-1 rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground">{d.openIssues.length}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {d.openIssues.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">미해결 이슈가 없습니다</p>
-            ) : (
-              <ul className="divide-y divide-border/70">
-                {d.openIssues.map((i) => (
-                  <li key={i.id}>
-                    <Link href={`/issues/${i.id}`} className="-mx-2 flex flex-wrap items-center gap-2 rounded-md px-2 py-2.5 text-sm transition-colors hover:bg-accent/40">
-                      <SeverityBadge severity={i.severity} />
-                      <span className="font-medium">{i.title}</span>
-                      <IssueStatusBadge status={i.status} />
-                      <span className="ml-auto text-xs text-muted-foreground">{fmtRelative(i.createdAt)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link href="/issues" className="mt-3 inline-block text-[13px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-              이슈함 전체 보기 →
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="mt-6 grid gap-8 md:grid-cols-5">
+        <section className="md:col-span-3">
+          <h2 className="mb-3 flex items-baseline justify-between text-sm font-semibold">
+            미해결 이슈
+            <span className="text-xs font-normal text-muted-foreground">{d.openIssues.length}건</span>
+          </h2>
+          {d.openIssues.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">미해결 이슈가 없습니다</p>
+          ) : (
+            <ul className="divide-y divide-border border-y border-border">
+              {d.openIssues.map((i) => (
+                <li key={i.id}>
+                  <Link href={`/issues/${i.id}`} className="flex flex-wrap items-center gap-2 py-2.5 text-sm hover:bg-muted/40">
+                    <SeverityBadge severity={i.severity} />
+                    <span className="font-medium">{i.title}</span>
+                    <IssueStatusBadge status={i.status} />
+                    <span className="ml-auto text-xs text-muted-foreground">{fmtRelative(i.createdAt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href="/issues" className="mt-3 inline-block text-[13px] text-muted-foreground hover:text-foreground hover:underline">
+            이슈함 전체 보기
+          </Link>
+        </section>
 
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="size-4 text-muted-foreground" /> 이번 주 벌점 상위
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {d.topPenalties.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">이번 주 벌점이 없습니다</p>
-            ) : (
-              <ol className="space-y-1.5 text-sm">
-                {d.topPenalties.map((p, i) => (
-                  <li key={p.memberId} className="flex items-center gap-3">
-                    <span className={cn("flex size-6 items-center justify-center rounded-full text-xs font-semibold", i === 0 ? "bg-rose-100 text-rose-700" : "bg-muted text-muted-foreground")}>{i + 1}</span>
-                    <Link href={`/members/${p.memberId}`} className="flex-1 truncate hover:underline">
-                      <span className="text-muted-foreground">{p.seatNo ?? "-"}번</span> {p.name}
-                    </Link>
-                    <span className="font-semibold text-rose-600">{p.points}점</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
+        <section className="md:col-span-2">
+          <h2 className="mb-3 text-sm font-semibold">이번 주 벌점 상위</h2>
+          {d.topPenalties.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">이번 주 벌점이 없습니다</p>
+          ) : (
+            <ol className="divide-y divide-border border-y border-border text-sm">
+              {d.topPenalties.map((p, i) => (
+                <li key={p.memberId} className="flex items-center gap-3 py-2">
+                  <span className="w-4 text-xs text-muted-foreground">{i + 1}</span>
+                  <Link href={`/members/${p.memberId}`} className="flex-1 truncate hover:underline">
+                    <span className="text-muted-foreground">{p.seatNo ?? "-"}번</span> {p.name}
+                  </Link>
+                  <span className="font-medium text-rose-700">{p.points}점</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </div>
     </div>
   );

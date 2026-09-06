@@ -30,7 +30,7 @@ async function RoundingHistoryPage({ searchParams }: { searchParams: Promise<{ d
       {rounds.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">이 날짜에는 라운딩 기록이 없습니다</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+        <div className="overflow-x-auto rounded-lg bg-card ring-1 ring-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>

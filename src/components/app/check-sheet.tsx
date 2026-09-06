@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CloudOff, Search } from "lucide-react";
+import { AlertTriangle, CloudOff, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -55,9 +55,9 @@ function writeQueue(q: QueuedSave[]) {
   }
 }
 
-/** 좌석번호 칩. 라운딩 목록과 편집 시트에서 같은 모양으로 쓴다 */
+/** 좌석번호. 상자 없이 숫자만, 폭을 고정해 세로로 줄이 맞는다 */
 function SeatChip({ seatNo, className }: { seatNo: number | null; className?: string }) {
-  return <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-accent-foreground", className)}>{seatNo ?? "-"}</span>;
+  return <span className={cn("w-7 shrink-0 text-right text-sm font-medium text-muted-foreground", className)}>{seatNo ?? "-"}</span>;
 }
 
 export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, rules, saveAction, completeAction, completed }: Props) {
@@ -196,18 +196,18 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
   return (
     <div className="space-y-4">
       {/* 상단 고정 도구 막대: 검색 · 진행률 · 저장 상태 */}
-      <div className="sticky top-14 z-20 -mx-4 border-b border-border/70 bg-background/90 px-4 pt-2.5 pb-0 backdrop-blur md:-mx-8 md:px-8">
+      <div className="sticky top-14 z-20 -mx-4 border-b border-border bg-background px-4 pt-2.5 pb-0 md:-mx-8 md:px-8">
         <div className="flex items-center gap-2 pb-2.5">
           <div className="relative flex-1">
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름 또는 좌석번호" className="h-10 rounded-full bg-card pl-9" inputMode="search" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름 또는 좌석번호" className="h-10 bg-card pl-9" inputMode="search" />
           </div>
-          <span className="rounded-full bg-muted px-2.5 py-1 text-sm font-medium text-muted-foreground">
-            <span className="text-foreground">{done}</span>/{rows.length}
+          <span className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{done}</span>/{rows.length}
           </span>
           {pending ? <span className="text-xs text-muted-foreground">저장 중…</span> : null}
           {queued > 0 ? (
-            <button type="button" onClick={flushQueue} className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-600/20">
+            <button type="button" onClick={flushQueue} className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
               <CloudOff className="size-3.5" /> 미전송 {queued}건 · 다시 시도
             </button>
           ) : null}
@@ -223,28 +223,26 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
       </div>
 
       {groups.map(([zone, list]) => (
-        <section key={zone} className="overflow-hidden rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+        <section key={zone} className="overflow-hidden rounded-lg bg-card ring-1 ring-border">
           <header className="flex items-center justify-between border-b border-border/70 bg-muted/40 px-4 py-1.5">
             <h3 className="section-title">{zone} 구역</h3>
             <span className="text-xs text-muted-foreground">
               {list.filter((r) => r.grade).length}/{list.length}
             </span>
           </header>
-          <ul className="divide-y divide-border/70">
+          <ul className="divide-y divide-border">
             {list.map((r) => (
-              <li key={r.memberId} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors", r.grade === "p" && "bg-rose-50/40")}>
+              <li key={r.memberId} className={cn("flex items-center gap-3 px-4 py-2.5 transition-colors", r.grade === "p" && "bg-rose-50/50")}>
                 <button type="button" onClick={() => setEditing(r)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <SeatChip seatNo={r.seatNo} />
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-[15px] font-medium">{r.name}</span>
-                      {r.focusCare ? <span className="rounded-full bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700 ring-1 ring-violet-600/15">집중</span> : null}
+                      {r.focusCare ? <span className="rounded-sm bg-violet-50 px-1 text-[10px] font-medium text-violet-700">집중</span> : null}
                     </span>
                     {r.fieldNote ? <span className="block truncate text-xs text-muted-foreground">{r.fieldNote}</span> : null}
                     {r.priorPenalties.length ? (
-                      <span className="mt-0.5 inline-flex max-w-full items-center rounded-full bg-amber-50 px-1.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-600/15">
-                        <span className="truncate">오늘 이전 벌점: {r.priorPenalties.join(", ")}</span>
-                      </span>
+                      <span className="block truncate text-[11px] text-amber-700">오늘 이전 벌점: {r.priorPenalties.join(", ")}</span>
                     ) : null}
                     {r.grade === "p" ? (
                       <span className="block truncate text-xs font-medium text-rose-600">
@@ -256,7 +254,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     ) : null}
                   </span>
                 </button>
-                <div className="flex shrink-0 gap-0.5 rounded-lg bg-muted p-0.5" role="group" aria-label={`${r.name} 등급`}>
+                <div className="flex shrink-0 gap-px overflow-hidden rounded-md ring-1 ring-border" role="group" aria-label={`${r.name} 등급`}>
                   {QUICK.map((qk) => (
                     <button
                       key={qk.grade}
@@ -264,8 +262,8 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                       onClick={() => quick(r, qk.grade)}
                       aria-pressed={r.grade === qk.grade}
                       className={cn(
-                        "h-9 min-w-10 rounded-md px-2 text-xs font-semibold transition-all",
-                        r.grade === qk.grade ? cn(GRADE_STYLE[qk.grade], "shadow-(--shadow-card)") : "text-muted-foreground hover:bg-card hover:text-foreground",
+                        "h-9 min-w-10 px-2 text-xs font-semibold transition-colors",
+                        r.grade === qk.grade ? GRADE_STYLE[qk.grade] : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
                       {qk.grade === "p" && r.grade === "p" ? r.points : qk.label}
@@ -279,29 +277,29 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
       ))}
 
       {completeAction && sessionId ? (
-        <div className="sticky bottom-16 z-20 pt-1 md:bottom-4">
-          <div className="rounded-xl bg-card/95 p-2 shadow-(--shadow-float) ring-1 ring-border backdrop-blur">
-            <Button size="lg" className="h-12 w-full text-[15px]" onClick={complete} disabled={pending}>
-              <CheckCircle2 /> {completed ? "회차 다시 완료 처리" : `회차 완료 (미입력 ${rows.length - done}명은 a로 처리)`}
-            </Button>
-          </div>
+        <div className="sticky bottom-16 z-20 -mx-4 border-t border-border bg-background px-4 py-3 md:-mx-8 md:bottom-0 md:px-8">
+          <Button size="lg" className="h-12 w-full text-[15px]" onClick={complete} disabled={pending}>
+            {completed ? "회차 다시 완료 처리" : `회차 완료 (미입력 ${rows.length - done}명은 a로 처리)`}
+          </Button>
         </div>
       ) : null}
 
       <Sheet open={Boolean(editing)} onOpenChange={(o) => !o && setEditing(null)}>
-        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-2xl">
+        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-lg">
           {editing ? (
             <>
               <SheetHeader className="flex-row items-center gap-3">
-                <SeatChip seatNo={editing.seatNo} className="size-11 rounded-xl text-base" />
                 <div className="min-w-0">
-                  <SheetTitle className="text-lg">{editing.name}</SheetTitle>
+                  <SheetTitle className="text-lg">
+                    <span className="mr-2 font-normal text-muted-foreground">{editing.seatNo ?? "-"}번</span>
+                    {editing.name}
+                  </SheetTitle>
                   <SheetDescription>{editing.fieldNote ?? "특이사항 없음"}</SheetDescription>
                 </div>
               </SheetHeader>
               <div className="space-y-5 px-4 pb-5">
                 {editing.priorPenalties.length ? (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 ring-1 ring-amber-600/15">오늘 이전 벌점: {editing.priorPenalties.join(", ")}</p>
+                  <p className="text-xs text-amber-700">오늘 이전 벌점: {editing.priorPenalties.join(", ")}</p>
                 ) : null}
                 <div className="grid grid-cols-4 gap-2">
                   {QUICK.map((qk) => (
@@ -310,8 +308,8 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                       type="button"
                       onClick={() => setEditing({ ...editing, grade: qk.grade, penaltyRuleId: qk.grade === "p" ? suggestedRule(editing) : null })}
                       className={cn(
-                        "h-12 rounded-xl text-sm font-semibold transition-all",
-                        editing.grade === qk.grade ? cn(GRADE_STYLE[qk.grade], GRADE_RING[qk.grade], "shadow-(--shadow-float) ring-2 ring-offset-2 ring-offset-background") : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
+                        "h-12 rounded-md text-sm font-semibold transition-colors",
+                        editing.grade === qk.grade ? cn(GRADE_STYLE[qk.grade], GRADE_RING[qk.grade], "ring-2 ring-offset-2 ring-offset-background") : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
                       )}
                     >
                       {qk.label}
@@ -330,12 +328,12 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                             type="button"
                             onClick={() => setEditing({ ...editing, penaltyRuleId: rule.id })}
                             className={cn(
-                              "flex h-12 items-center justify-between rounded-xl px-3 text-sm transition-all",
-                              on ? "bg-rose-50 font-medium text-rose-700 ring-2 ring-rose-500" : "bg-card ring-1 ring-border hover:bg-accent/40",
+                              "flex h-12 items-center justify-between rounded-md px-3 text-sm transition-colors",
+                              on ? "bg-rose-50 font-medium text-rose-700 ring-1 ring-rose-500" : "bg-card ring-1 ring-border hover:bg-muted/60",
                             )}
                           >
                             <span>{rule.name}</span>
-                            <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", on ? "bg-rose-500 text-white" : "bg-muted text-muted-foreground")}>{rule.points}점</span>
+                            <span className={cn("text-xs font-semibold", on ? "text-rose-700" : "text-muted-foreground")}>{rule.points}점</span>
                           </button>
                         );
                       })}
@@ -348,7 +346,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                       <Label htmlFor="arrival">등원 시각</Label>
                       <Input id="arrival" type="time" className="h-11" value={editing.arrivalTime?.slice(0, 5) ?? ""} onChange={(e) => setEditing({ ...editing, arrivalTime: e.target.value || null })} />
                     </div>
-                    <label className="flex items-center gap-2 self-end rounded-xl bg-muted/60 px-3 py-2.5 text-sm">
+                    <label className="flex items-center gap-2 self-end rounded-md bg-muted/60 px-3 py-2.5 text-sm">
                       <input type="checkbox" className="size-4 accent-primary" checked={editing.called ?? false} onChange={(e) => setEditing({ ...editing, called: e.target.checked })} />
                       전화 확인(CALL)
                     </label>
@@ -358,10 +356,9 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                   <Label htmlFor="note">메모</Label>
                   <Textarea id="note" rows={2} value={editing.note ?? ""} onChange={(e) => setEditing({ ...editing, note: e.target.value })} placeholder="예: 학원 일정으로 조퇴" />
                 </div>
-                <label className="flex items-center gap-2.5 rounded-xl bg-muted/60 px-3 py-2.5 text-sm">
+                <label className="flex items-center gap-2.5 rounded-md bg-muted/60 px-3 py-2.5 text-sm">
                   <input type="checkbox" className="size-4 accent-primary" checked={editing.isIssue} onChange={(e) => setEditing({ ...editing, isIssue: e.target.checked })} />
                   <span className="flex-1">지점장에게 이슈로 보고</span>
-                  <AlertTriangle className="size-4 text-muted-foreground" aria-hidden />
                 </label>
                 <div className="flex gap-2">
                   <Button variant="outline" size="lg" className="h-11 flex-1" onClick={() => setEditing(null)}>
@@ -387,9 +384,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
 
       <Dialog open={Boolean(summary)} onOpenChange={(o) => !o && router.push("/rounding")}>
         <DialogContent>
-          <DialogTitle className="flex items-center gap-2">
-            <CheckCircle2 className="size-5 text-emerald-600" /> R{roundNo} 회차 완료
-          </DialogTitle>
+          <DialogTitle>R{roundNo} 회차 완료</DialogTitle>
           <DialogDescription>결과 요약</DialogDescription>
           {summary ? (
             <dl className="grid grid-cols-2 gap-2">
@@ -399,7 +394,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                 ["이슈 보고", `${summary.issues}건`, summary.issues > 0 ? "text-amber-700" : ""],
                 ["부재", `${summary.absent}명`, ""],
               ].map(([k, v, cls]) => (
-                <div key={k} className="rounded-xl bg-muted/60 px-3 py-2.5">
+                <div key={k} className="rounded-md bg-muted/60 px-3 py-2.5">
                   <dt className="text-xs text-muted-foreground">{k}</dt>
                   <dd className={cn("mt-0.5 text-lg font-semibold", cls)}>{v}</dd>
                 </div>

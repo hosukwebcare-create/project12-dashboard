@@ -1,4 +1,4 @@
-import { CalendarRange, ChevronRight, MapPin, Pencil, Phone, StickyNote } from "lucide-react";
+import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { formatCustomValue } from "@/components/app/custom-fields";
@@ -36,12 +36,12 @@ function Facts({ items, cols = 1 }: { items: [string, ReactNode][]; cols?: 1 | 2
   );
 }
 
-const TIMELINE_KIND: Record<string, { label: string; dot: string; chip: string }> = {
-  penalty: { label: "벌점", dot: "bg-rose-500", chip: "bg-rose-50 text-rose-700" },
-  issue: { label: "이슈", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-800" },
-  counsel: { label: "상담", dot: "bg-violet-500", chip: "bg-violet-50 text-violet-700" },
-  comment: { label: "코멘트", dot: "bg-sky-500", chip: "bg-sky-50 text-sky-700" },
-  audit: { label: "변경", dot: "bg-neutral-400", chip: "bg-muted text-muted-foreground" },
+const TIMELINE_KIND: Record<string, { label: string; dot: string }> = {
+  penalty: { label: "벌점", dot: "bg-rose-500" },
+  issue: { label: "이슈", dot: "bg-amber-500" },
+  counsel: { label: "상담", dot: "bg-foreground/70" },
+  comment: { label: "코멘트", dot: "bg-foreground/40" },
+  audit: { label: "변경", dot: "bg-border" },
 };
 
 async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ week?: string }> }) {
@@ -64,7 +64,6 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
 
   const kindLabel = `${member.memberKind === "adult" ? "성인" : "학생"}${member.studentType ? ` · ${member.studentType}` : ""}`;
   const schoolLabel = member.school ? `${member.school}${member.grade ? ` ${member.grade}학년` : ""}` : "-";
-  const initial = member.name.trim().slice(0, 1);
   const enrollment = member.currentEnrollment;
   const enrollPct = (() => {
     if (!enrollment) return 0;
@@ -95,103 +94,82 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
 
   return (
     <div className="mx-auto max-w-5xl">
-      <nav className="eyebrow mb-3 flex items-center gap-1">
-        <Link href="/members" className="hover:text-foreground">
-          회원
-        </Link>
-        <ChevronRight className="size-3" aria-hidden />
-        <span>{ctx.branchName}</span>
-      </nav>
-
-      {/* 히어로: 이름 · 상태 · 좌석 · 핵심 정보 · 등록기간 */}
-      <Card className="mb-5 gap-0 py-0">
-        <CardContent className="p-5 md:p-6">
-          <div className="flex flex-wrap items-start gap-4 md:gap-5">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-2xl font-semibold text-primary-foreground shadow-(--shadow-card)" aria-hidden>
-              {initial}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[26px] leading-tight font-semibold tracking-tight">{member.name}</h1>
-                <StatusBadge status={member.status} />
-                {member.focusCare ? <FocusBadge /> : null}
-              </div>
-              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="size-3.5" aria-hidden />
-                  {member.seatNo ? `${member.seatNo}번 좌석 (${member.zone})` : "좌석 미배정"}
-                </span>
-                <span>{kindLabel}</span>
-                {member.school ? <span>{schoolLabel}</span> : null}
-                {member.track ? <span>{member.track}</span> : null}
-                {showPhone && member.phone ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Phone className="size-3.5" aria-hidden />
-                    {member.phone}
-                  </span>
-                ) : null}
-              </p>
+      {/* 머리: 이름 · 상태 · 요약 한 줄 · 등록기간. 상자 없이 선으로만 나눈다 */}
+      <div className="mb-6 border-b border-border pb-5">
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-[28px] leading-tight font-semibold tracking-tight">{member.name}</h1>
+              <StatusBadge status={member.status} />
+              {member.focusCare ? <FocusBadge /> : null}
             </div>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {[member.seatNo ? `${member.seatNo}번 좌석 (${member.zone})` : "좌석 미배정", kindLabel, member.school ? schoolLabel : null, member.track, showPhone ? member.phone : null].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/members">회원 목록</Link>
+            </Button>
             {canManage ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" size="sm">
                 <Link href={`/members/${member.id}/edit`}>
                   <Pencil /> 정보 수정
                 </Link>
               </Button>
             ) : null}
           </div>
+        </div>
 
-          <div className="mt-5 rounded-xl bg-muted/60 px-4 py-3">
+        <dl className="mt-5 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-muted-foreground">등록기간</dt>
             {enrollment ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span className="inline-flex items-center gap-1.5 font-medium">
-                    <CalendarRange className="size-4 text-muted-foreground" aria-hidden />
-                    등록 {fmtDate(enrollment.startDate)} ~ {fmtDate(enrollment.endDate)}
-                    {enrollment.planType === "short" ? <span className="rounded-full bg-sky-50 px-1.5 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-600/15">단기</span> : null}
-                  </span>
-                  <span className={cn("font-semibold", (member.daysLeft ?? 0) <= 7 ? "text-amber-700" : "text-foreground")}>잔여 {member.daysLeft}일</span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border" aria-hidden>
-                  <div className={cn("h-full rounded-full", (member.daysLeft ?? 0) <= 7 ? "bg-amber-500" : "bg-primary")} style={{ width: `${enrollPct}%` }} />
-                </div>
-              </>
+              <dd className="mt-0.5">
+                <span className="font-medium">
+                  {fmtDate(enrollment.startDate)} ~ {fmtDate(enrollment.endDate)}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {enrollment.planType === "short" ? "단기 · " : ""}잔여 <span className={cn("font-medium", (member.daysLeft ?? 0) <= 7 ? "text-amber-700" : "text-foreground")}>{member.daysLeft}일</span>
+                </span>
+                <span className="mt-2 block h-0.5 w-full max-w-xs bg-border" aria-hidden>
+                  <span className={cn("block h-full", (member.daysLeft ?? 0) <= 7 ? "bg-amber-600" : "bg-foreground")} style={{ width: `${enrollPct}%` }} />
+                </span>
+              </dd>
             ) : (
-              <p className="text-sm text-muted-foreground">유효한 등록기간 없음</p>
+              <dd className="mt-0.5 text-muted-foreground">유효한 등록기간 없음</dd>
             )}
           </div>
-
           {member.fieldNote ? (
-            <p className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-600/15">
-              <StickyNote className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden />
-              <span>
-                <span className="font-medium">라운딩 특이사항</span> · {member.fieldNote}
-              </span>
-            </p>
+            <div>
+              <dt className="text-xs text-muted-foreground">라운딩 특이사항</dt>
+              <dd className="mt-0.5 font-medium text-amber-900">{member.fieldNote}</dd>
+            </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </dl>
+      </div>
 
       <Tabs defaultValue={sp.week ? "week" : "info"}>
-        <TabsList className="pill-nav h-auto rounded-full p-1">
-          <TabsTrigger value="info" className="rounded-full px-3 py-1 data-active:shadow-(--shadow-card)">
+        <TabsList variant="line" className="h-auto w-full justify-start gap-5 border-b border-border p-0">
+          <TabsTrigger value="info" className="flex-none px-0 pb-2">
             기본정보
           </TabsTrigger>
-          <TabsTrigger value="timeline" className="rounded-full px-3 py-1 data-active:shadow-(--shadow-card)">
+          <TabsTrigger value="timeline" className="flex-none px-0 pb-2">
             타임라인 ({timeline.length})
           </TabsTrigger>
           {week ? (
-            <TabsTrigger value="week" className="rounded-full px-3 py-1 data-active:shadow-(--shadow-card)">
+            <TabsTrigger value="week" className="flex-none px-0 pb-2">
               라운딩 · 벌점
             </TabsTrigger>
           ) : null}
           {isStaff ? (
-            <TabsTrigger value="files" className="rounded-full px-3 py-1 data-active:shadow-(--shadow-card)">
+            <TabsTrigger value="files" className="flex-none px-0 pb-2">
               파일 · 진단 ({files.length + heroLinks.length})
             </TabsTrigger>
           ) : null}
           {canManage ? (
-            <TabsTrigger value="manage" className="rounded-full px-3 py-1 data-active:shadow-(--shadow-card)">
+            <TabsTrigger value="manage" className="flex-none px-0 pb-2">
               좌석 · 상태
             </TabsTrigger>
           ) : null}
@@ -226,7 +204,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
               {member.memo ? (
                 <section>
                   <p className="section-title mb-2">메모</p>
-                  <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm whitespace-pre-wrap">{member.memo}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{member.memo}</p>
                 </section>
               ) : null}
             </CardContent>
@@ -247,10 +225,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                           <span className="font-medium">
                             {g.name ?? "-"} <span className="font-normal text-muted-foreground">({g.relation ?? "-"})</span>
                           </span>
-                          <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <Phone className="size-3.5" aria-hidden />
-                            {g.phone ?? "-"}
-                          </span>
+                          <span className="text-muted-foreground">{g.phone ?? "-"}</span>
                         </li>
                       ))}
                     </ul>
@@ -296,9 +271,9 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                     const k = TIMELINE_KIND[t.kind] ?? TIMELINE_KIND.audit;
                     return (
                       <li key={i} className="relative">
-                        <span className={cn("absolute top-1 -left-[31px] size-2.5 rounded-full ring-4 ring-card", k.dot)} aria-hidden />
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                          <span className={cn("rounded-full px-1.5 text-[11px] font-semibold", k.chip)}>{k.label}</span>
+                        <span className={cn("absolute top-1.5 -left-[29px] size-2 rounded-full ring-4 ring-card", k.dot)} aria-hidden />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                          <span className="w-9 text-xs text-muted-foreground">{k.label}</span>
                           {t.href ? (
                             <Link href={t.href} className="font-medium underline-offset-4 hover:underline">
                               {t.title}
@@ -311,7 +286,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                             {t.actor ? ` · ${t.actor}` : ""}
                           </span>
                         </div>
-                        {t.body ? <p className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">{t.body}</p> : null}
+                        {t.body ? <p className="mt-1 pl-11 text-sm whitespace-pre-wrap text-muted-foreground">{t.body}</p> : null}
                       </li>
                     );
                   })}
@@ -339,7 +314,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                 ) : (
                   <ul className="space-y-2">
                     {heroLinks.map((h) => (
-                      <li key={h.id} className="rounded-xl bg-muted/50 p-3">
+                      <li key={h.id} className="rounded-md bg-muted/50 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{h.takenAt ? fmtDateTime(h.takenAt) : fmtDateTime(h.createdAt)}</span>
                           {h.resultUrl ? (
@@ -375,7 +350,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                   <ul className="divide-y divide-border/70">
                     {files.map((f) => (
                       <li key={f.id} className="flex flex-wrap items-center gap-2 py-2">
-                        <span className="rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">{FILE_KIND_LABEL[f.kind]}</span>
+                        <span className="rounded-sm bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">{FILE_KIND_LABEL[f.kind]}</span>
                         <a href={`/api/files/${f.id}`} target="_blank" rel="noreferrer" className="font-medium underline-offset-4 hover:underline">
                           {f.title}
                         </a>

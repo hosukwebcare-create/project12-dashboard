@@ -19,25 +19,25 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center rounded-full bg-muted p-1">
-          <Button asChild variant="ghost" size="icon-sm" className="rounded-full" aria-label="이전 주">
+        <div className="inline-flex items-center gap-1">
+          <Button asChild variant="ghost" size="icon-sm" aria-label="이전 주">
             <Link href={`/members/${memberId}?week=${prev}#week`}>
               <ChevronLeft />
             </Link>
           </Button>
           <span className="px-2 text-sm font-medium">{fmtShortDate(week.weekStart)} 주</span>
-          <Button asChild variant="ghost" size="icon-sm" className="rounded-full" aria-label="다음 주">
+          <Button asChild variant="ghost" size="icon-sm" aria-label="다음 주">
             <Link href={`/members/${memberId}?week=${next}#week`}>
               <ChevronRight />
             </Link>
           </Button>
         </div>
-        <span className={cn("ml-auto inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold", week.totalPoints > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-600/15" : "bg-muted text-muted-foreground")}>
+        <span className={cn("ml-auto inline-flex items-center gap-2 text-sm font-medium", week.totalPoints > 0 ? "text-rose-700" : "text-muted-foreground")}>
           주간 벌점 {week.totalPoints}점
           {penaltyCount > 0 ? <span className="text-xs font-normal opacity-80">{penaltyCount}건</span> : null}
         </span>
       </div>
-      <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+      <div className="overflow-x-auto rounded-lg bg-card ring-1 ring-border">
         <table className="text-xs">
           <thead className="bg-muted/60 text-muted-foreground">
             <tr>

@@ -7,39 +7,26 @@ import { BranchSwitcher } from "./branch-switcher";
 import { BrandMark } from "./brand-mark";
 
 export function TopBar({ ctx, unread }: { ctx: Ctx; unread: number }) {
-  const initial = ctx.userName.trim().slice(0, 1) || "?";
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/70 bg-background/85 px-4 backdrop-blur md:px-5">
-      <Link href={ctx.role === "assistant" ? "/rounding" : "/"} className="flex items-center gap-2" aria-label="홈">
-        <BrandMark className="size-7" />
-        <span className="text-[17px] font-bold tracking-tight">별하</span>
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background px-4 md:px-6">
+      <Link href={ctx.role === "assistant" ? "/rounding" : "/"} className="flex items-center gap-1.5" aria-label="홈">
+        <BrandMark />
+        <span className="text-[17px] font-semibold tracking-tight">별하</span>
       </Link>
-      <span className="hidden h-5 w-px bg-border sm:block" aria-hidden />
-      <div className="flex items-center gap-2">
-        <BranchSwitcher current={ctx.branchId} options={ctx.memberships} action={switchBranch} />
-      </div>
-      <div className="ml-auto flex items-center gap-1.5">
-        <Button asChild variant="ghost" size="icon" aria-label={`알림 ${unread}건`} className="rounded-full">
-          <Link href="/notifications" className="relative">
-            <Bell className="size-4" />
-            {unread > 0 ? (
-              <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-brand px-1 text-center text-[10px] leading-4 font-semibold text-brand-foreground">
-                {unread > 99 ? "99+" : unread}
-              </span>
-            ) : null}
+      <BranchSwitcher current={ctx.branchId} options={ctx.memberships} action={switchBranch} />
+      <div className="ml-auto flex items-center gap-1">
+        <Button asChild variant="ghost" size="icon" aria-label={`알림 ${unread}건`}>
+          <Link href="/notifications" className="relative text-muted-foreground hover:text-foreground">
+            <Bell className="size-[18px]" />
+            {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-brand" aria-hidden /> : null}
           </Link>
         </Button>
-        <span className="flex items-center gap-2 pl-1 text-sm">
-          <span className="flex size-7 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-primary-foreground" aria-hidden>
-            {initial}
-          </span>
-          <span>
-            {ctx.userName} <span className="hidden text-muted-foreground sm:inline">· {ROLE_LABEL[ctx.role]}</span>
-          </span>
+        <span className="px-2 text-sm">
+          {ctx.userName} <span className="hidden text-muted-foreground sm:inline">{ROLE_LABEL[ctx.role]}</span>
         </span>
         <form action={logout}>
-          <Button type="submit" variant="ghost" size="icon" aria-label="로그아웃" className="rounded-full text-muted-foreground">
-            <LogOut className="size-4" />
+          <Button type="submit" variant="ghost" size="icon" aria-label="로그아웃" className="text-muted-foreground hover:text-foreground">
+            <LogOut className="size-[18px]" />
           </Button>
         </form>
       </div>

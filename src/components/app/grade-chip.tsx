@@ -14,7 +14,7 @@ export const GRADE_STYLE: Record<Grade, string> = {
 export function GradeChip({ grade, points, className }: { grade: Grade | null; points?: number; className?: string }) {
   if (!grade) return <span className={cn("inline-flex h-6 min-w-8 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground/70", className)}>-</span>;
   return (
-    <span className={cn("inline-flex h-6 min-w-8 items-center justify-center rounded-md px-1.5 text-xs font-semibold shadow-(--shadow-card)", GRADE_STYLE[grade], className)}>
+    <span className={cn("inline-flex h-6 min-w-8 items-center justify-center rounded-md px-1.5 text-xs font-semibold", GRADE_STYLE[grade], className)}>
       {grade === "p" ? (points ?? "벌") : grade === "na" ? "부재" : grade}
     </span>
   );

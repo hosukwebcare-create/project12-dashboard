@@ -40,11 +40,11 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
   const groups = GROUPS.map((g) => ({ ...g, items: g.hrefs.map((h) => items.find((i) => i.href === h)).filter((x): x is NavItem => Boolean(x)) })).filter((g) => g.items.length);
   return (
     <nav className="hidden w-56 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex-1 space-y-5 px-3 py-4">
+      <div className="flex-1 space-y-6 px-3 py-5">
         {groups.map((g) => (
           <div key={g.label}>
-            <p className="mb-1.5 px-3 text-[11px] font-semibold tracking-wider text-sidebar-foreground/45">{g.label}</p>
-            <ul className="space-y-0.5">
+            <p className="mb-1 px-3 text-[11px] text-sidebar-foreground/40">{g.label}</p>
+            <ul>
               {g.items.map((item) => {
                 const Icon = ICONS[item.icon];
                 const active = isActive(pathname, item.href);
@@ -54,16 +54,13 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
                       href={item.href}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors",
-                        active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                        "flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13.5px] transition-colors",
+                        active ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
                       )}
                     >
-                      {active ? <span className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-primary" aria-hidden /> : null}
-                      <Icon className={cn("size-4", active ? "text-sidebar-primary" : "text-sidebar-foreground/60 group-hover:text-sidebar-foreground")} aria-hidden />
+                      <Icon className={cn("size-4", active ? "text-sidebar-primary" : "text-sidebar-foreground/55")} aria-hidden />
                       <span className="flex-1">{item.label}</span>
-                      {item.href === "/notifications" && unread > 0 ? (
-                        <span className="rounded-full bg-sidebar-primary px-1.5 text-[10px] font-semibold text-sidebar-primary-foreground">{unread}</span>
-                      ) : null}
+                      {item.href === "/notifications" && unread > 0 ? <span className="text-[11px] text-sidebar-primary">{unread}</span> : null}
                     </Link>
                   </li>
                 );
@@ -72,7 +69,7 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
           </div>
         ))}
       </div>
-      <div className="border-t border-sidebar-border px-5 py-3 text-[11px] text-sidebar-foreground/40">별하 · 프로젝트12 통합관리</div>
+      <div className="border-t border-sidebar-border px-6 py-3 text-[11px] text-sidebar-foreground/35">프로젝트12 통합관리</div>
     </nav>
   );
 }
@@ -80,7 +77,7 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
 export function MobileNav({ items, unread }: { items: NavItem[]; unread: number }) {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 backdrop-blur md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <ul className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((item) => {
           const Icon = ICONS[item.icon];
@@ -90,13 +87,11 @@ export function MobileNav({ items, unread }: { items: NavItem[]; unread: number 
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={cn("relative flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium", active ? "text-primary" : "text-muted-foreground")}
+                className={cn("relative flex h-14 flex-col items-center justify-center gap-1 text-[11px]", active ? "font-medium text-foreground" : "text-muted-foreground")}
               >
-                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full transition-colors", active && "bg-accent")}>
-                  <Icon className="size-[18px]" aria-hidden />
-                </span>
+                <Icon className="size-5" aria-hidden />
                 {item.label}
-                {item.href === "/notifications" && unread > 0 ? <span className="absolute top-2 right-[calc(50%-16px)] size-2 rounded-full bg-brand" /> : null}
+                {item.href === "/notifications" && unread > 0 ? <span className="absolute top-2.5 right-[calc(50%-14px)] size-1.5 rounded-full bg-brand" /> : null}
               </Link>
             </li>
           );

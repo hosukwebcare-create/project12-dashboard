@@ -56,7 +56,7 @@ async function AlimtalkHistoryPage({ searchParams }: { searchParams: Promise<{ s
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">발송 이력이 없습니다</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+        <div className="overflow-x-auto rounded-lg bg-card ring-1 ring-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
               <tr>

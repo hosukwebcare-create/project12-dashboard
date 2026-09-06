@@ -94,7 +94,7 @@
   --chart-3: oklch(0.65 0.1 155);
   --chart-4: oklch(0.6 0.15 20);
   --chart-5: oklch(0.6 0.02 262);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   --sidebar: oklch(0.225 0.03 262);
   --sidebar-foreground: oklch(0.82 0.015 262);
   --sidebar-primary: oklch(0.72 0.12 75);
@@ -158,12 +158,16 @@
   html {
     @apply font-sans;
     font-feature-settings: "ss01", "cv11";
+    scrollbar-color: oklch(0.8 0.01 85) transparent;
+    scrollbar-width: thin;
   }
   body {
     @apply bg-background text-foreground;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    caret-color: var(--primary);
+    accent-color: var(--primary);
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -172,31 +176,40 @@
   h1,
   h2,
   h3 {
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  a {
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
   }
   ::selection {
-    background: oklch(0.72 0.12 75 / 0.35);
+    background: oklch(0.72 0.12 75 / 0.3);
+  }
+  /* 아이콘은 한 굵기로 (lucide 기본 2 → 1.5) */
+  svg.lucide {
+    stroke-width: 1.5;
   }
 }
 
 @layer components {
-  /* 상단 눈썹 텍스트 (지점 · 날짜) */
+  /* 제목 아래 보조 정보 (지점 · 날짜) */
   .eyebrow {
-    @apply text-xs font-medium tracking-wide text-muted-foreground;
+    @apply text-sm text-muted-foreground;
   }
-  /* 알약형 필터 링크 묶음 */
+  /* 밑줄형 필터·탭 링크 묶음. 이름은 호환을 위해 유지 */
   .pill-nav {
-    @apply inline-flex flex-wrap gap-1 rounded-full bg-muted p-1;
+    @apply flex flex-wrap items-end gap-x-5 gap-y-1 border-b border-border;
   }
   .pill {
-    @apply rounded-full px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground;
+    @apply -mb-px border-b-2 border-transparent pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground;
   }
   .pill[data-active="true"] {
-    @apply bg-card text-foreground shadow-(--shadow-card);
+    @apply border-foreground font-medium text-foreground;
   }
-  /* 얇은 구분선 위 소제목 */
+  /* 묶음 소제목 */
   .section-title {
-    @apply text-[13px] font-semibold tracking-wide text-muted-foreground;
+    @apply text-xs font-medium text-muted-foreground;
   }
   /* 인쇄 시 셸 숨김 */
   @media print {

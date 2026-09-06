@@ -1,12 +1,11 @@
 import { cn } from "@/lib/utils";
 
-/** 별하 심볼: 잉크 네이비 바탕에 황동 별 하나 */
+/** 별하 심볼: 가는 선으로 그린 별 하나. 상자 없이 글자와 나란히 놓는다 */
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <span className={cn("inline-flex items-center justify-center rounded-lg bg-primary text-brand shadow-(--shadow-card)", className)} aria-hidden>
-      <svg viewBox="0 0 24 24" className="size-[62%]" fill="currentColor">
-        <path d="M12 2.5l2.4 6.1 6.6.4-5.1 4.2 1.7 6.4L12 16l-5.6 3.6 1.7-6.4L3 9l6.6-.4L12 2.5z" />
-      </svg>
-    </span>
+    <svg viewBox="0 0 24 24" className={cn("size-5 text-brand", className)} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3.2l2.5 5.6 6.1.6-4.6 4.1 1.4 6-5.4-3.2-5.4 3.2 1.4-6L3.4 9.4l6.1-.6L12 3.2z" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

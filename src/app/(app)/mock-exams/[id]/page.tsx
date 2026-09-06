@@ -52,7 +52,7 @@ async function MockExamRoundPage({ params }: { params: Promise<{ id: string }> }
         </Card>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+      <div className="overflow-x-auto rounded-lg bg-card ring-1 ring-border">
         <table className="w-full text-sm">
           <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
             <tr>

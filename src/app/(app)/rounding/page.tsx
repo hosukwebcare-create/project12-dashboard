@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, History, Play, UserRound } from "lucide-react";
+import { Check, History, Play, UserRound } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -48,38 +48,40 @@ async function RoundingHome({ searchParams }: { searchParams: Promise<{ error?: 
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
 
       {inProgress ? (
-        <Button asChild size="lg" className="mb-4 h-14 w-full text-base">
+        <Button asChild size="lg" className="mb-5 h-14 w-full text-base">
           <Link href={`/rounding/${inProgress.id}`}>
             <Play /> R{inProgress.roundNo} 진행 중 · 이어서 입력 ({inProgress.checkedCount}명 완료)
           </Link>
         </Button>
       ) : next ? (
-        <form action={startSessionAction} className="mb-4">
+        <form action={startSessionAction} className="mb-5">
           <input type="hidden" name="date" value={today} />
           <Button type="submit" size="lg" className="h-14 w-full text-base">
             <Play /> R{next} 시작{schedule[next - 1] ? ` (${schedule[next - 1]})` : ""}
           </Button>
         </form>
       ) : (
-        <p className="mb-4 rounded-md bg-muted p-3 text-sm">오늘 회차를 모두 진행했습니다</p>
+        <p className="mb-5 border-y border-border py-3 text-center text-sm text-muted-foreground">오늘 회차를 모두 진행했습니다</p>
       )}
 
-      <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+      <ul className="grid grid-cols-3 gap-px overflow-hidden rounded-lg bg-border ring-1 ring-border sm:grid-cols-4">
         {Array.from({ length: total }, (_, i) => i + 1).map((n) => {
           const s = sessions.find((x) => x.roundNo === n);
           const state = !s ? "todo" : s.completedAt ? "done" : "active";
           const inner = (
             <div
               className={cn(
-                "flex h-[84px] flex-col items-center justify-center gap-1 rounded-xl text-sm transition-colors",
-                state === "done" && "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600/15 hover:bg-emerald-100/70",
-                state === "active" && "bg-primary text-primary-foreground shadow-(--shadow-float) ring-1 ring-primary",
-                state === "todo" && "bg-card text-muted-foreground ring-1 ring-border",
+                "flex h-[76px] flex-col items-center justify-center gap-0.5 text-sm transition-colors",
+                state === "done" && "bg-card text-foreground hover:bg-muted/60",
+                state === "active" && "bg-primary text-primary-foreground",
+                state === "todo" && "bg-card text-muted-foreground",
               )}
             >
-              {state === "done" ? <CheckCircle2 className="size-4" /> : <Circle className={cn("size-4", state === "todo" && "opacity-50")} />}
-              <span className="text-[15px] font-semibold">R{n}</span>
-              <span className="text-[11px] opacity-75">{s ? (s.startedByName ?? "") : (schedule[n - 1] ?? "")}</span>
+              <span className="flex items-center gap-1 text-[15px] font-semibold">
+                R{n}
+                {state === "done" ? <Check className="size-3.5 text-emerald-600" aria-hidden /> : null}
+              </span>
+              <span className={cn("text-[11px]", state === "active" ? "text-primary-foreground/70" : "text-muted-foreground")}>{s ? (s.startedByName ?? "") : (schedule[n - 1] ?? "")}</span>
             </div>
           );
           return <li key={n}>{s ? <Link href={`/rounding/${s.id}`}>{inner}</Link> : inner}</li>;

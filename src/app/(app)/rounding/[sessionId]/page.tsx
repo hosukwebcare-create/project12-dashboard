@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { CheckSheet } from "@/components/app/check-sheet";
 import { GradeChip } from "@/components/app/grade-chip";
@@ -25,13 +25,9 @@ async function RoundSessionPage({ params }: { params: Promise<{ sessionId: strin
         actions={
           <>
             {session.completedAt ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/15">
-                <CheckCircle2 className="size-3.5" /> 완료됨
-              </span>
+              <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-800">완료됨</span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
-                <span className="size-1.5 animate-pulse rounded-full bg-primary" aria-hidden /> 진행 중
-              </span>
+              <span className="rounded-sm bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">진행 중</span>
             )}
             <Button asChild variant="outline" size="sm">
               <Link href="/rounding">
@@ -62,10 +58,10 @@ async function RoundSessionPage({ params }: { params: Promise<{ sessionId: strin
 
 function ReadOnlySheet({ rows }: { rows: SheetRow[] }) {
   return (
-    <ul className="divide-y divide-border/70 overflow-hidden rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
+    <ul className="divide-y divide-border overflow-hidden rounded-lg bg-card ring-1 ring-border">
       {rows.map((r) => (
-        <li key={r.memberId} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-accent-foreground">{r.seatNo ?? "-"}</span>
+        <li key={r.memberId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+          <span className="w-7 text-right font-medium text-muted-foreground">{r.seatNo ?? "-"}</span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">{r.name}</span>
             {r.grade === "p" && r.note ? <span className="block truncate text-xs text-muted-foreground">{r.note}</span> : null}
