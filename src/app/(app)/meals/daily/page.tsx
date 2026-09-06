@@ -5,7 +5,6 @@ import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { cn } from "@/lib/utils";
 import { dailyOrders, getMealSettings } from "@/modules/meals/repo";
 
 export const metadata = { title: "일별 발주" };
@@ -18,9 +17,9 @@ async function DailyMealsPage({ searchParams }: { searchParams: Promise<{ date?:
   const dates = [-1, 0, 1, 2].map((d) => toDateKey(addDays(todayKey(), d)));
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+      <div className="pill-nav mb-3 print:hidden">
         {(dates.includes(date) ? dates : [date, ...dates]).map((d) => (
-          <Link key={d} href={`/meals/daily?date=${d}`} className={cn("rounded-full border px-3 py-1 text-sm", d === date ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+          <Link key={d} href={`/meals/daily?date=${d}`} className="pill" data-active={d === date}>
             {fmtShortDate(d)}
           </Link>
         ))}

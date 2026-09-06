@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import type { IssueStatus } from "@/db/schema";
 import { getCtx } from "@/lib/auth/ctx";
 import { fmtRelative } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { listIssues } from "@/modules/issues/repo";
 import { guarded } from "@/lib/page-guard";
 
@@ -38,9 +37,9 @@ async function IssuesPage({ searchParams }: { searchParams: Promise<{ status?: s
           </Button>
         }
       />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="pill-nav mb-4">
         {FILTERS.map((f) => (
-          <Link key={f.key} href={`/issues?status=${f.key}`} className={cn("rounded-full border px-3 py-1 text-sm", f.key === filter.key ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+          <Link key={f.key} href={`/issues?status=${f.key}`} className="pill" data-active={f.key === filter.key}>
             {f.label}
           </Link>
         ))}

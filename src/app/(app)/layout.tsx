@@ -14,7 +14,9 @@ async function AppLayout({ children }: LayoutProps<"/">) {
       <TopBar ctx={ctx} unread={unread} />
       <div className="flex flex-1">
         <SideNav items={items} unread={unread} />
-        <main className="min-w-0 flex-1 p-4 pb-20 md:p-6 md:pb-6">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-5 pb-24 md:px-8 md:py-7 md:pb-10">
+          <div className="mx-auto w-full max-w-[1280px]">{children}</div>
+        </main>
       </div>
       <MobileNav items={mobileNavFor(ctx.role)} unread={unread} />
     </div>

@@ -69,7 +69,7 @@ async function WeeklyCounselPage({ searchParams }: { searchParams: Promise<Searc
           </>
         }
       />
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
             <tr>

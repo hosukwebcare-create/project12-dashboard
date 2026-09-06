@@ -36,9 +36,9 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
         </Button>
       </div>
       {hq ? (
-        <div className="mb-4 overflow-x-auto rounded-lg border">
+        <div className="mb-4 overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2">지점별 합계 (본사)</th>
                 <th className="px-3 py-2 text-right">근무자</th>
@@ -66,9 +66,9 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">이 달의 근무 기록이 없습니다</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2">근무자</th>
                 <th className="px-3 py-2">형태</th>

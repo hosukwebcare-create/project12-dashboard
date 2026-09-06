@@ -8,7 +8,6 @@ import { fmtDateTime, fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { formatHours } from "@/lib/rules/worklog";
-import { cn } from "@/lib/utils";
 import { confirmWorkLogAction, saveWorkLogAction } from "@/modules/worklog/actions";
 import { dailyWorkLogs, listShiftSlots, listStaff } from "@/modules/worklog/repo";
 
@@ -26,9 +25,9 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="pill-nav">
         {(dates.includes(date) ? dates : [date, ...dates]).map((d) => (
-          <Link key={d} href={`/worklog/daily?date=${d}`} className={cn("rounded-full border px-3 py-1 text-sm", d === date ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+          <Link key={d} href={`/worklog/daily?date=${d}`} className="pill" data-active={d === date}>
             {fmtShortDate(d)}
           </Link>
         ))}

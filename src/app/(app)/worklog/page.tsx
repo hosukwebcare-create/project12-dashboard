@@ -8,7 +8,6 @@ import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { formatHours } from "@/lib/rules/worklog";
-import { cn } from "@/lib/utils";
 import { saveWorkLogAction } from "@/modules/worklog/actions";
 import { listShiftSlots, monthLogsForUser, myWorkLog } from "@/modules/worklog/repo";
 
@@ -32,9 +31,9 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
         <CardHeader>
           <CardTitle>{fmtShortDate(date)} 근무 체크</CardTitle>
           <CardDescription>{slots.length === 0 ? "지점장이 아직 근무 타임을 설정하지 않았습니다." : locked ? "본사 확인이 완료되어 수정할 수 없습니다." : "근무한 타임을 체크하고 저장하세요. 초과근무는 시간과 사유를 함께 입력합니다."}</CardDescription>
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div className="pill-nav mt-2">
             {(dates.includes(date) ? dates : [date, ...dates]).map((d) => (
-              <Link key={d} href={`/worklog?date=${d}`} className={cn("rounded-full border px-3 py-1 text-sm", d === date ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+              <Link key={d} href={`/worklog?date=${d}`} className="pill" data-active={d === date}>
                 {fmtShortDate(d)}
               </Link>
             ))}

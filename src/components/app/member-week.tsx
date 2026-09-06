@@ -26,7 +26,7 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
         </Button>
         <span className={cn("ml-auto text-sm font-semibold tabular-nums", week.totalPoints > 0 ? "text-red-600" : "text-muted-foreground")}>주간 벌점 {week.totalPoints}점</span>
       </div>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
         <table className="text-xs">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr>

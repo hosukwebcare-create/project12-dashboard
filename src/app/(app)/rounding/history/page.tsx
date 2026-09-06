@@ -20,9 +20,9 @@ async function RoundingHistoryPage({ searchParams }: { searchParams: Promise<{ d
   return (
     <div>
       <PageHeader title="라운딩 조회" description={`${ctx.branchName} · ${fmtShortDate(date)}`} />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="pill-nav mb-4">
         {(dates.includes(date) ? dates : [date, ...dates]).map((d) => (
-          <Link key={d} href={`/rounding/history?date=${d}`} className={cn("rounded-full border px-3 py-1 text-sm", d === date ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+          <Link key={d} href={`/rounding/history?date=${d}`} className="pill" data-active={d === date}>
             {fmtShortDate(d)}
           </Link>
         ))}
@@ -30,7 +30,7 @@ async function RoundingHistoryPage({ searchParams }: { searchParams: Promise<{ d
       {rounds.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">이 날짜에는 라운딩 기록이 없습니다</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>

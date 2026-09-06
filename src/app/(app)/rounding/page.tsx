@@ -64,22 +64,22 @@ async function RoundingHome({ searchParams }: { searchParams: Promise<{ error?: 
         <p className="mb-4 rounded-md bg-muted p-3 text-sm">오늘 회차를 모두 진행했습니다</p>
       )}
 
-      <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
         {Array.from({ length: total }, (_, i) => i + 1).map((n) => {
           const s = sessions.find((x) => x.roundNo === n);
           const state = !s ? "todo" : s.completedAt ? "done" : "active";
           const inner = (
             <div
               className={cn(
-                "flex h-20 flex-col items-center justify-center gap-1 rounded-lg border text-sm",
-                state === "done" && "border-emerald-200 bg-emerald-50 text-emerald-800",
-                state === "active" && "border-foreground bg-foreground text-background",
-                state === "todo" && "text-muted-foreground",
+                "flex h-[84px] flex-col items-center justify-center gap-1 rounded-xl text-sm transition-colors",
+                state === "done" && "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600/15 hover:bg-emerald-100/70",
+                state === "active" && "bg-primary text-primary-foreground shadow-(--shadow-float) ring-1 ring-primary",
+                state === "todo" && "bg-card text-muted-foreground ring-1 ring-border",
               )}
             >
-              {state === "done" ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
-              <span className="font-semibold">R{n}</span>
-              <span className="text-[11px] opacity-80">{s ? s.startedByName ?? "" : (schedule[n - 1] ?? "")}</span>
+              {state === "done" ? <CheckCircle2 className="size-4" /> : <Circle className={cn("size-4", state === "todo" && "opacity-50")} />}
+              <span className="text-[15px] font-semibold">R{n}</span>
+              <span className="text-[11px] opacity-75">{s ? (s.startedByName ?? "") : (schedule[n - 1] ?? "")}</span>
             </div>
           );
           return <li key={n}>{s ? <Link href={`/rounding/${s.id}`}>{inner}</Link> : inner}</li>;

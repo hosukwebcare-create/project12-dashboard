@@ -40,7 +40,7 @@ async function AlimtalkHistoryPage({ searchParams }: { searchParams: Promise<{ s
           { k: "failed", l: "실패" },
           { k: "queued", l: "대기" },
         ].map((f) => (
-          <Link key={f.k} href={`/alimtalk/history${f.k ? `?status=${f.k}` : ""}`} className={cn("rounded-full border px-3 py-1 text-sm", (status ?? "") === f.k ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
+          <Link key={f.k} href={`/alimtalk/history${f.k ? `?status=${f.k}` : ""}`} className="pill" data-active={(status ?? "") === f.k}>
             {f.l}
           </Link>
         ))}
@@ -56,9 +56,9 @@ async function AlimtalkHistoryPage({ searchParams }: { searchParams: Promise<{ s
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">발송 이력이 없습니다</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2">일시</th>
                 <th className="px-3 py-2">템플릿</th>

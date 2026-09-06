@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/app/page-header";
 import { getCtx, requireRole } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { cn } from "@/lib/utils";
 import { saveCheckAction } from "@/modules/rounding/actions";
 import { penaltyRulesFor, sheetRows } from "@/modules/rounding/repo";
 import { boardItemsFor } from "@/modules/settings/repo";
@@ -26,15 +25,15 @@ async function DailyChecksPage({ searchParams }: { searchParams: Promise<{ item?
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader title="일별 체크" description={`${ctx.branchName} · ${fmtShortDate(date)}`} />
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="pill-nav mb-3">
         {items.map((i) => (
-          <Link key={i.key} href={`/daily-checks?item=${i.key}&date=${date}`} className={cn("rounded-full border px-3 py-1 text-sm", i.key === item.key ? "bg-foreground text-background" : "text-muted-foreground")}>
+          <Link key={i.key} href={`/daily-checks?item=${i.key}&date=${date}`} className="pill" data-active={i.key === item.key}>
             {i.label}
           </Link>
         ))}
-        <span className="mx-1 text-muted-foreground">|</span>
+        <span className="mx-1 my-1 w-px self-stretch bg-border" aria-hidden />
         {dates.map((d) => (
-          <Link key={d} href={`/daily-checks?item=${item.key}&date=${d}`} className={cn("rounded-full border px-3 py-1 text-sm", d === date ? "bg-foreground text-background" : "text-muted-foreground")}>
+          <Link key={d} href={`/daily-checks?item=${item.key}&date=${d}`} className="pill" data-active={d === date}>
             {fmtShortDate(d)}
           </Link>
         ))}

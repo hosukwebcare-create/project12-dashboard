@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MemberStatus } from "@/db/schema";
 import { getCtx, MANAGER_ROLES } from "@/lib/auth/ctx";
-import { cn } from "@/lib/utils";
 import { listMembers } from "@/modules/members/repo";
 import { MEMBER_STATUSES } from "@/modules/members/schema";
 import { guarded } from "@/lib/page-guard";
@@ -30,10 +29,7 @@ async function MembersPage({ searchParams }: { searchParams: Promise<Search> }) 
     if (params.focus) qs.set("focus", params.focus);
     if (sp.q) qs.set("q", sp.q);
     return (
-      <Link
-        href={`/members?${qs.toString()}`}
-        className={cn("rounded-full border px-3 py-1 text-sm", active ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}
-      >
+      <Link href={`/members?${qs.toString()}`} className="pill" data-active={active}>
         {label}
       </Link>
     );
@@ -63,11 +59,13 @@ async function MembersPage({ searchParams }: { searchParams: Promise<Search> }) 
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {chip("전체", {}, !status && !focusCare)}
-        {chip("등록", { status: "enrolled" }, status === "enrolled")}
-        {chip("상담", { status: "prospect" }, status === "prospect")}
-        {chip("퇴원", { status: "withdrawn" }, status === "withdrawn")}
-        {chip("집중관리", { focus: "1" }, Boolean(focusCare))}
+        <div className="pill-nav">
+          {chip("전체", {}, !status && !focusCare)}
+          {chip("등록", { status: "enrolled" }, status === "enrolled")}
+          {chip("상담", { status: "prospect" }, status === "prospect")}
+          {chip("퇴원", { status: "withdrawn" }, status === "withdrawn")}
+          {chip("집중관리", { focus: "1" }, Boolean(focusCare))}
+        </div>
         <form className="ml-auto flex gap-2">
           {status ? <input type="hidden" name="status" value={status} /> : null}
           {focusCare ? <input type="hidden" name="focus" value="1" /> : null}
@@ -78,9 +76,9 @@ async function MembersPage({ searchParams }: { searchParams: Promise<Search> }) 
         </form>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-xs font-medium tracking-wide text-muted-foreground">
             <tr>
               <th className="px-3 py-2">좌석</th>
               <th className="px-3 py-2">이름</th>
@@ -101,7 +99,7 @@ async function MembersPage({ searchParams }: { searchParams: Promise<Search> }) 
               </tr>
             ) : (
               rows.map((m) => (
-                <tr key={m.id} className="border-t hover:bg-muted/40">
+                <tr key={m.id} className="border-t hover:bg-accent/40">
                   <td className="px-3 py-2 tabular-nums">{m.seatNo ?? "-"}</td>
                   <td className="px-3 py-2">
                     <Link href={`/members/${m.id}`} className="font-medium hover:underline">
