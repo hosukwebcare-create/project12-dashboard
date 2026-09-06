@@ -1,0 +1,1024 @@
+<title>별하 현장 안내서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+/>
+
+<style>
+  /* ── 별하 현장 안내서 ────────────────────────────────────────────────
+     앱(Editorial calm)의 토큰을 그대로 가져온다. 따뜻한 종이 바탕, 잉크 네이비,
+     황동 포인트. 장식 대신 선과 타이포로 나눈다. */
+  :root {
+    --paper: oklch(0.975 0.005 85);
+    --paper-2: oklch(1 0 0);
+    --ink: oklch(0.22 0.02 262);
+    --ink-2: oklch(0.47 0.02 262);
+    --ink-3: oklch(0.6 0.015 262);
+    --rule: oklch(0.885 0.008 85);
+    --rule-strong: oklch(0.78 0.012 85);
+    --navy: oklch(0.32 0.07 262);
+    --brass: oklch(0.62 0.11 75);
+    --good: oklch(0.55 0.13 155);
+    --good-bg: oklch(0.94 0.05 155);
+    --mid: oklch(0.62 0.14 120);
+    --mid-bg: oklch(0.95 0.06 120);
+    --bad: oklch(0.53 0.19 25);
+    --bad-bg: oklch(0.94 0.05 25);
+    --none-bg: oklch(0.93 0.004 85);
+
+    --measure: 40rem;
+    --font-display: "Hahmlet", "Apple SD Gothic Neo", "Malgun Gothic", serif;
+    --font-body: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: oklch(0.19 0.015 262);
+      --paper-2: oklch(0.23 0.016 262);
+      --ink: oklch(0.94 0.006 85);
+      --ink-2: oklch(0.74 0.012 262);
+      --ink-3: oklch(0.62 0.014 262);
+      --rule: oklch(0.31 0.016 262);
+      --rule-strong: oklch(0.42 0.02 262);
+      --navy: oklch(0.82 0.05 262);
+      --brass: oklch(0.79 0.11 75);
+      --good: oklch(0.75 0.13 155);
+      --good-bg: oklch(0.3 0.05 155);
+      --mid: oklch(0.79 0.13 120);
+      --mid-bg: oklch(0.31 0.05 120);
+      --bad: oklch(0.72 0.15 25);
+      --bad-bg: oklch(0.31 0.06 25);
+      --none-bg: oklch(0.26 0.008 262);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: oklch(0.19 0.015 262);
+    --paper-2: oklch(0.23 0.016 262);
+    --ink: oklch(0.94 0.006 85);
+    --ink-2: oklch(0.74 0.012 262);
+    --ink-3: oklch(0.62 0.014 262);
+    --rule: oklch(0.31 0.016 262);
+    --rule-strong: oklch(0.42 0.02 262);
+    --navy: oklch(0.82 0.05 262);
+    --brass: oklch(0.79 0.11 75);
+    --good: oklch(0.75 0.13 155);
+    --good-bg: oklch(0.3 0.05 155);
+    --mid: oklch(0.79 0.13 120);
+    --mid-bg: oklch(0.31 0.05 120);
+    --bad: oklch(0.72 0.15 25);
+    --bad-bg: oklch(0.31 0.06 25);
+    --none-bg: oklch(0.26 0.008 262);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16.5px;
+    line-height: 1.75;
+    -webkit-text-size-adjust: 100%;
+    /* 한글은 어절 단위로 끊어야 한다. 없으면 '사람을' 이 '사람 / 을' 로 갈라진다 */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  .wrap {
+    max-width: 58rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 5rem;
+  }
+
+  /* ── 바로가기 바 ─────────────────────────────────────────────────── */
+  .jump {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in oklab, var(--paper) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 2.5rem;
+  }
+  .jump-inner {
+    max-width: 58rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 3rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .jump-inner::-webkit-scrollbar {
+    display: none;
+  }
+  .jump-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.09em;
+    color: var(--ink-3);
+    white-space: nowrap;
+    padding-right: 0.25rem;
+  }
+  .jump a {
+    display: inline-block;
+    white-space: nowrap;
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--paper-2);
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .jump a:hover,
+  .jump a:focus-visible {
+    color: var(--navy);
+    border-color: var(--rule-strong);
+  }
+
+  /* ── 표지 ───────────────────────────────────────────────────────── */
+  .cover {
+    max-width: var(--measure);
+    padding: 1rem 0 3rem;
+  }
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    color: var(--brass);
+    font-weight: 500;
+    margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 6.5vw, 3rem);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.25rem;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 1.08rem;
+    color: var(--ink-2);
+    margin: 0 0 1.75rem;
+  }
+  .lede strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .cover-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.83rem;
+    color: var(--ink-3);
+  }
+  .cover-meta code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-2);
+  }
+
+  /* ── 절 ─────────────────────────────────────────────────────────── */
+  section {
+    border-top: 2px solid var(--ink);
+    padding-top: 1.5rem;
+    margin-top: 3.5rem;
+    scroll-margin-top: 4rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 2.5rem;
+  }
+  @media (min-width: 62rem) {
+    section {
+      grid-template-columns: 7rem minmax(0, var(--measure));
+    }
+    .sec-mark {
+      grid-row: span 40;
+    }
+  }
+  .sec-mark {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    padding-bottom: 0.75rem;
+  }
+  .sec-mark b {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--brass);
+    letter-spacing: 0;
+  }
+  section > *:not(.sec-mark) {
+    grid-column: 1;
+    max-width: var(--measure);
+  }
+  @media (min-width: 62rem) {
+    section > *:not(.sec-mark) {
+      grid-column: 2;
+    }
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3.6vw, 1.9rem);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.5rem;
+    text-wrap: balance;
+  }
+  .sec-sub {
+    color: var(--ink-2);
+    margin: 0 0 2rem;
+  }
+  h3 {
+    font-size: 1.03rem;
+    font-weight: 600;
+    margin: 2.25rem 0 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  p {
+    margin: 0 0 1rem;
+  }
+  a {
+    color: var(--navy);
+  }
+
+  /* 화면에 실제로 보이는 글자 */
+  .ui {
+    font-weight: 600;
+    color: var(--navy);
+    white-space: nowrap;
+  }
+  .ui::before {
+    content: "\201C";
+  }
+  .ui::after {
+    content: "\201D";
+  }
+  .path {
+    font-weight: 500;
+    color: var(--ink);
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.87em;
+    background: var(--none-bg);
+    padding: 0.08em 0.35em;
+    border-radius: 3px;
+    /* 주소처럼 긴 값은 어절 규칙에서 빼야 좁은 화면에서 넘치지 않는다 */
+    word-break: break-all;
+  }
+
+  /* ── 역할 안내 ──────────────────────────────────────────────────── */
+  .roles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin: 0 0 1.5rem;
+  }
+  .role {
+    background: var(--paper-2);
+    padding: 1rem 1.1rem 1.1rem;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    transition: background 0.15s;
+  }
+  .role:hover,
+  .role:focus-visible {
+    background: color-mix(in oklab, var(--brass) 8%, var(--paper-2));
+  }
+  .role b {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--navy);
+  }
+  .role span {
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+
+  /* ── 순서 목록 ──────────────────────────────────────────────────── */
+  ol.steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  ol.steps > li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 1.7rem minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--brass);
+    padding-top: 0.28rem;
+    border-top: 2px solid var(--brass);
+    align-self: start;
+  }
+  ol.steps > li > div > *:last-child {
+    margin-bottom: 0;
+  }
+  .step-title {
+    font-weight: 600;
+    margin: 0 0 0.15rem;
+  }
+
+  ul.plain {
+    margin: 0 0 1.25rem;
+    padding-left: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  ul.plain li::marker {
+    color: var(--ink-3);
+  }
+
+  /* ── 등급 버튼 (라운딩 화면과 같은 모습) ────────────────────────── */
+  .grades {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--rule);
+    margin: 0 0 1.25rem;
+  }
+  .grade {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 1rem;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    background: var(--paper-2);
+    border-bottom: 1px solid var(--rule);
+  }
+  .grade:last-child {
+    border-bottom: 0;
+  }
+  .key {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.4rem 0;
+    border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .key.a {
+    background: var(--good-bg);
+    color: var(--good);
+  }
+  .key.b {
+    background: var(--mid-bg);
+    color: var(--mid);
+  }
+  .key.p {
+    background: var(--bad-bg);
+    color: var(--bad);
+  }
+  .key.na {
+    background: var(--none-bg);
+    color: var(--ink-2);
+  }
+  .grade div {
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+  .grade b {
+    font-weight: 600;
+  }
+
+  /* ── 짚고 가는 문단 ─────────────────────────────────────────────── */
+  .note {
+    border-left: 3px solid var(--brass);
+    padding: 0.1rem 0 0.1rem 1.1rem;
+    margin: 0 0 1.5rem;
+  }
+  .note p {
+    margin: 0;
+  }
+  .note p + p {
+    margin-top: 0.6rem;
+  }
+  .note-title {
+    font-weight: 600;
+    color: var(--brass);
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    margin: 0 0 0.3rem !important;
+  }
+
+  /* ── 표 ─────────────────────────────────────────────────────────── */
+  .table-scroll {
+    overflow-x: auto;
+    margin: 0 0 1.5rem;
+    border-top: 1px solid var(--ink);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+  }
+  th,
+  td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.7rem 0.9rem 0.7rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  th {
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    padding-top: 0.6rem;
+    padding-bottom: 0.5rem;
+    white-space: nowrap;
+  }
+  td:first-child {
+    font-weight: 500;
+    padding-right: 1.5rem;
+    min-width: 11rem;
+  }
+  .roles-table td:first-child {
+    min-width: 9rem;
+  }
+  .roles-table td {
+    text-align: center;
+    padding-right: 0;
+    min-width: 3.5rem;
+  }
+  .roles-table td:first-child {
+    text-align: left;
+  }
+  .roles-table th:not(:first-child) {
+    text-align: center;
+  }
+  .yes {
+    color: var(--good);
+    font-weight: 600;
+  }
+  .no {
+    color: var(--ink-3);
+  }
+  .part {
+    color: var(--ink-2);
+    font-size: 0.85rem;
+  }
+
+  /* ── 마무리 ─────────────────────────────────────────────────────── */
+  .calm {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    padding: 1.5rem 1.6rem;
+    margin: 0 0 1.25rem;
+  }
+  .calm h3 {
+    margin-top: 0;
+    border: 0;
+    padding: 0;
+  }
+  .calm ul {
+    margin-bottom: 0;
+  }
+  footer {
+    max-width: var(--measure);
+    margin: 4rem auto 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.83rem;
+    color: var(--ink-3);
+  }
+  @media (min-width: 62rem) {
+    footer {
+      margin-left: 9.5rem;
+      margin-right: 0;
+    }
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+    }
+  }
+
+  @media print {
+    .jump {
+      display: none;
+    }
+    body {
+      font-size: 10.5pt;
+      background: #fff;
+    }
+    section {
+      break-inside: avoid-page;
+      border-top: 1.5pt solid #000;
+    }
+    h2,
+    h3 {
+      break-after: avoid;
+    }
+  }
+</style>
+
+<nav class="jump" aria-label="바로가기">
+  <div class="jump-inner">
+    <span class="jump-label">바로가기</span>
+    <a href="#start">처음 3분</a>
+    <a href="#assistant">조교</a>
+    <a href="#mentor">멘토</a>
+    <a href="#manager">지점장</a>
+    <a href="#hq">본사</a>
+    <a href="#stuck">막혔을 때</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="cover">
+    <p class="eyebrow">프로젝트12 통합관리 · 별하</p>
+    <h1>처음 쓰는 사람을 위한 현장 안내서</h1>
+    <p class="lede">
+      회원 명단, 라운딩 체크, 상담일지, 식사 주문, 근무 기록. 지금까지 <strong>여러 개의 구글시트</strong>에 나눠 적던 것을 이제
+      한 곳에 적습니다. 적는 방식은 거의 같고, 옮겨 적는 일이 없어집니다.
+    </p>
+    <p class="lede">
+      이 문서는 오늘 처음 로그인하는 사람을 위한 것입니다. 자기 역할 부분만 읽으면 첫 근무를 마칠 수 있습니다.
+      기능을 하나하나 찾아볼 때는 관리자 매뉴얼을 보세요.
+    </p>
+    <div class="cover-meta">
+      <span>읽는 데 <b>5분</b></span>
+      <span>주소 <code>project12-production-46ba.up.railway.app</code></span>
+      <span>계정은 지점장에게 받습니다</span>
+    </div>
+  </header>
+
+  <section id="start">
+    <div class="sec-mark">모두<b>처음 3분</b></div>
+    <h2>로그인하고 화면 읽는 법</h2>
+    <p class="sec-sub">역할에 따라 보이는 메뉴가 다릅니다. 안 보이는 메뉴는 고장이 아니라 권한입니다.</p>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <p class="step-title">주소를 열고 아이디·비밀번호를 넣습니다</p>
+          <p>
+            지점장에게 받은 계정입니다. 비밀번호를 <b>5회 틀리면 10분간 잠깁니다</b>. 잠긴 동안에는 맞는 비밀번호도
+            거부되니, 10분을 기다리거나 지점장에게 잠금 해제를 요청하세요.
+          </p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">들어가면 내 자리로 갑니다</p>
+          <p>조교는 <span class="ui">라운딩</span> 화면으로, 나머지는 <span class="ui">대시보드</span>로 바로 이동합니다.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">메뉴는 왼쪽, 휴대폰에서는 아래</p>
+          <p>
+            컴퓨터에서는 왼쪽에 세로 메뉴가, 휴대폰·태블릿에서는 화면 맨 아래에 탭 다섯 개가 나옵니다.
+            맨 위에는 지금 보고 있는 <b>지점 이름</b>과 <b>내 이름·역할</b>이 적혀 있습니다. 시작 전에 이 두 가지를 꼭 확인하세요.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>내 역할은 어디를 보면 되나</h3>
+    <div class="roles">
+      <a class="role" href="#assistant">
+        <b>조교</b>
+        <span>라운딩·일별 체크·식사 주문·내 근무. 태블릿을 주로 씁니다.</span>
+      </a>
+      <a class="role" href="#mentor">
+        <b>멘토</b>
+        <span>상담일지 멘토 열 작성, 코멘트. 회원 정보를 봅니다.</span>
+      </a>
+      <a class="role" href="#manager">
+        <b>지점장</b>
+        <span>회원·이슈·식사 마감·근무 확인·알림톡. 지점의 모든 것.</span>
+      </a>
+      <a class="role" href="#hq">
+        <b>본사</b>
+        <span>모든 지점 전환, 계정 발급, 근무 확인.</span>
+      </a>
+    </div>
+
+    <div class="table-scroll">
+      <table class="roles-table">
+        <thead>
+          <tr>
+            <th>할 수 있는 일</th>
+            <th>조교</th>
+            <th>멘토</th>
+            <th>지점장</th>
+            <th>본사</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>라운딩·일별 체크 입력</td>
+            <td class="yes">O</td>
+            <td class="part">조회</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+          <tr>
+            <td>회원 연락처·학부모 정보</td>
+            <td class="no">—</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+          <tr>
+            <td>상담일지 작성</td>
+            <td class="no">—</td>
+            <td class="part">멘토 열</td>
+            <td class="part">원장 열</td>
+            <td class="part">조회</td>
+          </tr>
+          <tr>
+            <td>이슈 등록</td>
+            <td class="yes">O</td>
+            <td class="part">코멘트</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+          <tr>
+            <td>식사 마감 후 변경·정산</td>
+            <td class="no">—</td>
+            <td class="no">—</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+          <tr>
+            <td>내 근무 체크</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+          <tr>
+            <td>계정·좌석·벌점 규칙 설정</td>
+            <td class="no">—</td>
+            <td class="no">—</td>
+            <td class="yes">O</td>
+            <td class="yes">O</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="assistant">
+    <div class="sec-mark">역할<b>조교</b></div>
+    <h2>라운딩 한 회차 돌기</h2>
+    <p class="sec-sub">가장 많이 하는 일입니다. 이 한 가지만 익히면 첫 근무는 됩니다.</p>
+
+    <div class="note">
+      <p class="note-title">가장 중요한 것 하나</p>
+      <p>
+        <b>모든 회원은 '양호'가 기본입니다.</b> 잘한 사람을 일일이 체크하지 않습니다. 졸거나, 자리에 없거나, 사유가 있는
+        사람만 누르세요. 아무것도 누르지 않은 회원은 회차를 마칠 때 자동으로 양호로 저장됩니다.
+      </p>
+    </div>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <p class="step-title">회차를 시작합니다</p>
+          <p>
+            <span class="path">라운딩</span> 화면에서 <span class="ui">R3 시작</span> 처럼 다음 회차 버튼을 누릅니다.
+            누군가 이미 시작해 두었다면 <span class="ui">R3 진행 중 · 이어서 입력</span> 이 보입니다. 새로 만들지 말고 이어서 하세요.
+          </p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">좌석 순서대로 돌면서 예외만 누릅니다</p>
+          <p>목록은 구역별로 좌석 번호 순입니다. 화면 순서대로 걸으면 됩니다.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">벌점은 규칙을 고르고 메모를 남깁니다</p>
+          <p>
+            <span class="ui">벌점</span> 을 누르면 규칙 목록이 열립니다. 규칙을 고르면 점수가 자동으로 붙습니다.
+            지점장이 바로 알아야 할 일이면 <span class="ui">지점장에게 이슈로 보고</span> 를 켜세요. 이슈함과 지점장 알림에 즉시 들어갑니다.
+          </p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">회차를 마칩니다</p>
+          <p>
+            맨 아래 <span class="ui">회차 완료</span> 를 누릅니다. 안 누른 회원 수가 함께 표시되고, 그 회원들은 양호로 저장됩니다.
+            완료하면 벌점·이슈·부재 요약이 나옵니다.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>네 개의 버튼</h3>
+    <div class="grades">
+      <div class="grade">
+        <span class="key a">a</span>
+        <div><b>양호</b> — 기본값입니다. 누를 일이 거의 없습니다.</div>
+      </div>
+      <div class="grade">
+        <span class="key b">b</span>
+        <div><b>사유 있음</b> — 학원 일정처럼 이유가 있어 자리를 비웠거나 집중하지 못했을 때.</div>
+      </div>
+      <div class="grade">
+        <span class="key p">벌점</span>
+        <div><b>규칙 위반</b> — 졸음, 휴대폰, 지각, 이동금지 위반 등. 규칙을 고르면 점수가 붙습니다.</div>
+      </div>
+      <div class="grade">
+        <span class="key na">부재</span>
+        <div><b>자리에 없음</b> — 사유를 모른 채 비어 있을 때.</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note-title">저장 버튼을 찾지 마세요</p>
+      <p>누르는 순간 저장됩니다. 잘못 눌렀으면 다시 눌러 바꾸면 됩니다.</p>
+      <p>
+        인터넷이 끊겨도 그냥 계속 누르세요. 입력은 태블릿에 쌓이고 위쪽에 <span class="ui">미전송 3건 · 다시 시도</span> 처럼
+        표시됩니다. 연결되면 알아서 전송됩니다. 이 표시가 보인다고 다시 입력하지 마세요.
+      </p>
+    </div>
+
+    <h3>이름이나 좌석으로 찾기</h3>
+    <p>
+      위쪽 검색창에 이름 일부나 좌석 번호를 치면 바로 걸러집니다. 이름을 누르면 그 회원의 상세 시트가 열려 메모까지
+      남길 수 있습니다.
+    </p>
+
+    <h3>공용 태블릿에서 사람 바꾸기</h3>
+    <p>
+      다른 조교와 교대할 때 로그아웃할 필요 없습니다. 라운딩 화면 오른쪽 위 <span class="ui">전환</span> 을 누르고
+      자기 이름을 고른 뒤 <b>PIN 4~6자리</b>를 넣으세요. PIN은 지점장이 정해 줍니다. 바꾼 뒤 화면 위쪽 이름이
+      내 이름인지 꼭 확인하세요. <b>이 확인을 놓치면 남의 이름으로 기록이 남습니다.</b>
+    </p>
+
+    <h3>일별 체크 · 식사 주문 · 내 근무</h3>
+    <ul class="plain">
+      <li>
+        <span class="path">일별 체크</span> — 출석, 플래너, 영단어, 점검완료를 라운딩과 같은 방식으로 입력합니다.
+        출석은 이름을 눌러 등원 시각과 전화 확인(CALL)을 기록합니다.
+      </li>
+      <li>
+        <span class="path">식사주문 › 월별 신청</span> — 회원별로 날짜 칸의 중식 <code>L</code>, 석식 <code>D</code> 를 누릅니다.
+        <b>전날 23:59가 지나면 회색으로 잠깁니다.</b> 늦었다면 지점장에게 요청하세요.
+      </li>
+      <li>
+        <span class="path">근무 › 내 근무</span> — 퇴근 전에 오늘 근무한 타임을 체크하고 저장합니다.
+        초과근무가 있으면 시간과 사유를 함께 넣어야 저장됩니다.
+      </li>
+    </ul>
+  </section>
+
+  <section id="mentor">
+    <div class="sec-mark">역할<b>멘토</b></div>
+    <h2>집중관리일지 쓰기</h2>
+    <p class="sec-sub">학생마다 매주 한 칸. 잔디로 주고받던 이야기를 여기에 남깁니다.</p>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <p class="step-title">회원 × 주차 표에서 칸을 누릅니다</p>
+          <p>
+            <span class="path">상담일지</span> 는 세로가 회원, 가로가 주차인 표입니다. 기본은 최근 4주이고
+            <span class="ui">월별</span> 을 누르면 그 달 전체가 나옵니다. 아직 안 쓴 칸은 비어 있으니 한눈에 보입니다.
+          </p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">오른쪽 멘토 열에 씁니다</p>
+          <p>
+            왼쪽은 원장(지점장) 열, 오른쪽이 멘토 열입니다. <b>각자 자기 열만 씁니다.</b>
+            남의 열은 읽을 수만 있습니다.
+          </p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">할 말은 아래 코멘트에 남깁니다</p>
+          <p>
+            일지 본문 아래 코멘트에 <code>@이름</code> 을 쓰면 그 사람에게 알림이 갑니다.
+            일지를 쓴 사람에게도 자동으로 알림이 갑니다. 답을 기다리며 따로 연락할 필요가 없습니다.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <h3>한 학생을 자세히 보고 싶을 때</h3>
+    <p>
+      <span class="path">회원</span> 에서 이름을 누르면 상세가 열립니다.
+      <span class="ui">타임라인</span> 탭에 상담·코멘트·벌점·이슈·변경 이력이 시간순으로 모여 있습니다.
+      상담 전에 여기를 한 번 훑으면 지난 2주에 무슨 일이 있었는지 알 수 있습니다.
+    </p>
+    <p>
+      매일 기록해야 하는 집중관리 회원은 <span class="path">상담일지 › 집중관리 일지</span> 에서 회원을 고르고 날짜 행을 누릅니다.
+    </p>
+  </section>
+
+  <section id="manager">
+    <div class="sec-mark">역할<b>지점장</b></div>
+    <h2>하루를 여닫는 순서</h2>
+    <p class="sec-sub">아침에 5분, 저녁에 5분. 나머지는 필요할 때만 들어갑니다.</p>
+
+    <h3>아침 — 대시보드 한 장</h3>
+    <p><span class="path">대시보드</span> 위쪽 숫자 세 개만 보면 오늘 챙길 것이 정해집니다.</p>
+    <ul class="plain">
+      <li><b>오늘 라운딩</b> — 몇 회차까지 돌았는지. 시간 대비 늦으면 조교에게 확인합니다.</li>
+      <li><b>이번 주 상담일지 미작성</b> — 숫자를 누르면 그 주의 빈 칸으로 바로 갑니다.</li>
+      <li><b>등록 만료 임박</b> — 7일 안에 등록이 끝나는 회원입니다. 재등록 안내를 돌립니다.</li>
+    </ul>
+    <p>아래쪽에는 처리 안 된 이슈와 이번 주 벌점 상위 회원이 함께 나옵니다.</p>
+
+    <h3>낮 — 이슈 처리</h3>
+    <p>
+      조교가 라운딩에서 올린 이슈가 <span class="path">이슈함</span> 에 모입니다.
+      상태를 <span class="ui">접수</span> → <span class="ui">처리 중</span> → <span class="ui">해결</span> 로 바꾸고 담당자를 지정하세요.
+      상태를 바꾸면 보고한 조교에게 알림이 갑니다. 조교는 "전달됐나" 물어볼 필요가 없어집니다.
+    </p>
+
+    <h3>회원 등록과 좌석</h3>
+    <ul class="plain">
+      <li>
+        <span class="path">회원 › 회원 등록</span> — 이름만 필수입니다. 상태를 <span class="ui">등록</span> 으로 두어야
+        좌석을 고를 수 있고, 그래야 라운딩 목록과 현황판에 나옵니다.
+      </li>
+      <li>
+        <b>라운딩 특이사항</b> 칸은 조교가 라운딩 목록에서 이름 아래로 늘 보게 되는 짧은 메모입니다.
+        예: <code>매주 화 17시 학원 조퇴</code>
+      </li>
+      <li>
+        <span class="path">회원 › CSV 이관</span> — 구글시트에서 헤더 행부터 복사해 붙여넣으면 열이 자동으로 잡힙니다.
+        <b>미리보기에서 빨간 행은 반영되지 않습니다.</b> 대개 좌석 번호가 지점에 없거나 이미 다른 회원이 쓰는 경우입니다.
+      </li>
+      <li>퇴원·상담으로 상태를 바꾸면 좌석이 자동으로 비고 라운딩에서 빠집니다. 기록은 타임라인에 남습니다.</li>
+    </ul>
+
+    <h3>저녁 — 식사와 근무</h3>
+    <ul class="plain">
+      <li>
+        <span class="path">식사주문 › 일별 발주</span> — 도시락 업체에 보낼 표입니다. 인쇄 버튼이 있습니다.
+      </li>
+      <li>
+        마감이 지난 주문은 지점장만 바꿀 수 있습니다. <b>사유를 적어야 하고 기록에 남습니다.</b>
+      </li>
+      <li>
+        <span class="path">근무 › 일별 현황</span> — 체크를 놓친 직원의 근무를 대신 입력할 수 있습니다.
+        월말에는 <span class="path">월 집계</span> 에서 급여 기초자료 CSV를 내려받습니다.
+      </li>
+    </ul>
+
+    <h3>현황판 띄우기</h3>
+    <p>
+      <span class="path">설정 › 지점·현황판</span> 에서 <span class="ui">링크 발급</span> 을 누르면 주소가
+      <b>한 번만</b> 보입니다. 복사해서 매장 모니터 브라우저에 붙여넣고 전체화면으로 두세요. 1분마다 자동으로 갱신됩니다.
+      학생 이름을 가리려면 같은 화면에서 마스킹을 켜면 <code>김*민</code> 으로 나옵니다.
+      링크가 밖으로 새면 재발급하세요. 이전 링크는 즉시 막힙니다.
+    </p>
+
+    <h3>계정 만들기</h3>
+    <p>
+      <span class="path">설정 › 사용자</span> 에서 멘토·조교 계정을 만듭니다. 비밀번호는 <b>영문과 숫자를 섞어 10자 이상</b>입니다.
+      조교에게는 공용 태블릿 전환용 PIN도 함께 정해 주세요. 잠긴 계정은 이 화면에서 바로 풀 수 있습니다.
+    </p>
+  </section>
+
+  <section id="hq">
+    <div class="sec-mark">역할<b>본사</b></div>
+    <h2>여러 지점을 한 화면에서</h2>
+    <p class="sec-sub">지점에 소속되지 않고 모든 지점을 오갑니다.</p>
+    <ul class="plain">
+      <li>
+        화면 위쪽 <b>지점 이름</b>을 누르면 지점 목록이 열립니다. 고른 지점 기준으로 모든 화면이 바뀝니다.
+        지금 어느 지점을 보고 있는지 항상 위쪽에서 확인하세요.
+      </li>
+      <li>
+        <span class="path">설정 › 사용자</span> 아래 <b>본사 관리자</b> 칸에서 본사 계정을 추가하거나 비밀번호를 바꿉니다.
+        마지막 한 명과 자기 계정은 실수로 끄지 못하게 막혀 있습니다.
+      </li>
+      <li>
+        <span class="path">근무 › 월 집계</span> 에서 지점별 합계를 봅니다.
+        <span class="ui">확인</span> 을 누르면 그 근무 기록은 잠기고 더 이상 수정되지 않습니다.
+      </li>
+      <li>
+        <span class="path">설정 › 감사 로그</span> 에 회원·설정·근무·식사의 모든 변경 이력이 누가 언제 무엇을 바꿨는지와 함께 남습니다.
+      </li>
+    </ul>
+  </section>
+
+  <section id="stuck">
+    <div class="sec-mark">참고<b>막혔을 때</b></div>
+    <h2>이럴 땐 이렇게</h2>
+    <p class="sec-sub">대부분은 고장이 아니라 설정이거나 권한입니다.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>증상</th>
+            <th>이유와 해결</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>회원을 등록했는데 라운딩에 안 보여요</td>
+            <td>상태가 <b>등록</b>이고 좌석이 배정되어 있어야 나옵니다. 회원 상세에서 확인하세요.</td>
+          </tr>
+          <tr>
+            <td>좌석을 고를 수 없어요</td>
+            <td>다른 회원이 쓰고 있습니다. 회원 목록에서 그 좌석의 주인을 확인하세요.</td>
+          </tr>
+          <tr>
+            <td>조교인데 연락처가 안 보여요</td>
+            <td>정상입니다. 조교 역할에는 회원 개인정보가 보이지 않습니다.</td>
+          </tr>
+          <tr>
+            <td>메뉴가 몇 개 없어요</td>
+            <td>역할에 따라 다릅니다. 위의 역할 표를 확인하세요.</td>
+          </tr>
+          <tr>
+            <td>비밀번호가 맞는데 안 들어가져요</td>
+            <td>5회 틀려 10분간 잠긴 상태입니다. 기다리거나 지점장·본사에 잠금 해제를 요청하세요.</td>
+          </tr>
+          <tr>
+            <td>갑자기 로그아웃됐어요</td>
+            <td>누군가 내 비밀번호를 바꿨거나 12시간이 지났습니다. 새 비밀번호로 다시 들어가세요.</td>
+          </tr>
+          <tr>
+            <td>미전송 건수가 사라지지 않아요</td>
+            <td>인터넷 연결을 확인하고 그 표시를 한 번 누르세요. 다시 입력할 필요는 없습니다.</td>
+          </tr>
+          <tr>
+            <td>식사 주문을 못 바꿔요</td>
+            <td>전날 마감이 지났습니다. 지점장이 사유를 적고 바꿀 수 있습니다.</td>
+          </tr>
+          <tr>
+            <td>근무를 수정할 수 없어요</td>
+            <td>본사 확인이 끝나 잠긴 기록입니다. 본사에 확인 취소를 요청하세요.</td>
+          </tr>
+          <tr>
+            <td>현황판이 안 열려요</td>
+            <td>링크가 재발급되었습니다. 지점장이 설정에서 새 링크를 발급해 다시 띄우세요.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="calm">
+      <h3>걱정하지 않아도 되는 것</h3>
+      <ul class="plain">
+        <li><b>잘못 눌러도 됩니다.</b> 다시 누르면 바뀝니다. 회차를 마친 뒤에도 지점장이 고칠 수 있습니다.</li>
+        <li><b>지워질까 봐 조심할 필요 없습니다.</b> 바뀐 값은 이전 값과 함께 기록에 남습니다.</li>
+        <li><b>다른 지점 자료를 볼까 봐 걱정할 필요 없습니다.</b> 내 지점 것만 보입니다.</li>
+        <li><b>모르는 화면은 안 눌러도 됩니다.</b> 내 역할에 없는 일은 애초에 메뉴에 나오지 않습니다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    프로젝트12 통합관리 플랫폼 별하 · 현장 안내서 · 기능별 상세는 관리자 매뉴얼(<code>docs/05_관리자_매뉴얼.md</code>)을 보세요.
+  </footer>
+</div>
