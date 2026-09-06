@@ -36,6 +36,8 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=builder --chown=app:app /app/.next/standalone ./
 COPY --from=builder --chown=app:app /app/.next/static ./.next/static
 COPY --from=builder --chown=app:app /app/public ./public
+# 서버 기동 시 자동 마이그레이션(src/instrumentation.ts)이 읽는 SQL
+COPY --from=builder --chown=app:app /app/drizzle ./drizzle
 # 로컬 저장소 드라이버용 (GCS 를 쓰면 비어 있어도 된다)
 RUN mkdir -p /app/storage && chown app:app /app/storage
 USER app

@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import * as s from "@/db/schema";
 import { hashPassword, validatePassword } from "@/lib/auth/password";
+import { ensureDefaults } from "@/modules/setup/repo";
 
 const argv = process.argv.slice(2);
 const opt = (k: string, d = ""): string => {
@@ -34,29 +35,9 @@ async function main() {
     console.log(`본사 관리자 '${hqLogin}' 생성`);
   }
 
-  const rules = await db.select({ id: s.penaltyRules.id }).from(s.penaltyRules).limit(1);
-  if (!rules.length) {
-    await db.insert(s.penaltyRules).values([
-      { name: "이동금지 위반", points: 5, sort: 1 },
-      { name: "휴대폰 전원 미차단", points: 2, sort: 2 },
-      { name: "무단 미등원", points: 8, sort: 3 },
-      { name: "졸음", points: 3, sort: 4 },
-      { name: "연속 졸음", points: 6, sort: 5 },
-      { name: "지각", points: 4, sort: 6 },
-    ]);
-    console.log("본사 기본 벌점 규칙 6개 생성");
-  }
-  const items = await db.select({ id: s.boardItems.id }).from(s.boardItems).limit(1);
-  if (!items.length) {
-    await db.insert(s.boardItems).values([
-      { key: "attendance", label: "출석", kind: "daily", sort: 1 },
-      { key: "planner", label: "플래너", kind: "daily", sort: 2 },
-      { key: "round", label: "라운딩", kind: "round", sort: 3 },
-      { key: "vocab", label: "영단어", kind: "daily", sort: 4 },
-      { key: "checkout", label: "점검완료", kind: "daily", sort: 5 },
-    ]);
-    console.log("본사 기본 현황판 항목 5개 생성");
-  }
+  const defaults = await ensureDefaults();
+  if (defaults.rules) console.log("본사 기본 벌점 규칙 6개 생성");
+  if (defaults.items) console.log("본사 기본 현황판 항목 5개 생성");
 
   const code = opt("branch-code").toUpperCase();
   if (code) {

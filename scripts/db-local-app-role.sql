@@ -12,3 +12,7 @@ grant all privileges on all tables in schema public to byeolha_app;
 grant all privileges on all sequences in schema public to byeolha_app;
 alter default privileges in schema public grant all privileges on tables to byeolha_app;
 alter default privileges in schema public grant all privileges on sequences to byeolha_app;
+-- 서버 기동 시 자동 마이그레이션이 drizzle 스키마를 만들 수 있도록
+do $$ begin execute format('grant create on database %I to byeolha_app', current_database()); end $$;
+grant usage on schema drizzle to byeolha_app;
+grant all privileges on all tables in schema drizzle to byeolha_app;

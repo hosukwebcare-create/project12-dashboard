@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { BrandMark } from "@/components/app/brand-mark";
+import { needsSetup } from "@/modules/setup/repo";
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "로그인" };
@@ -9,8 +11,9 @@ const POINTS = [
   { title: "시트에서 그대로", body: "쓰던 구글시트를 붙여 넣으면 회원, 좌석, 등록기간이 자동으로 정리됩니다." },
 ];
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  const { next } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; setup?: string }> }) {
+  const { next, setup } = await searchParams;
+  if (await needsSetup()) redirect("/setup");
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       <section className="hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
@@ -43,7 +46,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <span className="text-lg font-semibold tracking-tight">별하</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">로그인</h1>
-          <p className="mt-1 mb-6 text-sm text-muted-foreground">지점에서 받은 계정으로 들어갑니다.</p>
+          <p className="mt-1 mb-6 text-sm text-muted-foreground">{setup === "done" ? "처음 설정이 끝났습니다. 방금 만든 본사 계정으로 들어가세요." : "지점에서 받은 계정으로 들어갑니다."}</p>
           <LoginForm next={next ?? ""} />
           <p className="mt-6 text-xs leading-relaxed text-muted-foreground">비밀번호를 5회 틀리면 10분간 잠깁니다. 잊었다면 지점장에게 재설정을 요청하세요.</p>
         </div>
