@@ -125,25 +125,31 @@ function schedule(job: Job): NodeJS.Timeout {
   return timer;
 }
 
-let timers: NodeJS.Timeout[] | null = null;
+/**
+ * Next 는 instrumentation 과 라우트 핸들러를 서로 다른 번들로 만들어서 모듈 변수를 공유하지 않는다.
+ * (dev 서버의 HMR 도 마찬가지) 그래서 커넥션 풀과 같은 방식으로 전역에 둔다.
+ */
+const globalForScheduler = globalThis as unknown as { __byeolhaTimers?: NodeJS.Timeout[] };
 
 /** 서버 기동 시 한 번 호출한다 (instrumentation). 이미 켜져 있으면 아무것도 하지 않는다. */
 export function startScheduler(): void {
-  if (timers) return;
+  if (globalForScheduler.__byeolhaTimers) return;
   if (process.env.SCHEDULER === "off" || !process.env.DATABASE_URL) return;
   if (process.env.NODE_ENV !== "production" && process.env.SCHEDULER !== "on") return;
-  timers = JOBS.map(schedule);
-  const every = JOBS.map((j) => `${j.name} ${Math.round(j.everyMs / 1000)}초`).join(", ");
-  console.log(`[batch] 스케줄러 시작 (${every}, 익명화는 매일 ${RETENTION_HOUR}시)`);
+  globalForScheduler.__byeolhaTimers = JOBS.map(schedule);
+  const every = JOBS.filter((j) => !j.due)
+    .map((j) => `${j.name} ${Math.round(j.everyMs / 1000)}초마다`)
+    .join(", ");
+  console.log(`[batch] 스케줄러 시작 (${every}, retention 매일 ${RETENTION_HOUR}시)`);
 }
 
 /** 스케줄러가 이 프로세스에서 돌고 있는지 (/api/health 로 밖에서 확인한다) */
 export function schedulerRunning(): boolean {
-  return timers !== null;
+  return globalForScheduler.__byeolhaTimers !== undefined;
 }
 
 /** 테스트·종료용 */
 export function stopScheduler(): void {
-  timers?.forEach(clearInterval);
-  timers = null;
+  globalForScheduler.__byeolhaTimers?.forEach(clearInterval);
+  delete globalForScheduler.__byeolhaTimers;
 }
