@@ -137,6 +137,11 @@ export function startScheduler(): void {
   console.log(`[batch] 스케줄러 시작 (${every}, 익명화는 매일 ${RETENTION_HOUR}시)`);
 }
 
+/** 스케줄러가 이 프로세스에서 돌고 있는지 (/api/health 로 밖에서 확인한다) */
+export function schedulerRunning(): boolean {
+  return timers !== null;
+}
+
 /** 테스트·종료용 */
 export function stopScheduler(): void {
   timers?.forEach(clearInterval);

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
+import { schedulerRunning } from "@/lib/scheduler";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function GET() {
       time: now.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       localTime: now.toLocaleString("sv-SE"),
+      scheduler: schedulerRunning(),
     });
   } catch (e) {
     return NextResponse.json({ ok: false, db: false, error: e instanceof Error ? e.message : "db error" }, { status: 503 });
