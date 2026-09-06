@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { GradeChip } from "@/components/app/grade-chip";
 import { Button } from "@/components/ui/button";
@@ -14,25 +15,35 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
   }
   const prev = toDateKey(addDays(week.weekStart, -7));
   const next = toDateKey(addDays(week.weekStart, 7));
+  const penaltyCount = Object.values(week.cells).filter((c) => c?.grade === "p").length;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/members/${memberId}?week=${prev}#week`}>이전 주</Link>
-        </Button>
-        <span className="text-sm font-medium">{fmtShortDate(week.weekStart)} 주</span>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/members/${memberId}?week=${next}#week`}>다음 주</Link>
-        </Button>
-        <span className={cn("ml-auto text-sm font-semibold tabular-nums", week.totalPoints > 0 ? "text-red-600" : "text-muted-foreground")}>주간 벌점 {week.totalPoints}점</span>
+        <div className="inline-flex items-center rounded-full bg-muted p-1">
+          <Button asChild variant="ghost" size="icon-sm" className="rounded-full" aria-label="이전 주">
+            <Link href={`/members/${memberId}?week=${prev}#week`}>
+              <ChevronLeft />
+            </Link>
+          </Button>
+          <span className="px-2 text-sm font-medium">{fmtShortDate(week.weekStart)} 주</span>
+          <Button asChild variant="ghost" size="icon-sm" className="rounded-full" aria-label="다음 주">
+            <Link href={`/members/${memberId}?week=${next}#week`}>
+              <ChevronRight />
+            </Link>
+          </Button>
+        </div>
+        <span className={cn("ml-auto inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold", week.totalPoints > 0 ? "bg-rose-50 text-rose-700 ring-1 ring-rose-600/15" : "bg-muted text-muted-foreground")}>
+          주간 벌점 {week.totalPoints}점
+          {penaltyCount > 0 ? <span className="text-xs font-normal opacity-80">{penaltyCount}건</span> : null}
+        </span>
       </div>
       <div className="overflow-x-auto rounded-xl bg-card shadow-(--shadow-card) ring-1 ring-border">
         <table className="text-xs">
-          <thead className="bg-muted/50 text-muted-foreground">
+          <thead className="bg-muted/60 text-muted-foreground">
             <tr>
-              <th className="sticky left-0 bg-muted/50 px-2 py-1 text-left">일자</th>
+              <th className="sticky left-0 bg-muted/60 px-3 py-2 text-left font-medium">일자</th>
               {cols.map((c) => (
-                <th key={`${c.key}-${c.roundNo}`} className="px-1 py-1 text-center font-medium">
+                <th key={`${c.key}-${c.roundNo}`} className="px-1 py-2 text-center font-medium">
                   {c.label}
                 </th>
               ))}
@@ -40,12 +51,12 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
           </thead>
           <tbody>
             {week.days.map((d) => (
-              <tr key={d} className="border-t">
-                <td className="sticky left-0 bg-background px-2 py-1 whitespace-nowrap">{fmtShortDate(d)}</td>
+              <tr key={d} className="border-t border-border/70">
+                <td className="sticky left-0 bg-card px-3 py-1.5 font-medium whitespace-nowrap">{fmtShortDate(d)}</td>
                 {cols.map((c) => {
                   const cell = week.cells[`${d}|${c.key}|${c.roundNo}`];
                   return (
-                    <td key={`${c.key}-${c.roundNo}`} className="px-0.5 py-0.5 text-center" title={cell ? `${cell.ruleName ?? ""} ${cell.note ?? ""}`.trim() : ""}>
+                    <td key={`${c.key}-${c.roundNo}`} className="px-0.5 py-1 text-center" title={cell ? `${cell.ruleName ?? ""} ${cell.note ?? ""}`.trim() : ""}>
                       <GradeChip grade={cell?.grade ?? null} points={cell?.points} className="min-w-7" />
                     </td>
                   );
@@ -55,6 +66,7 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-muted-foreground">칸을 가리키면 벌점 규칙과 메모가 보입니다. 초록 양호, 연두 사유, 빨강 벌점(점수), 회색 부재.</p>
     </div>
   );
 }

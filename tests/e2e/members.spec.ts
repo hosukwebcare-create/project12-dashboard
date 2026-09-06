@@ -36,7 +36,7 @@ test.describe("회원 마스터", () => {
     await page.getByLabel("학교", { exact: true }).fill("샛별고");
     await page.getByRole("button", { name: "저장" }).click();
     await expect(page).toHaveURL(/\/members\/[0-9a-f-]+$/);
-    await expect(page.getByText("샛별고")).toBeVisible();
+    await expect(page.getByText("샛별고").first()).toBeVisible();
 
     // 좌석 변경 (23번은 비어 있음)
     await page.getByRole("tab", { name: /좌석 · 상태/ }).click();
