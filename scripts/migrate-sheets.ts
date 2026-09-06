@@ -116,11 +116,13 @@ async function main() {
     .from(s.memberships)
     .innerJoin(s.users, eq(s.users.id, s.memberships.userId))
     .where(eq(s.memberships.branchId, branch.id));
-  const manager = staff.find((u) => u.role === "branch_manager");
+  const [hq] = await db.select().from(s.users).where(eq(s.users.isHqAdmin, true)).limit(1);
+  // 지점에 지점장·멘토·조교가 아직 없으면 본사 관리자 이름으로 기록한다 (운영 최초 적재)
+  const hqStaff = hq ? { id: hq.id, name: hq.name, role: "hq_admin" as const } : undefined;
+  const manager = staff.find((u) => u.role === "branch_manager") ?? hqStaff;
   const mentor = staff.find((u) => u.role === "mentor") ?? manager;
   const assistant = staff.find((u) => u.role === "assistant") ?? manager;
-  const [hq] = await db.select().from(s.users).where(eq(s.users.isHqAdmin, true)).limit(1);
-  if (!manager || !mentor || !assistant) throw new Error("지점장·멘토·조교 계정이 있어야 합니다 (seed 먼저)");
+  if (!manager || !mentor || !assistant) throw new Error("지점장 계정이나 본사 관리자 계정이 있어야 합니다");
   log(`== 지점 ${branch.name} (${branch.code}) · 기준일 ${today}`);
 
   // ---------- 1. 지점 업무 데이터 초기화 ----------
