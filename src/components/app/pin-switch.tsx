@@ -19,7 +19,10 @@ export function PinSwitch({ users, currentUserId }: { users: { id: string; name:
             key={u.id}
             type="button"
             onClick={() => setSelected(u.id)}
-            className={cn("h-14 rounded-lg border text-base font-medium", selected === u.id ? "border-foreground bg-foreground text-background" : "hover:bg-muted")}
+            className={cn(
+              "h-14 rounded-xl text-base font-medium transition-colors",
+              selected === u.id ? "bg-primary text-primary-foreground shadow-(--shadow-float) ring-1 ring-primary" : "bg-card ring-1 ring-border hover:bg-accent/40",
+            )}
           >
             {u.name}
             {u.id === currentUserId ? <span className="block text-[10px] font-normal opacity-70">현재</span> : null}

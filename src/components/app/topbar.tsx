@@ -33,8 +33,8 @@ export function TopBar({ ctx, unread }: { ctx: Ctx; unread: number }) {
           <span className="flex size-7 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-primary-foreground" aria-hidden>
             {initial}
           </span>
-          <span className="hidden sm:inline">
-            {ctx.userName} <span className="text-muted-foreground">· {ROLE_LABEL[ctx.role]}</span>
+          <span>
+            {ctx.userName} <span className="hidden text-muted-foreground sm:inline">· {ROLE_LABEL[ctx.role]}</span>
           </span>
         </span>
         <form action={logout}>
