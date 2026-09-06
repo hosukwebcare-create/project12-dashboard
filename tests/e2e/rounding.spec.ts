@@ -24,7 +24,8 @@ test("조교: 회차 입력(빠른 탭·벌점 시트·이슈) → 완료 → �
 
   // 벌점 시트: 구민재 → 지각 + 메모 + 이슈
   const row2 = page.getByRole("listitem").filter({ hasText: "구민재" });
-  await row2.getByRole("button", { name: "벌점" }).click();
+  // exact: 오늘 이미 벌점이 있으면 행 버튼 본문에도 '벌점' 이 들어가 두 개가 잡힌다
+  await row2.getByRole("button", { name: "벌점", exact: true }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toContainText("구민재");
   await sheet.getByRole("button", { name: /지각/ }).click();

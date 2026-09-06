@@ -5,11 +5,12 @@ describe("세션 토큰", () => {
   it("서명 후 검증하면 같은 내용이 나온다", async () => {
     const token = await signSession({ userId: "u-1", branchId: "b-1" });
     const s = await verifySession(token);
-    expect(s).toEqual({ userId: "u-1", branchId: "b-1" });
+    expect(s).toMatchObject({ userId: "u-1", branchId: "b-1" });
+    expect(s!.issuedAt).toBeGreaterThan(0);
   });
   it("지점이 없는 세션도 표현한다", async () => {
     const token = await signSession({ userId: "u-1", branchId: null });
-    expect(await verifySession(token)).toEqual({ userId: "u-1", branchId: null });
+    expect(await verifySession(token)).toMatchObject({ userId: "u-1", branchId: null });
   });
   it("변조된 토큰은 null", async () => {
     const token = await signSession({ userId: "u-1", branchId: "b-1" });

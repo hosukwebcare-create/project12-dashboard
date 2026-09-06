@@ -81,7 +81,7 @@ test.describe("설정", () => {
     const form = page.locator("form").filter({ has: page.getByPlaceholder("아이디") });
     await form.getByPlaceholder("아이디").fill("e2easst");
     await form.getByPlaceholder("이름").fill("이투이조교");
-    await form.getByPlaceholder("비밀번호 (6자+)").fill("secret1234");
+    await form.getByPlaceholder("비밀번호 (영문+숫자 10자)").fill("secret1234");
     await form.getByRole("button", { name: "추가" }).click();
     await expect(page.getByText("사용자 목록 (5)")).toBeVisible();
     // 지점장은 지점장 역할을 만들 수 없다
@@ -95,6 +95,55 @@ test.describe("설정", () => {
     await p2.getByRole("button", { name: "로그인" }).click();
     await expect(p2).toHaveURL("/rounding");
     await expect(p2.getByText("이투이조교")).toBeVisible();
+    await ctx2.close();
+  });
+
+  test("본사 관리자 추가 후 그 계정으로 로그인", async ({ page, browser }) => {
+    await login(page, "hq");
+    await page.goto("/settings/users");
+    const card = page.locator('[data-slot="card"]').filter({ hasText: "본사 관리자 (" });
+    await expect(card.getByText("본사 관리자 (1)")).toBeVisible();
+
+    const add = card.locator("form").first();
+    await add.getByPlaceholder("아이디").fill("e2ehq");
+    await add.getByPlaceholder("이름").fill("이투이본사");
+    await add.getByPlaceholder("비밀번호 (영문+숫자 10자)").fill("secret1234");
+    await add.getByRole("button", { name: "추가" }).click();
+    await expect(card.getByText("본사 관리자 (2)")).toBeVisible();
+
+    // 지점에 소속되지 않아도 모든 지점이 보인다
+    const ctx2 = await browser.newContext();
+    const p2 = await ctx2.newPage();
+    await p2.goto("/login");
+    await p2.getByLabel("아이디").fill("e2ehq");
+    await p2.getByLabel("비밀번호").fill("secret1234");
+    await p2.getByRole("button", { name: "로그인" }).click();
+    await expect(p2).toHaveURL("/");
+    await expect(p2.getByText("이투이본사").first()).toBeVisible();
+    await ctx2.close();
+  });
+
+  test("비밀번호를 바꾸면 그 계정의 다른 세션이 끊긴다", async ({ page, browser }) => {
+    // 조교로 먼저 로그인해 둔다
+    const ctx2 = await browser.newContext();
+    const p2 = await ctx2.newPage();
+    await login(p2, "assistant");
+    await expect(p2).toHaveURL("/rounding");
+
+    // 토큰의 iat 는 초 단위라 같은 초 안에서 바꾸면 구분이 안 된다. 초를 넘긴 뒤 바꾼다
+    await p2.waitForTimeout(1100);
+
+    // 지점장이 그 계정의 비밀번호를 바꾼다
+    await login(page, "manager");
+    await page.goto("/settings/users");
+    const row = page.locator("form").filter({ has: page.locator('input[value="assistant"]') });
+    await row.getByPlaceholder("새 비밀번호").fill("changed12345");
+    await row.getByRole("button", { name: "저장" }).click();
+    await expect(row.getByText("저장됨")).toBeVisible();
+
+    // 열려 있던 조교 세션은 로그인 화면으로 튕긴다
+    await p2.goto("/rounding");
+    await expect(p2).toHaveURL(/\/login/);
     await ctx2.close();
   });
 

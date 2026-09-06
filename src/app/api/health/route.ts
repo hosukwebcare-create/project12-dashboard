@@ -9,7 +9,16 @@ export async function GET() {
   const startedAt = Date.now();
   try {
     await db.execute(sql`select 1`);
-    return NextResponse.json({ ok: true, db: true, latencyMs: Date.now() - startedAt, time: new Date().toISOString() });
+    // localTime 은 시간대 설정을 눈으로 확인하려고 넣었다. 서버가 UTC 로 돌면 화면의 '오늘'이 하루 어긋난다.
+    const now = new Date();
+    return NextResponse.json({
+      ok: true,
+      db: true,
+      latencyMs: Date.now() - startedAt,
+      time: now.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      localTime: now.toLocaleString("sv-SE"),
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, db: false, error: e instanceof Error ? e.message : "db error" }, { status: 503 });
   }

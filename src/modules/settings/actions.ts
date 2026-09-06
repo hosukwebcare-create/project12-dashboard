@@ -7,7 +7,7 @@ import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
 import { issueBoardToken } from "@/modules/board/repo";
 import type { CustomFieldType } from "@/lib/rules/custom-fields";
-import { bulkCreateSeats, setUserPin, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
+import { bulkCreateSeats, setUserPin, unlockUser, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertHqAdmin, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
 
 const num = (v: FormDataEntryValue | null, d = 0) => {
   const n = Number(v);
@@ -130,6 +130,39 @@ export async function upsertUserAction(_p: ActionState, fd: FormData): Promise<A
       const pin = String(fd.get("pin") ?? "");
       const id = String(fd.get("id") ?? "");
       if (pin && id) await setUserPin(ctx, id, pin);
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/settings/users");
+    return { ok: true };
+  });
+}
+
+export async function upsertHqAdminAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      const password = String(fd.get("password") ?? "");
+      await upsertHqAdmin(ctx, {
+        id: String(fd.get("id") ?? "") || undefined,
+        loginId: String(fd.get("loginId") ?? ""),
+        name: String(fd.get("name") ?? ""),
+        password: password || undefined,
+        active: bool(fd.get("active")),
+      });
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/settings/users");
+    return { ok: true };
+  });
+}
+
+export async function unlockUserAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await unlockUser(ctx, String(fd.get("id") ?? ""));
     } catch (e) {
       return { error: toMessage(e) };
     }

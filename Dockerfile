@@ -31,8 +31,9 @@ CMD ["pnpm", "exec", "drizzle-kit", "migrate"]
 # ---- 실행 ----
 FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
-RUN addgroup -S app && adduser -S app -G app
+# TZ 는 화면의 '오늘'을 정한다. alpine 은 tzdata 가 없으면 이름 있는 시간대를 못 읽고 UTC 로 떨어진다.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 TZ=Asia/Seoul
+RUN apk add --no-cache tzdata && addgroup -S app && adduser -S app -G app
 COPY --from=builder --chown=app:app /app/.next/standalone ./
 COPY --from=builder --chown=app:app /app/.next/static ./.next/static
 COPY --from=builder --chown=app:app /app/public ./public

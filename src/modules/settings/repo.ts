@@ -123,17 +123,22 @@ export async function upsertBoardItem(ctx: Ctx, input: BoardItemInput, db: Db = 
 }
 
 export type UserInput = { id?: string; loginId: string; name: string; password?: string; role: BranchRole; active: boolean; phone?: string | null };
-export type UserRow = { id: string; loginId: string; name: string; phone: string | null; role: BranchRole; active: boolean; hasPin: boolean };
+/** 지난 잠금은 없는 것과 같으므로 화면에는 아직 유효한 것만 내려보낸다 */
+function stillLocked(until: Date | null): Date | null {
+  return until && until.getTime() > Date.now() ? until : null;
+}
+
+export type UserRow = { id: string; loginId: string; name: string; phone: string | null; role: BranchRole; active: boolean; hasPin: boolean; lockedUntil: Date | null };
 
 export async function listUsers(ctx: Ctx, db: Db = defaultDb): Promise<UserRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
   const rows = await db
-    .select({ id: users.id, loginId: users.loginId, name: users.name, phone: users.phone, role: memberships.role, active: users.active, pinHash: users.pinHash })
+    .select({ id: users.id, loginId: users.loginId, name: users.name, phone: users.phone, role: memberships.role, active: users.active, pinHash: users.pinHash, lockedUntil: users.lockedUntil })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(eq(memberships.branchId, ctx.branchId))
     .orderBy(asc(memberships.role), asc(users.name));
-  return rows.map(({ pinHash, ...r }) => ({ ...r, hasPin: Boolean(pinHash) }));
+  return rows.map(({ pinHash, ...r }) => ({ ...r, hasPin: Boolean(pinHash), lockedUntil: stillLocked(r.lockedUntil) }));
 }
 
 const BM_ALLOWED: BranchRole[] = ["mentor", "assistant"];
@@ -160,7 +165,13 @@ export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb)
       if (!ms) throw new NotFoundError("사용자를 찾을 수 없습니다");
       if (ctx.role === "branch_manager" && !BM_ALLOWED.includes(ms.role)) throw new ForbiddenError("지점장은 멘토·조교 계정만 관리할 수 있습니다");
       const set: Partial<typeof users.$inferInsert> = { loginId, name: input.name.trim(), active: input.active, phone: input.phone ?? null };
-      if (input.password) set.passwordHash = await hashPassword(input.password);
+      if (input.password) {
+        // 비밀번호를 바꾸면 그 계정으로 로그인된 기기의 세션이 모두 끊긴다 (buildCtx 가 발급 시각을 본다)
+        set.passwordHash = await hashPassword(input.password);
+        set.passwordChangedAt = new Date();
+        set.failedLogins = 0;
+        set.lockedUntil = null;
+      }
       await tx.update(users).set(set).where(eq(users.id, input.id));
       await tx.update(memberships).set({ role: input.role }).where(and(eq(memberships.userId, input.id), eq(memberships.branchId, ctx.branchId)));
       await writeAudit(tx, ctx, "user", input.id, "update", { role: ms.role }, { role: input.role, active: input.active });
@@ -175,6 +186,78 @@ export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb)
     await writeAudit(tx, ctx, "user", u.id, "create", null, { loginId, role: input.role });
     return u.id;
   });
+}
+
+// ---------- 본사 관리자 ----------
+// 본사 계정은 지점 소속(memberships)이 없어서 위의 사용자 목록에 잡히지 않는다. 따로 관리한다.
+
+export type HqAdminRow = { id: string; loginId: string; name: string; active: boolean; isSelf: boolean; lockedUntil: Date | null };
+export type HqAdminInput = { id?: string; loginId: string; name: string; password?: string; active: boolean };
+
+export async function listHqAdmins(ctx: Ctx, db: Db = defaultDb): Promise<HqAdminRow[]> {
+  requireRole(ctx, "hq_admin");
+  const rows = await db
+    .select({ id: users.id, loginId: users.loginId, name: users.name, active: users.active, lockedUntil: users.lockedUntil })
+    .from(users)
+    .where(eq(users.isHqAdmin, true))
+    .orderBy(asc(users.loginId));
+  return rows.map((r) => ({ ...r, isSelf: r.id === ctx.userId, lockedUntil: stillLocked(r.lockedUntil) }));
+}
+
+/**
+ * 본사 관리자를 만들거나 고친다. 본사 관리자만 할 수 있다.
+ * 마지막 남은 활성 계정을 끄거나 자기 자신을 끄는 것은 막는다 (아무도 못 들어가는 상태 방지).
+ */
+export async function upsertHqAdmin(ctx: Ctx, input: HqAdminInput, db: Db = defaultDb): Promise<string> {
+  requireRole(ctx, "hq_admin");
+  const loginId = input.loginId.trim();
+  if (!/^[a-z0-9_.-]{2,30}$/i.test(loginId)) throw new ValidationError("아이디는 영문·숫자 2~30자");
+  if (!input.name.trim()) throw new ValidationError("이름을 입력하세요");
+  if (input.password !== undefined) {
+    const err = validatePassword(input.password);
+    if (err) throw new ValidationError(err);
+  }
+
+  return db.transaction(async (tx) => {
+    const dupConds = [eq(users.loginId, loginId)];
+    if (input.id) dupConds.push(ne(users.id, input.id));
+    const [dup] = await tx.select({ id: users.id }).from(users).where(and(...dupConds)).limit(1);
+    if (dup) throw new ValidationError("이미 사용 중인 아이디입니다");
+
+    if (!input.id) {
+      if (!input.password) throw new ValidationError("비밀번호를 입력하세요");
+      const [u] = await tx
+        .insert(users)
+        .values({ loginId, name: input.name.trim(), passwordHash: await hashPassword(input.password), isHqAdmin: true, active: input.active })
+        .returning({ id: users.id });
+      await writeAudit(tx, ctx, "user", u.id, "create", null, { loginId, role: "hq_admin" });
+      return u.id;
+    }
+
+    const [before] = await tx.select().from(users).where(and(eq(users.id, input.id), eq(users.isHqAdmin, true))).limit(1);
+    if (!before) throw new NotFoundError("본사 관리자를 찾을 수 없습니다");
+    if (before.active && !input.active) {
+      if (before.id === ctx.userId) throw new ValidationError("자기 계정은 끌 수 없습니다");
+      const others = await tx.select({ id: users.id }).from(users).where(and(eq(users.isHqAdmin, true), eq(users.active, true), ne(users.id, input.id)));
+      if (others.length === 0) throw new ValidationError("마지막 본사 관리자는 끌 수 없습니다");
+    }
+    const set: Partial<typeof users.$inferInsert> = { loginId, name: input.name.trim(), active: input.active };
+    if (input.password) {
+      set.passwordHash = await hashPassword(input.password);
+      set.passwordChangedAt = new Date();
+      set.failedLogins = 0;
+      set.lockedUntil = null;
+    }
+    await tx.update(users).set(set).where(eq(users.id, input.id));
+    await writeAudit(tx, ctx, "user", input.id, "update", { loginId: before.loginId, active: before.active }, { loginId, active: input.active, passwordChanged: Boolean(input.password) });
+    return input.id;
+  });
+}
+
+/** 잠긴 계정을 즉시 풀어 준다 (본사 관리자만) */
+export async function unlockUser(ctx: Ctx, userId: string, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, "hq_admin");
+  await db.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, userId));
 }
 
 export async function setUserPin(ctx: Ctx, userId: string, pin: string | null, db: Db = defaultDb): Promise<void> {

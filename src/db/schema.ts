@@ -73,6 +73,8 @@ export const users = pgTable("users", {
   pinHash: text("pin_hash"),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  /** 이 시각보다 먼저 발급된 세션 토큰은 무효로 본다 (비밀번호를 바꾸면 로그인된 기기가 모두 풀린다) */
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   isHqAdmin: boolean("is_hq_admin").notNull().default(false),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),

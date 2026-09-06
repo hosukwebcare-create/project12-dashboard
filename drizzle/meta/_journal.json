@@ -36,6 +36,13 @@
       "when": 1788628571155,
       "tag": "0004_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788726047965,
+      "tag": "0005_session_epoch",
+      "breakpoints": true
     }
   ]
 }

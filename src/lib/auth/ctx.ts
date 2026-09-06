@@ -21,19 +21,25 @@ export type Ctx = {
   memberships: { branchId: string; branchName: string; role: Role }[];
 };
 
-/** 세션과 무관하게 사용자·지점으로 컨텍스트를 만든다 (테스트·배치용) */
+/**
+ * 세션과 무관하게 사용자·지점으로 컨텍스트를 만든다 (테스트·배치용).
+ * issuedAt(세션 토큰 발급 시각, 초)을 주면 그 뒤에 비밀번호가 바뀐 계정은 거절한다.
+ */
 export async function buildCtx(
   userId: string,
   activeBranchId: string | null,
-  deps: { db: Db } = { db: defaultDb },
+  deps: { db?: Db; issuedAt?: number } = {},
 ): Promise<Ctx | null> {
-  const { db } = deps;
+  const db = deps.db ?? defaultDb;
   const [user] = await db
-    .select({ id: users.id, name: users.name, isHqAdmin: users.isHqAdmin })
+    .select({ id: users.id, name: users.name, isHqAdmin: users.isHqAdmin, passwordChangedAt: users.passwordChangedAt })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.active, true)))
     .limit(1);
   if (!user) return null;
+  // 비밀번호를 바꾼 뒤에 발급된 토큰만 유효하다.
+  // JWT 의 iat 는 초 단위로 내림되므로 변경 시각도 초로 내려서 견준다. 이렇게 하면 방금 로그인한 세션이 잘못 끊기지 않는다.
+  if (deps.issuedAt !== undefined && user.passwordChangedAt && Math.floor(user.passwordChangedAt.getTime() / 1000) > deps.issuedAt) return null;
 
   let list: { branchId: string; branchName: string; role: Role; settings: BranchSettings }[];
   if (user.isHqAdmin) {
@@ -79,7 +85,7 @@ export const tryGetCtx = cache(async (): Promise<Ctx | null> => {
   const store = await cookies();
   const session = await verifySession(store.get(sessionCookie.name)?.value);
   if (!session) return null;
-  return buildCtx(session.userId, session.branchId);
+  return buildCtx(session.userId, session.branchId, { issuedAt: session.issuedAt });
 });
 
 export function requireRole(ctx: Ctx, ...roles: Role[]): void {
