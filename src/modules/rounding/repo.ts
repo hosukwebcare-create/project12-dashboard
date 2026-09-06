@@ -255,13 +255,22 @@ export async function completeSession(ctx: Ctx, sessionId: string, db: Db = defa
     }
     await tx.update(roundingSessions).set({ completedAt: new Date() }).where(eq(roundingSessions.id, sessionId));
     const final = await sheetRows(ctx, session.date, "round", session.roundNo, tx);
-    return {
+    const summary: SessionSummary = {
       penalties: final.filter((r) => r.grade === "p").length,
       points: final.reduce((a, r) => a + (r.grade === "p" ? r.points : 0), 0),
       issues: final.filter((r) => r.isIssue).length,
       absent: final.filter((r) => r.grade === "na").length,
       total: final.length,
     };
+    // 메신저 웹훅 구독 항목(라운딩 회차 완료)에 해당하는 이벤트. 구독한 채널이 없으면 enqueueEvent 가 아무것도 쌓지 않는다.
+    await enqueueEvent(
+      tx,
+      ctx.branchId,
+      "session.completed",
+      { sessionId, date: session.date, roundNo: session.roundNo, ...summary, completedBy: ctx.userName },
+      `[회차 완료] ${session.date} R${session.roundNo} · ${summary.total}명 · 벌점 ${summary.penalties}건 ${summary.points}점 · 이슈 ${summary.issues}건 · 부재 ${summary.absent}명 (입력: ${ctx.userName})`,
+    );
+    return summary;
   });
 }
 

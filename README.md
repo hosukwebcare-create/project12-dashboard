@@ -14,6 +14,8 @@
 | [docs/05_관리자_매뉴얼.md](docs/05_관리자_매뉴얼.md) | 역할별 화면 사용 절차, 자주 묻는 질문 |
 | [docs/06_이관_리허설_동탄2.md](docs/06_이관_리허설_동탄2.md) | 실제 시트 5종 구조와 적재 결과 |
 | [docs/07_배포_체크리스트.md](docs/07_배포_체크리스트.md) | Railway·GCP·사내 서버 배포, 최초 데이터, 전환 주간 운영 |
+| [docs/08_현장_사용_가이드.html](docs/08_현장_사용_가이드.html) | 처음 쓰는 조교·멘토·지점장을 위한 역할별 첫날 안내서 |
+| [docs/09_검수_결과서.html](docs/09_검수_결과서.html) | 기획서 검수 기준 37항목을 운영 빌드에서 실제로 돌린 결과 (`scripts/acceptance/run.sh` 로 재실행) |
 
 ## 실행 방법
 
@@ -36,6 +38,8 @@ pnpm test                         # 단위·통합 테스트 (테스트 DB)
 pnpm exec playwright test         # E2E (운영 빌드 + 전용 DB byeolha_e2e, 자동 시드)
 pnpm lint && pnpm build
 pnpm perf:seed && pnpm perf:measure   # 대량 데이터 성능 점검 (byeolha_perf DB)
+sh scripts/acceptance/run.sh          # 검수 워크스루: 운영 빌드 + 실제 수신기로 기획서 검수 기준 37항목 (acceptance-out/)
+node scripts/acceptance/report.mjs acceptance-out   # → docs/09_검수_결과서.html
 ```
 
 시드 계정 (괄호 안이 비밀번호):

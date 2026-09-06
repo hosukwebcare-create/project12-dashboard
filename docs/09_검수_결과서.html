@@ -1,0 +1,431 @@
+<title>별하 검수 결과서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+  :root {
+    --paper: oklch(0.975 0.005 85); --paper-2: oklch(1 0 0);
+    --ink: oklch(0.22 0.02 262); --ink-2: oklch(0.47 0.02 262); --ink-3: oklch(0.6 0.015 262);
+    --rule: oklch(0.885 0.008 85); --navy: oklch(0.32 0.07 262); --brass: oklch(0.62 0.11 75);
+    --good: oklch(0.55 0.13 155); --good-bg: oklch(0.94 0.05 155);
+    --bad: oklch(0.53 0.19 25); --bad-bg: oklch(0.94 0.05 25);
+    --note-bg: oklch(0.95 0.03 85); --none-bg: oklch(0.93 0.004 85);
+    --measure: 44rem;
+    --font-display: "Hahmlet", "Apple SD Gothic Neo", serif;
+    --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --paper: oklch(0.19 0.015 262); --paper-2: oklch(0.23 0.016 262);
+    --ink: oklch(0.94 0.006 85); --ink-2: oklch(0.74 0.012 262); --ink-3: oklch(0.62 0.014 262);
+    --rule: oklch(0.31 0.016 262); --navy: oklch(0.82 0.05 262); --brass: oklch(0.79 0.11 75);
+    --good: oklch(0.75 0.13 155); --good-bg: oklch(0.3 0.05 155);
+    --bad: oklch(0.72 0.15 25); --bad-bg: oklch(0.31 0.06 25);
+    --note-bg: oklch(0.3 0.03 85); --none-bg: oklch(0.26 0.008 262);
+  } }
+  :root[data-theme="dark"] {
+    --paper: oklch(0.19 0.015 262); --paper-2: oklch(0.23 0.016 262);
+    --ink: oklch(0.94 0.006 85); --ink-2: oklch(0.74 0.012 262); --ink-3: oklch(0.62 0.014 262);
+    --rule: oklch(0.31 0.016 262); --navy: oklch(0.82 0.05 262); --brass: oklch(0.79 0.11 75);
+    --good: oklch(0.75 0.13 155); --good-bg: oklch(0.3 0.05 155);
+    --bad: oklch(0.72 0.15 25); --bad-bg: oklch(0.31 0.06 25);
+    --note-bg: oklch(0.3 0.03 85); --none-bg: oklch(0.26 0.008 262);
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.7; word-break: keep-all; overflow-wrap: break-word; }
+  .wrap { max-width: 64rem; margin: 0 auto; padding: 2rem 1.25rem 5rem; }
+  .eyebrow { font-size: 0.72rem; letter-spacing: 0.14em; color: var(--brass); font-weight: 500; margin: 0 0 0.75rem; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 1rem; text-wrap: balance; }
+  .lede { max-width: var(--measure); color: var(--ink-2); font-size: 1.05rem; margin: 0 0 1.5rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 0.3rem 1.5rem; font-size: 0.83rem; color: var(--ink-3); padding: 1rem 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .meta code { font-family: var(--font-mono); color: var(--ink-2); font-size: 0.8rem; }
+  .tally { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 2rem 0; max-width: 32rem; }
+  .tally div { background: var(--paper-2); padding: 1rem 1.2rem; }
+  .tally b { display: block; font-family: var(--font-display); font-size: 2rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tally span { font-size: 0.8rem; color: var(--ink-3); letter-spacing: 0.06em; }
+  .tally .pass b { color: var(--good); } .tally .fail b { color: var(--bad); } .tally .note b { color: var(--brass); }
+  h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 3rem 0 0.4rem; padding-top: 1.25rem; border-top: 2px solid var(--ink); text-wrap: balance; }
+  .sub { color: var(--ink-2); margin: 0 0 1.25rem; max-width: var(--measure); }
+  p { max-width: var(--measure); margin: 0 0 1rem; }
+  ul { max-width: var(--measure); padding-left: 1.1rem; margin: 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .scroll { overflow-x: auto; margin: 0 0 1.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
+  thead th { font-size: 0.74rem; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 600; white-space: nowrap; }
+  tr.area th { font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--navy); padding-top: 1.4rem; border-bottom: 1px solid var(--ink); }
+  td.id { font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink-3); white-space: nowrap; }
+  td.st { white-space: nowrap; font-weight: 600; font-size: 0.8rem; }
+  td.st.pass { color: var(--good); } td.st.fail { color: var(--bad); } td.st.note { color: var(--brass); }
+  td.detail { color: var(--ink-2); font-size: 0.84rem; min-width: 22rem; }
+  pre { font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.55; background: var(--none-bg); padding: 0.9rem 1rem; overflow-x: auto; margin: 0 0 1.25rem; max-width: var(--measure); white-space: pre-wrap; word-break: break-all; }
+  .kv { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 0.35rem 1rem; max-width: var(--measure); font-size: 0.92rem; margin: 0 0 1.25rem; }
+  .kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+  .finding { border-left: 3px solid var(--bad); padding: 0.1rem 0 0.1rem 1rem; margin: 0 0 1.5rem; max-width: var(--measure); }
+  .finding.fixed { border-color: var(--good); }
+  .finding b { display: block; margin-bottom: 0.2rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-size: 0.82rem; color: var(--ink-3); }
+  @media (max-width: 40rem) { .tally { grid-template-columns: 1fr 1fr 1fr; } .kv { grid-template-columns: 1fr; gap: 0.1rem 0; } .kv dt { margin-top: 0.5rem; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">프로젝트12 통합관리 · 별하</p>
+  <h1>검수 결과서</h1>
+  <p class="lede">
+    기획서의 검수 기준(8.2)과 단계별 범위(3.1)를 기준표로 삼아, 운영과 같은 빌드를 실제 브라우저와 실제 수신 서버에 대고 하나씩 돌려 본 기록입니다.
+    자동 테스트가 흉내(mock)로 넘어가는 지점 — 메신저 웹훅과 알림톡 딜러 API로 실제 나가는 HTTP 요청, 서명된 HERO 수신, 파일 바이트 왕복, 배치 전달, 오프라인 복귀 — 을 진짜로 확인했습니다.
+  </p>
+  <div class="meta">
+    <span>실행 <b>2026-09-07 08:41</b> (KST)</span>
+    <span>코드 <code>c5eb7c4</code></span>
+    <span>대상 운영 빌드(standalone) · 검수 DB(2개 지점, 앱 전용 계정으로 RLS 적용)</span>
+    <span>자동 테스트 단위·통합 240 · E2E 43 별도 통과</span>
+  </div>
+
+  <div class="tally">
+    <div class="pass"><b>34</b><span>통과</span></div>
+    <div class="note"><b>3</b><span>참고</span></div>
+    <div class="fail"><b>0</b><span>실패</span></div>
+  </div>
+
+  <h2>발견한 것</h2>
+  <p class="sub">첫 실행에서 나온 문제와 처리 결과입니다.</p>
+  <div class="finding fixed">
+    <b>메신저 웹훅 "라운딩 회차 완료" 이벤트가 발행되지 않음 — 고침</b>
+    설정 화면에서 구독할 수 있는 세 이벤트 중 "라운딩 회차 완료"가 실제로는 어디서도 발행되지 않았습니다. 이슈 보고·고벌점은 정상이었습니다.
+    회차 완료 시 회차·인원·벌점·이슈·부재 요약을 담아 발행하도록 고치고 회귀 테스트를 추가했습니다. 자동 테스트가 이슈·고벌점만 검사하고 있어서 잡히지 않았던 결함입니다.
+  </div>
+  <div class="finding">
+    <b>회원 감사 로그에 연락처가 기록되지 않음 — 관찰</b>
+    회원 수정 감사 로그의 이전·이후 값에 연락처 필드가 들어 있지 않아, 연락처 변경 이력은 남지 않습니다(마스킹은 다른 로그에서 동작). 개인정보 최소화 관점에서는 오히려 안전하지만, 연락처 변경 추적이 필요하면 마스킹된 값으로 남기도록 바꿀 수 있습니다.
+  </div>
+  <div class="finding">
+    <b>회원 목록 CSV 내보내기 없음 — 관찰</b>
+    기획서 커스텀 필드 검수 항목의 "CSV에 반영"은 내보내기 기능을 전제하는데, 현재는 CSV 이관(들여오기)만 있습니다. 필요하면 회원 목록 내보내기를 추가합니다.
+  </div>
+
+  <h2>검수 항목별 결과</h2>
+  <p class="sub">항목 번호는 기획서 모듈 번호를 따릅니다. "참고"는 화면 존재만 확인하고 흐름은 자동 E2E가 검증하는 항목입니다.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>번호</th><th>항목</th><th>결과</th><th>확인한 것</th></tr></thead>
+      <tbody>
+      <tr class="area"><th colspan="4">공통</th></tr>
+      
+      <tr>
+        <td class="id">C5</td>
+        <td>본사 관리자 지점 전환</td>
+        <td class="st pass">통과</td>
+        <td class="detail">동탄2 → 수원1 전환 후 회원 목록이 수원1 것으로 바뀜</td>
+      </tr>
+      <tr>
+        <td class="id">C8</td>
+        <td>커스텀 필드: 본사가 회원 양식에 선택형 필드 추가</td>
+        <td class="st pass">통과</td>
+        <td class="detail">필드 acc_pick(검수선택, 선택형 갑/을) 추가됨</td>
+      </tr>
+      <tr>
+        <td class="id">C6</td>
+        <td>공용 태블릿 PIN 전환</td>
+        <td class="st pass">통과</td>
+        <td class="detail">틀린 PIN 거부 → 맞는 PIN으로 최조교 → 정조교 전환, 상단 이름 바뀜</td>
+      </tr>
+      <tr>
+        <td class="id">C7</td>
+        <td>설정 6종 화면과 저장</td>
+        <td class="st pass">통과</td>
+        <td class="detail">지점·사용자·좌석·벌점 규칙·현황판 항목·감사 로그 화면 200, 회차 시간표 입력란 있음 · 지점 벌점 규칙 추가·비활성 저장됨</td>
+      </tr>
+      <tr>
+        <td class="id">C1</td>
+        <td>타 지점 지점장이 URL 직접 접근해도 조회 불가</td>
+        <td class="st pass">통과</td>
+        <td class="detail">수원1 지점장 → 동탄2 회원 URL: HTTP 404, 본문에 회원 정보 없음</td>
+      </tr>
+      <tr>
+        <td class="id">C2</td>
+        <td>조교에게 연락처·학부모 정보 비노출</td>
+        <td class="st pass">통과</td>
+        <td class="detail">조교 상세 화면에 이름·좌석은 보이고 연락처·학부모는 없음</td>
+      </tr>
+      <tr>
+        <td class="id">C4</td>
+        <td>감사 로그에 수정이 남고 개인정보는 가려짐</td>
+        <td class="st pass">통과</td>
+        <td class="detail">member 감사 로그 5건, 화면·DB 모두 연락처 원문 없음(마스킹 행 0건)</td>
+      </tr>
+      <tr class="area"><th colspan="4">1-1 회원</th></tr>
+      
+      <tr>
+        <td class="id">M1</td>
+        <td>회원 등록 (좌석·등록기간·학부모·집중관리·커스텀 필드)</td>
+        <td class="st pass">통과</td>
+        <td class="detail">상세에 좌석·집중관리·학부모·커스텀 필드(검수선택=갑) 표시, f516d33b-cf32-4adf-87e4-09806bdde238</td>
+      </tr>
+      <tr>
+        <td class="id">M2</td>
+        <td>이름·좌석 변경이 상담일지·라운딩·현황판에 즉시 반영</td>
+        <td class="st pass">통과</td>
+        <td class="detail">검수회원B · 31번이 상담일지 행, 라운딩 명단, 현황판 좌석에 새로고침 없이 반영</td>
+      </tr>
+      <tr>
+        <td class="id">M4</td>
+        <td>CSV 이관: 건수 일치와 오류 목록</td>
+        <td class="st pass">통과</td>
+        <td class="detail">3행 중 2행 반영·1행 오류(없는 좌석) 목록 표시, DB 2명 일치, /S → 단기, 기간 문자열 변환</td>
+      </tr>
+      <tr>
+        <td class="id">M5</td>
+        <td>모의고사 회차 생성</td>
+        <td class="st note">참고</td>
+        <td class="detail">화면 200 (회차·신청·결제 흐름은 E2E mock-exams.spec 2건이 자동 검증)</td>
+      </tr>
+      <tr>
+        <td class="id">M3</td>
+        <td>퇴원 시 좌석 해제, 라운딩·현황판 제외, 이력 유지</td>
+        <td class="st pass">통과</td>
+        <td class="detail">퇴원 → 좌석 미배정, 현황판·라운딩 명단에서 제외, 타임라인에 등록·좌석·상태·벌점·코멘트가 시간순으로 남음</td>
+      </tr>
+      <tr class="area"><th colspan="4">1-2 상담일지</th></tr>
+      
+      <tr>
+        <td class="id">K1</td>
+        <td>월 필터로 2026년 7월 주간일지 조회</td>
+        <td class="st pass">통과</td>
+        <td class="detail">7월 주차 4개 표시: 7/6(월), 7/13(월), 7/20(월), 7/27(월)</td>
+      </tr>
+      <tr>
+        <td class="id">K2</td>
+        <td>원장 열 작성 → 멘토 열·멘션 코멘트 → 원장 알림</td>
+        <td class="st pass">통과</td>
+        <td class="detail">원장 열 저장, 멘토는 멘토 열만 작성, @박원장 멘션이 지점장 알림함에 도착</td>
+      </tr>
+      <tr>
+        <td class="id">K3</td>
+        <td>집중관리 회원 일별 일지 화면</td>
+        <td class="st pass">통과</td>
+        <td class="detail">집중관리 목록에 검수회원B 표시 (일별 작성은 E2E counsel.spec 자동 검증)</td>
+      </tr>
+      <tr class="area"><th colspan="4">1-3 라운딩</th></tr>
+      
+      <tr>
+        <td class="id">R1</td>
+        <td>회차 이어서 입력 · 좌석 순 명단 · 기본 a</td>
+        <td class="st pass">통과</td>
+        <td class="detail">명단 28명, 좌석 번호 오름차순, 지점장이 시작한 회차를 조교가 이어받음</td>
+      </tr>
+      <tr>
+        <td class="id">R7</td>
+        <td>탭 응답 속도 (50석 1회차 3분 기준)</td>
+        <td class="st pass">통과</td>
+        <td class="detail">10명 탭 평균 25ms (최대 76ms) → 50석 예외 전부 입력해도 약 1초 + 이동 시간</td>
+      </tr>
+      <tr>
+        <td class="id">R5</td>
+        <td>오프라인 입력 → 복귀 후 자동 저장</td>
+        <td class="st pass">통과</td>
+        <td class="detail">오프라인에서 '부재' 입력 → '미전송 1건' 표시 → 온라인 복귀 후 자동 전송 → 새로고침해도 유지</td>
+      </tr>
+      <tr>
+        <td class="id">R3</td>
+        <td>벌점 규칙 선택 시 점수 자동 + 이슈 보고</td>
+        <td class="st pass">통과</td>
+        <td class="detail">지각 → 4점 자동, 이동금지 위반 → 5점 자동, 이슈 보고 체크</td>
+      </tr>
+      <tr>
+        <td class="id">R4</td>
+        <td>이슈 보고가 지점장 이슈함·알림에 즉시 표시</td>
+        <td class="st pass">통과</td>
+        <td class="detail">조교 저장 직후 지점장 이슈함과 알림에 '검수회원B · 지각' 도착</td>
+      </tr>
+      <tr>
+        <td class="id">R2</td>
+        <td>회차 완료: 미입력은 a, 요약 표시</td>
+        <td class="st pass">통과</td>
+        <td class="detail">R3 완료 → 재원 23명 전원 체크 저장(양호 12명), 요약 다이얼로그 표시</td>
+      </tr>
+      <tr>
+        <td class="id">R6</td>
+        <td>회차·일별·회원별 조회</td>
+        <td class="st pass">통과</td>
+        <td class="detail">조회 화면에 오늘 회차 결과, 회원 상세 주간표 R3 칸에 4점·주간 벌점 4점 1건 표시</td>
+      </tr>
+      <tr class="area"><th colspan="4">1-4 현황판</th></tr>
+      
+      <tr>
+        <td class="id">B1</td>
+        <td>토큰 URL · 색상 그리드 · 규칙 헤더 · 주간 합계</td>
+        <td class="st pass">통과</td>
+        <td class="detail">로그인 없이 토큰 URL로 열림, 잘못된 토큰 401, 규칙 6개 헤더, 31번 주간 벌점 4점</td>
+      </tr>
+      <tr>
+        <td class="id">B5</td>
+        <td>주간 벌점 합계가 DB 집계와 일치</td>
+        <td class="st pass">통과</td>
+        <td class="detail">23석 전원 현황판 합계 = SQL 합계 (2026-09-07~2026-09-13)</td>
+      </tr>
+      <tr>
+        <td class="id">B3</td>
+        <td>이름 마스킹 옵션</td>
+        <td class="st pass">통과</td>
+        <td class="detail">마스킹 켜면 현황판 이름 '검***B' · 끄면 다시 실명</td>
+      </tr>
+      <tr>
+        <td class="id">B2</td>
+        <td>라운딩 입력 후 1분 안에 현황판 자동 갱신 (새로고침 없이)</td>
+        <td class="st pass">통과</td>
+        <td class="detail">31번 주간 벌점 4 → 8, 새로고침 없이 0초 뒤 화면에 반영 (주기 60초)</td>
+      </tr>
+      <tr>
+        <td class="id">B4</td>
+        <td>주가 바뀌면 자동으로 새 주 표시</td>
+        <td class="st note">참고</td>
+        <td class="detail">API가 매 갱신마다 오늘 기준 주(todayKey→weekStart)를 계산해 돌려주므로 월요일 00:00 이후 첫 갱신부터 새 주가 뜬다 (코드 확인: src/app/api/board/[branchId]/route.ts, 60초 주기 fetch)</td>
+      </tr>
+      <tr class="area"><th colspan="4">2-1 식사</th></tr>
+      
+      <tr>
+        <td class="id">F1</td>
+        <td>월별 신청·일별 발주·월 정산 화면</td>
+        <td class="st note">참고</td>
+        <td class="detail">세 화면 200 (마감 규칙·발주서·정산 흐름은 E2E phase2.spec 이 자동 검증)</td>
+      </tr>
+      <tr class="area"><th colspan="4">2-2 근무</th></tr>
+      
+      <tr>
+        <td class="id">W1</td>
+        <td>내 근무·일별·월 집계 화면과 급여 CSV</td>
+        <td class="st pass">통과</td>
+        <td class="detail">네 화면 200, 급여 기초자료 CSV 200 (1줄)</td>
+      </tr>
+      <tr class="area"><th colspan="4">2-3 알림톡</th></tr>
+      
+      <tr>
+        <td class="id">A1</td>
+        <td>템플릿 → 대상 선택 → 발송 큐 → 딜러 API 실제 호출 → 이력</td>
+        <td class="st pass">통과</td>
+        <td class="detail">6건 큐 → 스케줄러가 딜러 API 로 6건 POST (Bearer 키, templateCode, 숫자 수신번호, 본문에 이름·지점 치환) → 이력 '발송'</td>
+      </tr>
+      <tr class="area"><th colspan="4">3-1 HERO</th></tr>
+      
+      <tr>
+        <td class="id">H1</td>
+        <td>서명된 진단 결과 수신 → 회원 프로필 연결, 위조 서명 거부</td>
+        <td class="st pass">통과</td>
+        <td class="detail">정상 서명 201 → 고은별 상세 '파일 · 진단'에 결과 표시, 위조 서명 401, 없는 회원 422(안내 문구), 없는 지점 404</td>
+      </tr>
+      <tr class="area"><th colspan="4">3-2 파일</th></tr>
+      
+      <tr>
+        <td class="id">P1</td>
+        <td>PDF 업로드·다운로드 바이트 일치·접근 로그, 가짜 PDF 거부</td>
+        <td class="st pass">통과</td>
+        <td class="detail">업로드 → 다운로드 바이트 동일, 파일 접근 로그 1건, 확장자만 pdf 인 텍스트는 거부</td>
+      </tr>
+      <tr class="area"><th colspan="4">3-3 메신저</th></tr>
+      
+      <tr>
+        <td class="id">X1</td>
+        <td>인커밍 웹훅 등록 (사설망 수신기, 3개 이벤트)</td>
+        <td class="st pass">통과</td>
+        <td class="detail">http://192.168.35.69:4599/webhook 에 이슈 보고·고벌점·회차 완료 구독</td>
+      </tr>
+      <tr>
+        <td class="id">X0</td>
+        <td>SSRF 차단: 로컬·메타데이터 주소는 등록 거부</td>
+        <td class="st pass">통과</td>
+        <td class="detail">127.0.0.1 · 169.254.169.254 · localhost 모두 거부</td>
+      </tr>
+      <tr>
+        <td class="id">X2</td>
+        <td>라운딩 이벤트가 배치로 메신저 웹훅에 실제 게시</td>
+        <td class="st pass">통과</td>
+        <td class="detail">수신기에 이슈 보고·고벌점·회차 완료 3종 도착 (3건), 본문 '[이슈 보고] 검수회원B · 지각 (2026-09-07 R3) · 검수:…', 설정 화면 상태 '전송'</td>
+      </tr>
+      <tr>
+        <td class="id">X3</td>
+        <td>전송 실패 → 실패 표시 → 재시도</td>
+        <td class="st pass">통과</td>
+        <td class="detail">500 응답 엔드포인트 → 이벤트 '실패' 표시 → 엔드포인트 비활성 후 재전송 → '전송'</td>
+      </tr>
+      <tr class="area"><th colspan="4">운영</th></tr>
+      
+      <tr>
+        <td class="id">O3</td>
+        <td>보관기간 지난 퇴원 회원 익명화 배치</td>
+        <td class="st pass">통과</td>
+        <td class="detail">퇴원 후 보관기간 경과 회원 1명 → '탈퇴회원-6e6e', 연락처 삭제. 시크릿 없는 호출은 401</td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>연동 증거</h2>
+  <p class="sub">검수 중 로컬 수신 서버가 실제로 받은 요청입니다.</p>
+  <dl class="kv">
+    <dt>메신저 웹훅 수신</dt><dd>issue.created 3건 · penalty.high 1건 · session.completed 1건</dd>
+    <dt>알림톡 딜러 API 호출</dt><dd>6건 (Authorization: Bearer dealer-test-key)</dd>
+    <dt>배치 로그</dt><dd>[batch] 스케줄러 시작 (outbox 10초마다, alimtalk 10초마다, retention 매일 4시) / [batch] outbox {"sent":1,"failed":0} / [batch] outbox {"sent":2,"failed":0} / [batch] outbox {"sent":0,"failed":1}</dd>
+  </dl>
+  <p>메신저 채널에 게시된 본문 (Slack·Mattermost·Rocket.Chat 인커밍 웹훅 호환 JSON):</p>
+  <pre>{
+  "text": "[회차 완료] 2026-09-07 R3 · 23명 · 벌점 2건 9점 · 이슈 1건 · 부재 1명 (입력: 최조교)",
+  "event": "session.completed",
+  "date": "2026-09-07",
+  "total": 23,
+  "absent": 1,
+  "issues": 1,
+  "points": 9,
+  "roundNo": 3,
+  "penalties": 2,
+  "sessionId": "7889dcc6-241c-4b3c-8f31-ee9bead27114",
+  "completedBy": "최조교"
+}</pre>
+  <p>알림톡 딜러 API 로 나간 요청 본문 (범용 HTTP 어댑터. NHN Cloud·솔라피 어댑터는 계약 후 실계정으로 검증):</p>
+  <pre>{
+  "senderKey": "sender-test",
+  "templateCode": "ACC_WEEKLY",
+  "recipientNo": "01000000500",
+  "content": "강하늘 학생의 동탄2 주간리포트입니다. https://example.com/acc",
+  "templateParameter": {
+    "링크": "https://example.com/acc",
+    "이름": "강하늘",
+    "좌석": "1",
+    "지점": "동탄2"
+  }
+}</pre>
+
+  <h2>운영 서버 점검 (읽기 전용)</h2>
+  <p class="sub">실데이터가 있는 운영 서버에는 기록을 남기지 않고 바깥에서 확인만 했습니다.</p>
+  <dl class="kv">
+    <dt>헬스체크</dt><dd>ok · db · timeZone Asia/Seoul · scheduler true</dd>
+    <dt>HTTPS 강제</dt><dd>http → https 301, HSTS max-age 1년</dd>
+    <dt>보안 헤더</dt><dd>CSP · X-Frame-Options · nosniff · Referrer-Policy · Permissions-Policy</dd>
+    <dt>보호 경로</dt><dd>비로그인 /members → /login?next=/members (307)</dd>
+    <dt>현황판 API</dt><dd>토큰 없이 401</dd>
+    <dt>배치 API</dt><dd>시크릿 없이 outbox·alimtalk·retention 모두 401</dd>
+    <dt>HERO 수신</dt><dd>서명 없이 503 (시크릿 미설정 상태 — 계약 후 설정)</dd>
+    <dt>지점 격리(RLS)</dt><dd>앱 전용 비superuser 계정으로 접속, 다른 지점 컨텍스트에서 회원 0건 (배포 시 확인)</dd>
+  </dl>
+
+  <h2>백업·복구 리허설</h2>
+  <p>
+    <code>scripts/backup.sh</code>로 검수 DB를 덤프(120KB, 테이블 34개)한 뒤 빈 DB에 <code>pg_restore</code>로 복구해 회원 29명·체크 120건이 그대로 돌아오는 것을 확인했습니다.
+    운영은 Railway Postgres 일일 스냅샷에 더해 같은 스크립트로 주 1회 별도 보관을 권장합니다.
+  </p>
+
+  <h2>다시 돌리는 법</h2>
+  <p>이 검수는 저장소에 들어 있어 코드가 바뀔 때마다 같은 방식으로 반복할 수 있습니다.</p>
+  <pre>pnpm build
+sh scripts/acceptance/run.sh      # DB 초기화·시드 → 수신기·운영 빌드 기동 → 워크스루 → acceptance-out/
+node scripts/acceptance/report.mjs acceptance-out</pre>
+
+  <h2>이 검수가 보지 않은 것</h2>
+  <ul>
+    <li>알림톡 실제 딜러 계정(NHN Cloud·솔라피) — 어댑터는 있으나 계약·템플릿 승인 후 실계정으로 한 번 보내 봐야 합니다.</li>
+    <li>사내 메신저 서버 설치 자체(RFP 3-3 별도 견적) — 인커밍 웹훅 수신까지만 확인했습니다.</li>
+    <li>실기기(매장 태블릿·스마트폰)에서의 라운딩 — 브라우저 에뮬레이션(390×844, 터치)으로 확인했습니다.</li>
+    <li>동시 사용자 부하 — 성능 점검(docs/04)은 대량 데이터 기준이며 동시 접속 부하 시험은 하지 않았습니다.</li>
+  </ul>
+
+  <footer>프로젝트12 통합관리 플랫폼 별하 · 검수 결과서 · 생성 2026-09-07 08:41 · 코드 c5eb7c4</footer>
+</div>

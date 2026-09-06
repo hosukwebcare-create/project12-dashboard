@@ -44,3 +44,6 @@ next-env.d.ts
 /storage
 /test-results
 /playwright-report
+
+# 검수 워크스루 출력
+acceptance-out/

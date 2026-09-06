@@ -6,12 +6,32 @@ import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { createIssue } from "@/modules/issues/repo";
 import { createMember } from "@/modules/members/repo";
 import { dispatchOutbox, listWebhookEndpoints, upsertWebhookEndpoint } from "@/modules/outbox/repo";
-import { startSession, upsertCheck } from "@/modules/rounding/repo";
+import { completeSession, startSession, upsertCheck } from "@/modules/rounding/repo";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
 describe("메신저 웹훅 아웃박스", () => {
   beforeEach(resetDb);
+
+  it("회차를 완료하면 '라운딩 회차 완료' 이벤트가 요약과 함께 쌓인다 (구독 채널이 있을 때만)", async () => {
+    const t = await seedTwoBranches();
+    const m = await createMember(t.mgrCtx1, { name: "가나", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false });
+    // 구독 채널이 없으면 아무것도 쌓이지 않는다
+    const s0 = await startSession(t.asstCtx1, "2026-09-05");
+    await completeSession(t.asstCtx1, s0);
+    expect(await db.select().from(eventOutbox)).toEqual([]);
+
+    await upsertWebhookEndpoint(t.mgrCtx1, { name: "동탄 채널", url: "https://hooks.example/dt", events: ["session.completed"], active: true });
+    const sid = await startSession(t.asstCtx1, "2026-09-05");
+    const late = t.rules.find((r) => r.name === "지각")!;
+    await upsertCheck(t.asstCtx1, { memberId: m, date: "2026-09-05", itemKey: "round", roundNo: 2, sessionId: sid, grade: "p", penaltyRuleId: late.id });
+    const summary = await completeSession(t.asstCtx1, sid);
+
+    const [ev] = await db.select().from(eventOutbox).where(eq(eventOutbox.type, "session.completed"));
+    expect(ev).toBeDefined();
+    expect(ev.text).toBe(`[회차 완료] 2026-09-05 R2 · ${summary.total}명 · 벌점 1건 4점 · 이슈 0건 · 부재 0명 (입력: 조교1)`);
+    expect(ev.payload).toMatchObject({ sessionId: sid, roundNo: 2, penalties: 1, points: 4 });
+  });
 
   it("지점장이 웹훅을 등록하면 이슈 생성과 고벌점이 이벤트로 쌓이고, 전송기가 보낸다", async () => {
     const t = await seedTwoBranches();
