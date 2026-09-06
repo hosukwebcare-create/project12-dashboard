@@ -18,7 +18,7 @@ async function main() {
   const url = process.env.DATABASE_URL ?? "";
   if (!/perf/.test(url)) throw new Error("perf DB(byeolha_perf)에서만 실행하세요: " + url);
   const t0 = Date.now();
-  const { db, sql } = await import("../../src/db/client");
+  const { db, getSql } = await import("../../src/db/client");
   const s = await import("../../src/db/schema");
   const { hashPassword } = await import("../../src/lib/auth/password");
   const { addDays, toDateKey, weekStart } = await import("../../src/lib/rules/week");
@@ -175,7 +175,7 @@ async function main() {
   void hq;
   await db.execute(raw`analyze`);
   console.log(`시드 완료: 지점 ${BRANCHES}, 회원 ${BRANCHES * (SEATS + 10)}, 체크 ${totalChecks.toLocaleString()}건, ${Math.round((Date.now() - t0) / 1000)}s`);
-  await sql.end();
+  await getSql().end();
 }
 
 main().catch((e) => {

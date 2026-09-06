@@ -13,7 +13,7 @@ async function main() {
   const url = process.env.DATABASE_URL ?? "";
   if (/prod/i.test(url)) throw new Error("운영 DB에는 시드를 실행하지 않습니다");
 
-  const { db, sql } = await import("./client");
+  const { db, getSql } = await import("./client");
   const s = await import("./schema");
   const { hashPassword } = await import("@/lib/auth/password");
   const { addDays, toDateKey, weekStart } = await import("@/lib/rules/week");
@@ -351,7 +351,7 @@ async function main() {
   console.log("  계정: hq/hq1234 (본사), manager/1234 (지점장 동탄2), mentor/1234 (멘토), assistant/1234 (조교), manager2/1234 (지점장 수원1)");
   console.log(`  현황판(동탄2): /board/${dt2.id}?t=${boardTokenPlain}`);
   console.log(`  회원 ${members.length}명, 좌석 ${dt2Seats.length}석, 사용자 ${[hq, manager, mentor, assistant, assistant2, manager2].length}명`);
-  await sql.end();
+  await getSql().end();
 }
 
 main().catch((e) => {

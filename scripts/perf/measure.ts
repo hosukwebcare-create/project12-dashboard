@@ -31,7 +31,7 @@ async function bench(name: string, fn: () => Promise<unknown>) {
 }
 
 async function main() {
-  const { db, sql } = await import("../../src/db/client");
+  const { db, getSql } = await import("../../src/db/client");
   const s = await import("../../src/db/schema");
   const { buildCtx } = await import("../../src/lib/auth/ctx");
   const { todayKey, toDateKey, weekStart, addDays } = await import("../../src/lib/rules/week");
@@ -72,7 +72,7 @@ async function main() {
 
   const slow = Object.entries(results).filter(([, r]) => r.p95 > 1000);
   console.log(`\n목표: p95 1초 이내. 초과 ${slow.length}건${slow.length ? ": " + slow.map(([k]) => k).join(", ") : ""}`);
-  await sql.end();
+  await getSql().end();
 }
 
 main().catch((e) => {
