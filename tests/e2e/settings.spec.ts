@@ -20,7 +20,7 @@ test.describe("설정", () => {
     await page.goto(url);
     await expect(page.getByText("동탄2 생활관리 현황")).toBeVisible();
     await expect(page.getByText("강*늘")).toBeVisible();
-    await expect(page.getByText("이동금지 위반[5점]")).toBeVisible();
+    await expect(page.getByText(/이동금지 위반 5점/)).toBeVisible();
 
     // 원복
     await page.goto("/settings/branch");
