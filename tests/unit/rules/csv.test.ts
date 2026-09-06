@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCsv } from "@/lib/rules/csv";
-import { parsePeriod, splitNameSuffix, splitSchoolGrade } from "@/lib/rules/import-parsers";
+import { parsePeriod, splitNameSuffix, splitSchoolGrade, statusFromToken } from "@/lib/rules/import-parsers";
 
 describe("parseCsv", () => {
   it("쉼표·따옴표·이스케이프·CRLF를 처리한다", () => {
@@ -27,9 +27,9 @@ describe("parseCsv", () => {
 
 describe("import parsers", () => {
   it("이름 뒤 /S 는 단기 표시", () => {
-    expect(splitNameSuffix("이상윤/S")).toEqual({ name: "이상윤", short: true });
-    expect(splitNameSuffix("이상윤")).toEqual({ name: "이상윤", short: false });
-    expect(splitNameSuffix(" 장은진 /s ")).toEqual({ name: "장은진", short: true });
+    expect(splitNameSuffix("이상윤/S")).toEqual({ name: "이상윤", short: true, tag: null });
+    expect(splitNameSuffix("이상윤")).toEqual({ name: "이상윤", short: false, tag: null });
+    expect(splitNameSuffix(" 장은진 /s ")).toEqual({ name: "장은진", short: true, tag: null });
   });
   it("학교명/학년 '한백고3' → 학교·학년", () => {
     expect(splitSchoolGrade("한백고3")).toEqual({ school: "한백고", grade: "3" });
@@ -45,5 +45,24 @@ describe("import parsers", () => {
     expect(parsePeriod("2026-08-18 ~ 2026-09-17", "2026-09-05")).toEqual({ startDate: "2026-08-18", endDate: "2026-09-17" });
     expect(parsePeriod("", "2026-09-05")).toBeNull();
     expect(parsePeriod("무기한", "2026-09-05")).toBeNull();
+  });
+
+  it("실제 시트의 이름 표기: /s 소문자, /3 같은 미확인 표기, 동명이인 B, 복합 표기", () => {
+    expect(splitNameSuffix("조민수/s")).toEqual({ name: "조민수", short: true, tag: null });
+    expect(splitNameSuffix("장지아/3")).toEqual({ name: "장지아", short: false, tag: "/3" });
+    expect(splitNameSuffix("오세훈/n")).toEqual({ name: "오세훈", short: false, tag: "/n" });
+    expect(splitNameSuffix("김지민B")).toEqual({ name: "김지민B", short: false, tag: null });
+    expect(splitNameSuffix("박민서B/S")).toEqual({ name: "박민서B", short: true, tag: null });
+    expect(splitNameSuffix("장은진/,S")).toEqual({ name: "장은진", short: true, tag: null });
+    expect(splitNameSuffix("이현우/")).toEqual({ name: "이현우", short: false, tag: null });
+  });
+
+  it("좌석번호 칸의 상태 낱말", () => {
+    expect(statusFromToken("상담")).toBe("prospect");
+    expect(statusFromToken("종료")).toBe("withdrawn");
+    expect(statusFromToken("휴원")).toBe("paused");
+    expect(statusFromToken("등록")).toBe("enrolled");
+    expect(statusFromToken("12")).toBeNull();
+    expect(statusFromToken("")).toBeNull();
   });
 });

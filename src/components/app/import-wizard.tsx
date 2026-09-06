@@ -17,7 +17,7 @@ export function ImportWizard({ fields }: Props) {
   const [data, setData] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<number, ImportField | null>>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [result, setResult] = useState<{ created: number; updated: number } | null>(null);
+  const [result, setResult] = useState<{ created: number; updated: number; failed: { row: number; message: string }[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -65,9 +65,20 @@ export function ImportWizard({ fields }: Props) {
         <CardHeader>
           <CardTitle>이관 완료</CardTitle>
           <CardDescription>
-            새로 등록 {result.created}명, 기존 갱신 {result.updated}명
+            새로 등록 {result.created}명, 기존 갱신 {result.updated}명{result.failed.length ? `, 반영 실패 ${result.failed.length}행` : ""}
           </CardDescription>
         </CardHeader>
+        {result.failed.length ? (
+          <CardContent>
+            <ul className="mb-3 space-y-1 text-sm text-destructive">
+              {result.failed.map((f) => (
+                <li key={f.row}>
+                  {f.row}행: {f.message}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        ) : null}
         <CardContent className="flex gap-2">
           <Button asChild>
             <Link href="/members">회원 목록으로</Link>

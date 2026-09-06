@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
 import { members, seats, type MemberStatus } from "@/db/schema";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
-import { normalizeBool, normalizeDate, normalizePhone, parsePeriod, splitNameSuffix, splitSchoolGrade } from "@/lib/rules/import-parsers";
+import { normalizeBool, normalizeDate, normalizePhone, parsePeriod, PHONE_RE, splitNameSuffix, splitSchoolGrade, statusFromToken } from "@/lib/rules/import-parsers";
 import { createMember, getMember, updateMember } from "./repo";
 import { STATUS_LABEL, TRACKS } from "./schema";
 
@@ -27,6 +27,8 @@ export type ImportField =
   | "enrollStart"
   | "enrollEnd"
   | "status"
+  | "firstRegisteredAt"
+  | "firstCounseledAt"
   | "memo"
   | "fieldNote";
 
@@ -45,12 +47,14 @@ export const IMPORT_FIELDS: { key: ImportField; label: string; aliases: string[]
   { key: "grade", label: "학년", aliases: ["학년", "grade"] },
   { key: "track", label: "계열", aliases: ["계열", "track"] },
   { key: "address", label: "주소", aliases: ["주소", "address"] },
-  { key: "guardianName", label: "학부모 이름", aliases: ["학부모 이름", "학부모명", "보호자 이름", "보호자명"] },
+  { key: "guardianName", label: "학부모 이름", aliases: ["학부모 이름", "학부모명", "보호자 이름", "보호자명", "보호자 성함", "보호자성함", "학부모 성함"] },
   { key: "guardianPhone", label: "학부모 연락처", aliases: ["학부모 연락처", "학부모연락처", "보호자 연락처", "학부모", "보호자"] },
   { key: "period", label: "등록기간(표기)", aliases: ["등록기간", "기간", "등록 기간"] },
   { key: "enrollStart", label: "등록 시작일", aliases: ["등록시작", "시작일", "등록 시작일"] },
   { key: "enrollEnd", label: "등록 종료일", aliases: ["등록종료", "종료일", "등록 종료일", "만료일"] },
   { key: "status", label: "상태", aliases: ["상태", "status"] },
+  { key: "firstRegisteredAt", label: "첫 등원일", aliases: ["첫 등원일", "첫등원일", "첫 등록일", "첫등록일", "최초 등록일", "등원일"] },
+  { key: "firstCounseledAt", label: "첫 상담일", aliases: ["첫 상담일", "첫상담일", "최초 상담일"] },
   { key: "memo", label: "메모", aliases: ["메모", "비고", "memo"] },
   { key: "fieldNote", label: "라운딩 특이사항", aliases: ["특이사항", "라운딩 특이사항"] },
 ];
@@ -97,6 +101,8 @@ export type ImportRow = {
   enrollStart: string | null;
   enrollEnd: string | null;
   status: MemberStatus;
+  firstRegisteredAt: string | null;
+  firstCounseledAt: string | null;
   memo: string | null;
   fieldNote: string | null;
   existingId?: string;
@@ -130,7 +136,12 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
     };
     if (cells.every((c) => c.trim() === "")) return;
 
-    const { name, short } = splitNameSuffix(get("name"));
+    const { name, short, tag } = splitNameSuffix(get("name"));
+    const memoParts: string[] = [];
+    if (tag) {
+      memoParts.push(`시트 표기 ${tag}`);
+      warnings.push({ row: rowNo, message: `이름 뒤 '${tag}' 표기는 메모에 옮겼습니다 (뜻 확인 필요)` });
+    }
     const sg = splitSchoolGrade(get("schoolGrade"));
     const school = get("school") || sg.school;
     const grade = get("grade") || sg.grade;
@@ -139,19 +150,50 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
     const trackRaw = get("track");
     const track = (TRACKS as readonly string[]).includes(trackRaw) ? trackRaw : null;
     if (trackRaw && !track) warnings.push({ row: rowNo, message: `계열 '${trackRaw}'은(는) 문과/이과/예체능이 아니라 비웠습니다` });
-    const period = parsePeriod(get("period"), today);
+    let period = parsePeriod(get("period"), today);
+    let address: string | null = get("address") || null;
+    // 시트에서 주소 칸에 "7월22~8월17일[27일]" 같은 등록기간을 적는 경우가 있다
+    if (!period && address) {
+      const fromAddress = parsePeriod(address, today);
+      if (fromAddress) {
+        period = fromAddress;
+        warnings.push({ row: rowNo, message: `주소 칸의 기간 표기 '${address}'를 등록기간으로 옮겼습니다` });
+        address = null;
+      }
+    }
     const enrollStart = normalizeDate(get("enrollStart")) ?? period?.startDate ?? null;
     const enrollEnd = normalizeDate(get("enrollEnd")) ?? period?.endDate ?? null;
     const seatRaw = get("seatNo");
     let seatNo: number | null = seatRaw ? Number(seatRaw) : null;
+    const seatStatus = seatRaw && !Number.isInteger(seatNo) ? statusFromToken(seatRaw) : null;
     if (seatRaw && !Number.isInteger(seatNo)) {
-      warnings.push({ row: rowNo, message: `좌석번호 '${seatRaw}'을(를) 읽을 수 없어 비웠습니다` });
+      if (!seatStatus) warnings.push({ row: rowNo, message: `좌석번호 '${seatRaw}'을(를) 읽을 수 없어 비웠습니다` });
       seatNo = null;
     }
     const statusRaw = get("status");
-    let status: MemberStatus = statusRaw && STATUS_BY_LABEL[statusRaw] ? STATUS_BY_LABEL[statusRaw] : seatNo ? "enrolled" : "prospect";
+    let status: MemberStatus = statusRaw && STATUS_BY_LABEL[statusRaw] ? STATUS_BY_LABEL[statusRaw] : (seatStatus ?? (seatNo ? "enrolled" : "prospect"));
+    if (status !== "enrolled" && seatNo !== null) {
+      warnings.push({ row: rowNo, message: `상태가 '${STATUS_LABEL[status]}'이라 좌석 ${seatNo}번을 배정하지 않았습니다` });
+      seatNo = null;
+    }
 
-    const phone = normalizePhone(get("phone"));
+    let phone = normalizePhone(get("phone"));
+    if (phone && !PHONE_RE.test(phone)) {
+      warnings.push({ row: rowNo, message: `연락처 '${phone}' 형식이 맞지 않아 메모에 옮겼습니다` });
+      memoParts.push(`연락처(원문) ${phone}`);
+      phone = null;
+    }
+    let guardianPhone = normalizePhone(get("guardianPhone"));
+    if (guardianPhone && !PHONE_RE.test(guardianPhone)) {
+      warnings.push({ row: rowNo, message: `보호자 연락처 '${guardianPhone}' 형식이 맞지 않아 메모에 옮겼습니다` });
+      memoParts.push(`보호자 연락처(원문) ${guardianPhone}`);
+      guardianPhone = null;
+    }
+    const firstRegisteredAt = normalizeDate(get("firstRegisteredAt"));
+    const firstCounseledAt = normalizeDate(get("firstCounseledAt"));
+    if (get("firstRegisteredAt") && !firstRegisteredAt) warnings.push({ row: rowNo, message: `첫 등원일 '${get("firstRegisteredAt")}' 형식을 읽을 수 없어 비웠습니다` });
+    if (get("firstCounseledAt") && !firstCounseledAt) warnings.push({ row: rowNo, message: `첫 상담일 '${get("firstCounseledAt")}' 형식을 읽을 수 없어 비웠습니다` });
+    const memo = [get("memo"), ...memoParts].filter(Boolean).join(" · ") || null;
     const r: ImportRow = {
       row: rowNo,
       name,
@@ -166,20 +208,21 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
       school,
       grade,
       track,
-      address: get("address") || null,
+      address,
       guardianName: get("guardianName") || null,
-      guardianPhone: normalizePhone(get("guardianPhone")),
+      guardianPhone,
       planType: short ? "short" : "regular",
       enrollStart,
       enrollEnd,
       status,
-      memo: get("memo") || null,
+      firstRegisteredAt,
+      firstCounseledAt,
+      memo,
       fieldNote: get("fieldNote") || null,
     };
 
     if (!name) errors.push({ row: rowNo, message: "이름이 없습니다" });
     if (get("birthDate") && !r.birthDate) warnings.push({ row: rowNo, message: `생년월일 '${get("birthDate")}' 형식을 읽을 수 없어 비웠습니다` });
-    if (phone && !/^01[016789]-\d{3,4}-\d{4}$/.test(phone)) warnings.push({ row: rowNo, message: `연락처 '${phone}' 형식을 확인하세요` });
 
     if (seatNo !== null) {
       const seat = seatByNo.get(seatNo);
@@ -215,13 +258,30 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
   return { rows, errors, warnings };
 }
 
-export async function commitImport(ctx: Ctx, rows: ImportRow[], db: Db = defaultDb): Promise<{ created: number; updated: number }> {
+export type ImportResult = { created: number; updated: number; failed: ImportMessage[] };
+
+/** 한 행의 실패가 전체를 멈추지 않도록 행 단위로 처리하고 실패 행을 돌려준다 */
+export async function commitImport(ctx: Ctx, rows: ImportRow[], db: Db = defaultDb): Promise<ImportResult> {
   requireRole(ctx, ...MANAGER_ROLES);
   const branchSeats = await db.select().from(seats).where(eq(seats.branchId, ctx.branchId));
   const seatByNo = new Map(branchSeats.map((s) => [s.seatNo, s.id]));
   let created = 0;
   let updated = 0;
+  const failed: ImportMessage[] = [];
   for (const r of rows) {
+    try {
+      await commitRow(ctx, r, seatByNo, db);
+      if (r.existingId) updated++;
+      else created++;
+    } catch (e) {
+      failed.push({ row: r.row, message: e instanceof Error ? e.message : "처리 실패" });
+    }
+  }
+  return { created, updated, failed };
+}
+
+async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, db: Db): Promise<void> {
+  {
     const guardian = r.guardianName || r.guardianPhone ? { name: r.guardianName, relation: null, phone: r.guardianPhone } : null;
     const enrollment = r.enrollStart && r.enrollEnd ? { startDate: r.enrollStart, endDate: r.enrollEnd, planType: r.planType, note: r.planType === "short" ? "단기(이관)" : null } : null;
     const base = {
@@ -239,6 +299,8 @@ export async function commitImport(ctx: Ctx, rows: ImportRow[], db: Db = default
       focusCare: r.focusCare,
       memo: r.memo,
       fieldNote: r.fieldNote,
+      firstRegisteredAt: r.firstRegisteredAt,
+      firstCounseledAt: r.firstCounseledAt,
       guardian,
       enrollment,
     };
@@ -260,17 +322,16 @@ export async function commitImport(ctx: Ctx, rows: ImportRow[], db: Db = default
           address: r.address ?? cur.address,
           memo: r.memo ?? cur.memo,
           fieldNote: r.fieldNote ?? cur.fieldNote,
+          firstRegisteredAt: r.firstRegisteredAt ?? cur.firstRegisteredAt,
+          firstCounseledAt: r.firstCounseledAt ?? cur.firstCounseledAt,
           status: cur.status,
         },
         db,
       );
-      updated++;
     } else {
       await createMember(ctx, { ...base, status: r.status, seatId: r.seatNo !== null ? (seatByNo.get(r.seatNo) ?? null) : null }, db);
-      created++;
     }
   }
-  return { created, updated };
 }
 
 /** 지점의 기존 회원 중 이름·좌석이 같은 회원 (미리보기 표시용) */

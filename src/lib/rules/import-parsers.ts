@@ -1,11 +1,35 @@
 import { toDateKey } from "./week";
 
-/** "이상윤/S" → 단기 회원 표시 분리 */
-export function splitNameSuffix(raw: string): { name: string; short: boolean } {
-  const m = raw.trim().match(/^(.*?)\s*\/\s*[sS]\s*$/);
-  if (m) return { name: m[1].trim(), short: true };
-  return { name: raw.trim(), short: false };
+/**
+ * 이름 뒤 표기를 분리한다. "이상윤/S" → 단기, "장지아/3" → 뜻이 확인되지 않은 표기(tag)로 보존.
+ * "김지민B" 처럼 붙여 쓴 동명이인 구분 문자는 이름의 일부로 둔다. "박민서B/S", "장은진/,S" 도 처리.
+ */
+export function splitNameSuffix(raw: string): { name: string; short: boolean; tag: string | null } {
+  const t = raw.trim();
+  const i = t.indexOf("/");
+  if (i < 0) return { name: t, short: false, tag: null };
+  const tokens = t
+    .slice(i + 1)
+    .split(/[\/,\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const short = tokens.some((x) => /^s$/i.test(x));
+  const rest = tokens.filter((x) => !/^s$/i.test(x));
+  return { name: t.slice(0, i).trim(), short, tag: rest.length ? "/" + rest.join("/") : null };
 }
+
+/** 좌석번호 칸에 적힌 상태 낱말("상담", "종료") → 회원 상태 */
+export function statusFromToken(raw: string): "prospect" | "enrolled" | "paused" | "withdrawn" | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (/^(상담|미등록|대기|문의)$/.test(s)) return "prospect";
+  if (/^(종료|퇴원|퇴실|탈퇴|만료)$/.test(s)) return "withdrawn";
+  if (/^(휴원|휴식|휴학|일시정지)$/.test(s)) return "paused";
+  if (/^(등록|재원|이용중)$/.test(s)) return "enrolled";
+  return null;
+}
+
+export const PHONE_RE = /^01[016789]-\d{3,4}-\d{4}$/;
 
 /** "한백고3" / "가온고 2" → 학교·학년 */
 export function splitSchoolGrade(raw: string): { school: string | null; grade: string | null } {

@@ -76,7 +76,7 @@ describe("CSV 이관 · 검증과 반영", () => {
     const pv = await previewImport(t.mgrCtx1, rows.slice(0, 4).concat([rows[4]]), autoMapHeaders(rows[0]), "2026-09-05");
     const ok = pv.rows.filter((_, i) => !pv.errors.some((e) => e.row === i + 2));
     const result = await commitImport(t.mgrCtx1, ok);
-    expect(result).toEqual({ created: 3, updated: 0 });
+    expect(result).toMatchObject({ created: 3, updated: 0, failed: [] });
     const list = await listMembers(t.mgrCtx1);
     expect(list.map((m) => [m.name, m.seatNo])).toEqual([
       ["김지민", 1],
@@ -92,7 +92,7 @@ describe("CSV 이관 · 검증과 반영", () => {
     expect(again.errors).toEqual([]);
     expect(again.rows[0].existingId).toBeDefined();
     const r2 = await commitImport(t.mgrCtx1, again.rows);
-    expect(r2).toEqual({ created: 0, updated: 1 });
+    expect(r2).toMatchObject({ created: 0, updated: 1, failed: [] });
     const d2 = await getMember(t.mgrCtx1, list[0].id);
     expect(d2.phone).toBe("010-9999-8888");
     expect(d2.track).toBe("이과");
@@ -102,5 +102,47 @@ describe("CSV 이관 · 검증과 반영", () => {
   it("조교는 이관할 수 없다", async () => {
     const t = await seedTwoBranches();
     await expect(previewImport(t.asstCtx1, rows, autoMapHeaders(rows[0]), "2026-09-05")).rejects.toThrow(ForbiddenError);
+  });
+
+  it("실제 시트 형태: 좌석 칸의 상담/종료, 주소 칸의 기간, 이름 표기, 잘못된 보호자 연락처, 첫 등원일", async () => {
+    const t = await seedTwoBranches();
+    const data = [
+      ["좌석번호", "성명", "연락처", "Column 7", "주소", "보호자 성함", "보호자 연락처", "비고", "첫 등원일"],
+      ["3", "장지아/3", "010-1111-2222", "학생", "7월22~8월17일[27일]", "김정은", "010.56830.1234", "인강할인권", "2026-08-18"],
+      ["종료", "김민수/S", "01033334444", "성인", "동탄순환대로 26길", "", "010-5555-6666", "", "2026-07-08"],
+      ["상담", "박가림", "", "", "", "", "", "친구 소개", ""],
+      ["휴원", "이보나", "010-7777-8888", "", "", "", "", "", ""],
+    ];
+    const mapping = { ...autoMapHeaders(data[0]), 3: "memberKind" as const };
+    const pv = await previewImport(t.mgrCtx1, data, mapping, "2026-09-06");
+    expect(pv.errors).toEqual([]);
+    expect(pv.rows.map((r) => [r.name, r.status, r.seatNo, r.planType, r.enrollStart, r.enrollEnd, r.address])).toEqual([
+      ["장지아", "enrolled", 3, "regular", "2026-07-22", "2026-08-17", null],
+      ["김민수", "withdrawn", null, "short", null, null, "동탄순환대로 26길"],
+      ["박가림", "prospect", null, "regular", null, null, null],
+      ["이보나", "paused", null, "regular", null, null, null],
+    ]);
+    expect(pv.rows[0].memo).toBe("인강할할인권".replace("할할", "할") + " · 시트 표기 /3 · 보호자 연락처(원문) 010.56830.1234");
+    expect(pv.rows[0].guardianPhone).toBeNull();
+    expect(pv.rows[0].guardianName).toBe("김정은");
+    expect(pv.rows[0].firstRegisteredAt).toBe("2026-08-18");
+    expect(pv.rows[1].phone).toBe("010-3333-4444");
+    expect(pv.warnings.map((w) => w.message)).toEqual(expect.arrayContaining([expect.stringContaining("'/3' 표기"), expect.stringContaining("등록기간으로 옮겼습니다"), expect.stringContaining("보호자 연락처")]));
+    expect(pv.warnings.some((w) => /좌석번호 '(종료|상담|휴원)'/.test(w.message))).toBe(false);
+
+    const result = await commitImport(t.mgrCtx1, pv.rows);
+    expect(result).toMatchObject({ created: 4, updated: 0, failed: [] });
+    const list = await listMembers(t.mgrCtx1, {});
+    expect(list.map((m) => [m.name, m.status]).sort()).toEqual([["김민수", "withdrawn"], ["박가림", "prospect"], ["이보나", "paused"], ["장지아", "enrolled"]].sort());
+  });
+
+  it("반영 중 한 행이 실패해도 나머지는 반영되고 실패 행을 돌려준다", async () => {
+    const t = await seedTwoBranches();
+    const data = [["좌석번호", "성명"], ["1", "정상"], ["2", "실패"]];
+    const pv = await previewImport(t.mgrCtx1, data, autoMapHeaders(data[0]), "2026-09-06");
+    pv.rows[1].name = "x".repeat(40); // 30자 초과 → createMember 검증 실패
+    const result = await commitImport(t.mgrCtx1, pv.rows);
+    expect(result.created).toBe(1);
+    expect(result.failed).toEqual([{ row: 3, message: expect.stringContaining("30자") }]);
   });
 });
