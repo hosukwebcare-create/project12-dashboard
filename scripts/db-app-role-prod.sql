@@ -2,20 +2,18 @@
 -- 테이블 소유권도 이 계정으로 옮겨 서버 기동 시 자동 마이그레이션(ALTER TABLE)이 되게 하고,
 -- FORCE ROW LEVEL SECURITY 덕분에 소유자여도 정책은 적용된다.
 --
---   psql "$DATABASE_URL" -v app_password="'긴비밀번호'" -f scripts/db-app-role-prod.sql
+--   psql "$DATABASE_URL" -v app_password=긴비밀번호 -f scripts/db-app-role-prod.sql
+--   (값에 따옴표를 넣지 않는다. :'app_password' 가 알아서 문자열로 감싼다)
 --
 -- 실행 후 앱 서비스의 DATABASE_URL 을 postgresql://byeolha_app:<비밀번호>@<호스트>:5432/<db> 로 바꾼다.
+-- (psql 변수는 DO 블록 안에서 치환되지 않으므로 \gexec 로 문장을 만들어 실행한다)
 \set ON_ERROR_STOP on
 
-do $$
-begin
-  if not exists (select 1 from pg_roles where rolname = 'byeolha_app') then
-    execute format('create role byeolha_app login password %L nosuperuser nocreatedb nocreaterole', :'app_password');
-  else
-    execute format('alter role byeolha_app with login password %L nosuperuser nocreatedb nocreaterole', :'app_password');
-  end if;
-  execute format('grant connect, create on database %I to byeolha_app', current_database());
-end $$;
+select format('create role byeolha_app login password %L nosuperuser nocreatedb nocreaterole', :'app_password')
+where not exists (select 1 from pg_roles where rolname = 'byeolha_app') \gexec
+select format('alter role byeolha_app with login password %L nosuperuser nocreatedb nocreaterole', :'app_password')
+where exists (select 1 from pg_roles where rolname = 'byeolha_app') \gexec
+select format('grant connect, create on database %I to byeolha_app', current_database()) \gexec
 
 grant usage, create on schema public to byeolha_app;
 grant usage on schema drizzle to byeolha_app;
