@@ -20,6 +20,8 @@ export async function GET() {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       localTime: now.toLocaleString("sv-SE"),
       scheduler: schedulerRunning(),
+      // 어느 커밋이 떠 있는지. Railway 가 배포 시 넣어 주는 값이고, 다른 환경은 GIT_COMMIT 으로 넘긴다
+      commit: (process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT ?? "").slice(0, 7) || undefined,
     });
   } catch (e) {
     return NextResponse.json({ ok: false, db: false, error: e instanceof Error ? e.message : "db error" }, { status: 503 });
