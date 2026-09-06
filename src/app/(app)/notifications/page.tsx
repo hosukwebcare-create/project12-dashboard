@@ -54,14 +54,14 @@ async function NotificationsPage() {
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">알림이 없습니다</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {rows.map((n) => {
             const href = hrefFor(n);
             const inner = (
-              <div className={cn("px-3 py-3", !n.readAt && "bg-sky-50/60")}>
+              <div className={cn("px-4 py-3", !n.readAt && "bg-accent/40")}>
                 <div className="flex items-center gap-2 text-sm">
-                  {!n.readAt ? <span className="size-2 rounded-full bg-sky-500" /> : null}
-                  <span className="font-medium">{TYPE_LABEL[n.type] ?? n.type}</span>
+                  <span className={cn(!n.readAt ? "font-semibold" : "font-medium text-muted-foreground")}>{TYPE_LABEL[n.type] ?? n.type}</span>
+                  {!n.readAt ? <span className="text-[11px] text-brand-foreground">새 알림</span> : null}
                   <span className="ml-auto text-xs text-muted-foreground">{fmtRelative(n.createdAt)}</span>
                 </div>
                 <p className="mt-0.5 truncate text-sm text-muted-foreground">{textFor(n)}</p>

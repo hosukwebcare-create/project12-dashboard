@@ -39,7 +39,7 @@ async function MockExamRoundPage({ params }: { params: Promise<{ id: string }> }
       {canManage ? (
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle className="text-base">회차 정보 수정</CardTitle>
+            <CardTitle>회차 정보 수정</CardTitle>
           </CardHeader>
           <CardContent>
             <InlineForm action={upsertRoundAction}>

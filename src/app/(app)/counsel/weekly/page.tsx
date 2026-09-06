@@ -128,7 +128,7 @@ function Cell({ memberId, week, cell }: { memberId: string; week: string; cell?:
 
 function Part({ text, tone }: { text: string | null; tone: "issue" | "resolution" }) {
   return (
-    <span className={cn("block h-9 w-1/2 overflow-hidden rounded px-1 text-[11px] leading-tight", text ? (tone === "issue" ? "bg-violet-50 text-violet-900" : "bg-emerald-50 text-emerald-900") : "bg-muted/40 text-muted-foreground")}>
+    <span className={cn("block h-9 w-1/2 overflow-hidden rounded px-1 text-[11px] leading-tight", text ? (tone === "issue" ? "bg-muted text-foreground" : "bg-emerald-50 text-emerald-900") : "text-muted-foreground")}>
       {text ? text.slice(0, 40) : "미작성"}
     </span>
   );

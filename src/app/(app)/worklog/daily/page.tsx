@@ -99,7 +99,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">대리 입력</CardTitle>
+          <CardTitle>대리 입력</CardTitle>
           <CardDescription>직원이 체크를 놓쳤을 때 지점장이 대신 입력합니다. 감사 로그에 남습니다.</CardDescription>
         </CardHeader>
         <CardContent>

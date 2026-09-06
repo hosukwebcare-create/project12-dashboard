@@ -36,7 +36,7 @@ async function MockExamsPage() {
       {rounds.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">등록된 회차가 없습니다</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {rounds.map((r) => (
             <li key={r.id}>
               <Link href={`/mock-exams/${r.id}`} className="flex flex-wrap items-center gap-3 px-3 py-3 hover:bg-muted/50">

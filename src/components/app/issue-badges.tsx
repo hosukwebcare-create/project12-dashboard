@@ -3,15 +3,16 @@ import type { IssueStatus } from "@/db/schema";
 import { cn } from "@/lib/utils";
 import { ISSUE_STATUS_LABEL, SEVERITY_LABEL } from "@/modules/issues/repo";
 
+/** 상태·심각도 태그. 옅은 바탕에 글자만, 긴급만 글자를 굵게 */
 const STATUS_STYLE: Record<IssueStatus, string> = {
-  open: "bg-red-100 text-red-800",
-  in_progress: "bg-amber-100 text-amber-800",
-  resolved: "bg-emerald-100 text-emerald-800",
+  open: "bg-rose-50 text-rose-800",
+  in_progress: "bg-amber-50 text-amber-800",
+  resolved: "bg-emerald-50 text-emerald-800",
 };
 const SEV_STYLE: Record<string, string> = {
-  low: "bg-neutral-100 text-neutral-700",
-  normal: "bg-sky-100 text-sky-800",
-  high: "bg-red-600 text-white",
+  low: "bg-muted text-muted-foreground",
+  normal: "bg-sky-50 text-sky-800",
+  high: "bg-rose-100 font-semibold text-rose-900",
 };
 
 export function IssueStatusBadge({ status }: { status: IssueStatus }) {

@@ -62,7 +62,7 @@ async function RoundingHistoryPage({ searchParams }: { searchParams: Promise<{ d
                         <GradeChip grade={r.byRound[n]?.grade ?? null} points={r.byRound[n]?.points} />
                       </td>
                     ))}
-                    <td className={cn("px-2 py-1.5 text-right font-semibold tabular-nums", pts > 0 && "text-red-600")}>{pts || ""}</td>
+                    <td className={cn("px-2 py-1.5 text-right font-semibold tabular-nums", pts > 0 && "text-rose-700")}>{pts || ""}</td>
                   </tr>
                 );
               })}

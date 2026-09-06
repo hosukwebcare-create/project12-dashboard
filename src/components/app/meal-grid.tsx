@@ -48,7 +48,7 @@ export function MealGridView({ grid, canOverride }: { grid: MealGrid; canOverrid
                 좌석 · 이름
               </th>
               {grid.days.map((d) => (
-                <th key={d.date} colSpan={2} className={cn("border-l px-1 py-1 text-center font-medium", d.dow === 0 && "text-red-600", d.dow === 6 && "text-blue-600", d.locked && "bg-neutral-100 text-muted-foreground")}>
+                <th key={d.date} colSpan={2} className={cn("border-l px-1 py-1 text-center font-medium", d.dow === 0 && "text-rose-700", d.dow === 6 && "text-sky-700", d.locked && "bg-muted text-muted-foreground")}>
                   {Number(d.date.slice(8, 10))}
                   <span className="block text-[10px] font-normal">{DOW[d.dow]}</span>
                 </th>
@@ -98,14 +98,14 @@ function Cells({ day, o, onToggle }: { day: MealGrid["days"][number]; o?: { lunc
   const cell = (meal: MealKind, available: boolean) => {
     const on = o?.[meal] ?? false;
     return (
-      <td className={cn("border-t border-l px-0.5 py-0.5 text-center", !available && "bg-neutral-100", day.locked && available && "bg-neutral-50")}>
+      <td className={cn("border-t border-l px-0.5 py-0.5 text-center", !available && "bg-muted", day.locked && available && "bg-muted/50")}>
         {available ? (
           <button
             type="button"
             onClick={() => onToggle(meal, on)}
             aria-pressed={on}
             aria-label={`${day.date} ${meal === "lunch" ? "중식" : "석식"}`}
-            className={cn("size-6 rounded border text-[10px] font-bold", on ? "border-emerald-600 bg-emerald-500 text-white" : "bg-background text-transparent hover:bg-muted", day.locked && "opacity-70")}
+            className={cn("size-6 rounded-sm border text-[10px] font-semibold transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border bg-card text-transparent hover:bg-muted", day.locked && "opacity-60")}
           >
             {meal === "lunch" ? "L" : "D"}
           </button>

@@ -47,7 +47,7 @@ async function IssuesPage({ searchParams }: { searchParams: Promise<{ status?: s
       {rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">해당 상태의 이슈가 없습니다</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {rows.map((i) => (
             <li key={i.id}>
               <Link href={`/issues/${i.id}`} className="block px-3 py-3 hover:bg-muted/50">

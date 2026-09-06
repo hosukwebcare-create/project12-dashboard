@@ -40,7 +40,7 @@ export function AlimtalkComposer({ templates, members, branchName, providerName 
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">1. 템플릿</CardTitle>
+            <CardTitle>템플릿</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <select name="templateId" value={tplId} onChange={(e) => setTplId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm" aria-label="템플릿">
@@ -67,7 +67,7 @@ export function AlimtalkComposer({ templates, members, branchName, providerName 
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2. 대상</CardTitle>
+            <CardTitle>대상</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-3 text-sm">
@@ -121,11 +121,11 @@ export function AlimtalkComposer({ templates, members, branchName, providerName 
       </div>
       <Card className="h-fit">
         <CardHeader>
-          <CardTitle className="text-base">미리보기</CardTitle>
+          <CardTitle>미리보기</CardTitle>
           <CardDescription>발송 채널: {providerName === "mock" ? "테스트(실제 발송 없음)" : providerName}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg bg-[#FEE500]/30 p-3 text-sm whitespace-pre-wrap">{preview}</div>
+          <div className="rounded-md bg-[#FEE500]/20 px-3.5 py-3 text-sm leading-relaxed whitespace-pre-wrap">{preview}</div>
         </CardContent>
       </Card>
     </form>

@@ -79,7 +79,7 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
         <div className="flex items-center gap-3 text-sm text-gray-600">
           <span>{data.rules.map((r) => `${r.name}[${r.points}점]`).join(" / ")}</span>
           <span className="text-xs text-gray-400">갱신 {new Date(data.generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
-          {error ? <span className="text-red-600">갱신 실패</span> : null}
+          {error ? <span className="text-rose-700">갱신 실패</span> : null}
           <button type="button" onClick={toggleFullscreen} className="rounded border px-2 py-0.5 text-xs hover:bg-gray-100 print:hidden">
             전체화면
           </button>

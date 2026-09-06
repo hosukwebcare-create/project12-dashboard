@@ -35,13 +35,13 @@ async function SettlementPage({ searchParams }: { searchParams: Promise<{ month?
         </Button>
         <span className="ml-auto text-sm">
           총 {st.totals.mealCount}식 · 청구 {st.totals.amount.toLocaleString()}원 · 입금 {st.totals.paidAmount.toLocaleString()}원 · 미수{" "}
-          <span className={cn("font-semibold", st.totals.amount - st.totals.paidAmount > 0 && "text-red-600")}>{(st.totals.amount - st.totals.paidAmount).toLocaleString()}원</span>
+          <span className={cn("font-semibold", st.totals.amount - st.totals.paidAmount > 0 && "text-rose-700")}>{(st.totals.amount - st.totals.paidAmount).toLocaleString()}원</span>
         </span>
       </div>
       {st.rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">이 달의 주문이 없습니다</p>
       ) : (
-        <div className="divide-y rounded-lg border">
+        <div className="divide-y divide-border rounded-lg border border-border bg-card">
           {st.rows.map((r) => (
             <InlineForm key={r.memberId} action={markPaidAction} className="px-3 py-2">
               <input type="hidden" name="memberId" value={r.memberId} />
@@ -53,7 +53,7 @@ async function SettlementPage({ searchParams }: { searchParams: Promise<{ month?
               <Input name="paidAt" type="date" defaultValue={r.paidAt ?? ""} className="w-40" aria-label="결제일" />
               <Input name="paidAmount" type="number" min={0} step={1000} defaultValue={r.paidAmount ?? ""} placeholder={String(r.amount)} className="w-28" aria-label="결제액" />
               <Input name="note" defaultValue={r.note ?? ""} placeholder="메모" className="w-32" />
-              <span className={cn("w-24 text-sm tabular-nums", r.balance > 0 ? "text-red-600" : "text-emerald-700")}>{r.balance > 0 ? `미수 ${r.balance.toLocaleString()}` : "완납"}</span>
+              <span className={cn("w-24 text-sm tabular-nums", r.balance > 0 ? "text-rose-700" : "text-emerald-700")}>{r.balance > 0 ? `미수 ${r.balance.toLocaleString()}` : "완납"}</span>
             </InlineForm>
           ))}
         </div>

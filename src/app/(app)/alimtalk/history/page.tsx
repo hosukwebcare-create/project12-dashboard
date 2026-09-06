@@ -13,7 +13,7 @@ import { listMessages } from "@/modules/alimtalk/repo";
 export const metadata = { title: "알림톡 발송 이력" };
 
 const STATUS_LABEL: Record<MessageStatus, string> = { queued: "대기", sent: "발송", failed: "실패" };
-const STATUS_STYLE: Record<MessageStatus, string> = { queued: "bg-amber-100 text-amber-800", sent: "bg-emerald-100 text-emerald-800", failed: "bg-red-100 text-red-800" };
+const STATUS_STYLE: Record<MessageStatus, string> = { queued: "bg-amber-50 text-amber-800", sent: "bg-emerald-50 text-emerald-800", failed: "bg-rose-50 text-rose-800" };
 
 async function AlimtalkHistoryPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const ctx = await getCtx();

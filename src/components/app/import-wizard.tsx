@@ -168,7 +168,7 @@ export function ImportWizard({ fields }: Props) {
                       const errs = errorRows.get(r.row);
                       const warns = warnRows.get(r.row);
                       return (
-                        <tr key={r.row} className={cn("border-t align-top", errs ? "bg-red-50" : warns ? "bg-amber-50" : "")}>
+                        <tr key={r.row} className={cn("border-t align-top", errs ? "bg-rose-50" : warns ? "bg-amber-50" : "")}>
                           <td className="px-2 py-1 tabular-nums">{r.row}</td>
                           <td className="px-2 py-1 font-medium">
                             {r.name || <span className="text-destructive">(없음)</span>}

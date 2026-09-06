@@ -65,7 +65,7 @@ async function IssueDetailPage({ params }: { params: Promise<{ id: string }> }) 
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">코멘트 ({issue.comments.length})</CardTitle>
+              <CardTitle>코멘트 ({issue.comments.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {issue.comments.map((c) => (
@@ -83,7 +83,7 @@ async function IssueDetailPage({ params }: { params: Promise<{ id: string }> }) 
         {canManage ? (
           <Card className="h-fit">
             <CardHeader>
-              <CardTitle className="text-base">처리</CardTitle>
+              <CardTitle>처리</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <form action={updateIssueAction} className="space-y-2">

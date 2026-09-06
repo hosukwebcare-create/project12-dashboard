@@ -46,7 +46,7 @@ async function WebhooksPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">최근 이벤트</CardTitle>
+          <CardTitle>최근 이벤트</CardTitle>
           <CardDescription>운영에서는 배치(/api/jobs/outbox)가 주기적으로 전송합니다. 아래 버튼으로 지금 바로 보낼 수 있습니다.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -61,7 +61,7 @@ async function WebhooksPage() {
             <ul className="divide-y text-sm">
               {events.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-2 py-1.5">
-                  <span className={cn("rounded px-1.5 text-xs", e.status === "sent" ? "bg-emerald-100 text-emerald-800" : e.status === "failed" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800")}>{e.status === "sent" ? "전송" : e.status === "failed" ? "실패" : "대기"}</span>
+                  <span className={cn("rounded px-1.5 text-xs", e.status === "sent" ? "bg-emerald-50 text-emerald-800" : e.status === "failed" ? "bg-rose-50 text-rose-800" : "bg-amber-50 text-amber-800")}>{e.status === "sent" ? "전송" : e.status === "failed" ? "실패" : "대기"}</span>
                   <span className="text-xs text-muted-foreground">{fmtDateTime(e.sentAt ?? e.createdAt)}</span>
                   <span className="truncate">{e.text}</span>
                   {e.lastError ? <span className="text-xs text-destructive">{e.lastError}</span> : null}
