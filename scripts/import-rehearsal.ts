@@ -78,7 +78,7 @@ async function main() {
   console.log("\n== 파싱 결과 분포");
   console.log("  상태:", count(pv.rows, (r) => r.status));
   console.log("  좌석 배정:", count(pv.rows, (r) => (r.seatNo !== null ? "있음" : "없음")));
-  console.log("  구분:", count(pv.rows, (r) => r.memberKind), "| 단기:", count(pv.rows, (r) => r.planType));
+  console.log("  구분:", count(pv.rows, (r) => r.memberKind ?? "칸 없음"), "| 단기:", count(pv.rows, (r) => r.planType));
   console.log("  연락처:", count(pv.rows, (r) => (r.phone ? "있음" : "없음")), "| 생년월일:", count(pv.rows, (r) => (r.birthDate ? "있음" : "없음")));
   console.log("  등록기간:", count(pv.rows, (r) => (r.enrollStart && r.enrollEnd ? "있음" : "없음")), "| 계열:", count(pv.rows, (r) => r.track ?? "없음"));
   console.log("  학교/학년:", count(pv.rows, (r) => (r.school ? (r.grade ? "학교+학년" : "학교만") : "없음")), "| 집중관리:", count(pv.rows, (r) => String(r.focusCare)));

@@ -477,7 +477,30 @@ async function main() {
     const book = readBook(path(files.worklog));
     const FORMS = new Set(["주간조교", "야간조교", "원장", "컨설팅", "선생님"]);
     const roleOf = (form: string): s.BranchRole => (form === "원장" ? "branch_manager" : form === "컨설팅" || form === "선생님" ? "mentor" : "assistant");
-    const slots = await db.select().from(s.shiftSlots).where(and(eq(s.shiftSlots.branchId, branch.id), eq(s.shiftSlots.active, true)));
+    let slots = await db.select().from(s.shiftSlots).where(and(eq(s.shiftSlots.branchId, branch.id), eq(s.shiftSlots.active, true)));
+    // 근무 타임이 없으면 시트 머리글에서 만든다. 없이 진행하면 어느 타임에 일했는지가 통째로 버려진다.
+    if (!slots.length) {
+      const labels: string[] = [];
+      for (const g of Object.values(book)) {
+        const hdrRow = g.findIndex((row) => row[0] === "근무자");
+        if (hdrRow < 0) continue;
+        for (const h of g[hdrRow]) if (/^(일\s*)?\d+\s*타임$/.test(h.trim()) && !labels.includes(h.trim())) labels.push(h.trim());
+        if (labels.length) break;
+      }
+      if (labels.length) {
+        // 시작·종료 시각은 시트에 없다. 자리만 잡아 두고 지점장이 근무 › 타임·직원 설정에서 고친다.
+        await db.insert(s.shiftSlots).values(
+          labels.map((label, i) => {
+            const weekend = label.startsWith("일");
+            return { branchId: branch.id, key: `${weekend ? "w" : "t"}${i + 1}`, label, startTime: "00:00", endTime: "00:00", hours: 0, weekend, sort: i + 1 };
+          }),
+        );
+        slots = await db.select().from(s.shiftSlots).where(and(eq(s.shiftSlots.branchId, branch.id), eq(s.shiftSlots.active, true)));
+        log(`  근무 타임 ${labels.length}개를 시트 머리글에서 만들었습니다 (${labels.join(", ")}). 시작·종료 시각과 인정 시간은 근무 › 타임·직원 설정에서 채워야 합니다.`);
+      } else {
+        log("  경고: 근무 타임이 없고 시트 머리글에서도 찾지 못해 타임 체크가 기록되지 않습니다");
+      }
+    }
     const slotByLabel = new Map(slots.map((x) => [x.label, x.key]));
     const userByName = new Map<string, string>();
     for (const u of staff) userByName.set(u.name.replace(/\s+/g, ""), u.id);

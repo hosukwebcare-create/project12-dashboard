@@ -14,6 +14,7 @@ export async function createBranchAction(_p: ActionState, fd: FormData): Promise
       await createBranch(ctx, {
         code: String(fd.get("code") ?? ""),
         name: String(fd.get("name") ?? ""),
+        ownerName: String(fd.get("ownerName") ?? ""),
         seatCount: Number(fd.get("seatCount") ?? 0),
         roundsPerDay: Number(fd.get("roundsPerDay") ?? 12),
         manager: loginId ? { loginId, name: String(fd.get("managerName") ?? ""), password: String(fd.get("managerPassword") ?? "") } : undefined,
@@ -30,7 +31,7 @@ export async function updateBranchInfoAction(_p: ActionState, fd: FormData): Pro
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      await updateBranchInfo(ctx, String(fd.get("id") ?? ""), { code: String(fd.get("code") ?? ""), name: String(fd.get("name") ?? "") });
+      await updateBranchInfo(ctx, String(fd.get("id") ?? ""), { code: String(fd.get("code") ?? ""), name: String(fd.get("name") ?? ""), ownerName: String(fd.get("ownerName") ?? "") });
     } catch (e) {
       return { error: toMessage(e) };
     }

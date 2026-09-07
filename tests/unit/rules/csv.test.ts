@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCsv } from "@/lib/rules/csv";
-import { parsePeriod, splitNameSuffix, splitSchoolGrade, statusFromToken } from "@/lib/rules/import-parsers";
+import { normalizeDate, parsePeriod, splitNameSuffix, splitSchoolGrade, statusFromToken } from "@/lib/rules/import-parsers";
 
 describe("parseCsv", () => {
   it("쉼표·따옴표·이스케이프·CRLF를 처리한다", () => {
@@ -45,6 +45,16 @@ describe("import parsers", () => {
     expect(parsePeriod("2026-08-18 ~ 2026-09-17", "2026-09-05")).toEqual({ startDate: "2026-08-18", endDate: "2026-09-17" });
     expect(parsePeriod("", "2026-09-05")).toBeNull();
     expect(parsePeriod("무기한", "2026-09-05")).toBeNull();
+  });
+
+  it("결제시트의 '2026년 9월 1일' 표기도 날짜로 읽는다", () => {
+    expect(normalizeDate("2026년 9월 1일")).toBe("2026-09-01");
+    expect(normalizeDate("2026년 12월 28일")).toBe("2026-12-28");
+    expect(normalizeDate("2026-09-01")).toBe("2026-09-01");
+    expect(normalizeDate("2026.9.1")).toBe("2026-09-01");
+    expect(normalizeDate("")).toBeNull();
+    expect(normalizeDate("9월 1일")).toBeNull(); // 연도가 없으면 판단하지 않는다
+    expect(normalizeDate("2026년 13월 1일")).toBeNull();
   });
 
   it("실제 시트의 이름 표기: /s 소문자, /3 같은 미확인 표기, 동명이인 B, 복합 표기", () => {

@@ -57,6 +57,8 @@ export const branches = pgTable("branches", {
   id: id(),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
+  /** 점주(가맹주) 이름. 근무하는 지점장과는 별개이고 한 사람이 여러 지점을 가질 수 있다 */
+  ownerName: text("owner_name"),
   settings: jsonb("settings").$type<BranchSettings>().notNull().default(DEFAULT_BRANCH_SETTINGS),
   boardTokenHash: text("board_token_hash"),
   active: boolean("active").notNull().default(true),

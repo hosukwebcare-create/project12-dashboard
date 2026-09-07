@@ -67,12 +67,15 @@ export function normalizePhone(raw: string): string | null {
   return raw.trim();
 }
 
+/** "2026-09-01" / "2026.9.1" / "2026년 9월 1일" → "2026-09-01". 읽을 수 없으면 null */
 export function normalizeDate(raw: string): string | null {
   const s = raw.trim();
   if (!s) return null;
-  const m = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+  const m = s.match(/^(\d{4})\s*(?:[./-]|년\s*)\s*(\d{1,2})\s*(?:[./-]|월\s*)\s*(\d{1,2})\s*일?$/);
   if (!m) return null;
-  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  const [mo, d] = [Number(m[2]), Number(m[3])];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return `${m[1]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 export function normalizeBool(raw: string): boolean {

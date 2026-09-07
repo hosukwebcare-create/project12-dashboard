@@ -51,7 +51,7 @@ export const IMPORT_FIELDS: { key: ImportField; label: string; aliases: string[]
   { key: "guardianPhone", label: "학부모 연락처", aliases: ["학부모 연락처", "학부모연락처", "보호자 연락처", "학부모", "보호자"] },
   { key: "period", label: "등록기간(표기)", aliases: ["등록기간", "기간", "등록 기간"] },
   { key: "enrollStart", label: "등록 시작일", aliases: ["등록시작", "시작일", "등록 시작일"] },
-  { key: "enrollEnd", label: "등록 종료일", aliases: ["등록종료", "종료일", "등록 종료일", "만료일"] },
+  { key: "enrollEnd", label: "등록 종료일", aliases: ["등록종료", "종료일", "등록 종료일", "만료일", "등록마감일", "등록 마감일", "마감일"] },
   { key: "status", label: "상태", aliases: ["상태", "status"] },
   { key: "firstRegisteredAt", label: "첫 등원일", aliases: ["첫 등원일", "첫등원일", "첫 등록일", "첫등록일", "최초 등록일", "등원일"] },
   { key: "firstCounseledAt", label: "첫 상담일", aliases: ["첫 상담일", "첫상담일", "최초 상담일"] },
@@ -87,9 +87,11 @@ export type ImportRow = {
   phone: string | null;
   birthDate: string | null;
   gender: string | null;
-  memberKind: "student" | "adult";
+  /** 시트에 구분 칸이 없거나 비었으면 null (갱신 때 기존 값을 그대로 둔다) */
+  memberKind: "student" | "adult" | null;
   studentType: string | null;
-  focusCare: boolean;
+  /** 시트에 집중관리 칸이 없거나 비었으면 null */
+  focusCare: boolean | null;
   target: string | null;
   school: string | null;
   grade: string | null;
@@ -146,7 +148,8 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
     const school = get("school") || sg.school;
     const grade = get("grade") || sg.grade;
     const kindRaw = get("memberKind");
-    const memberKind: "student" | "adult" = /성인|adult/i.test(kindRaw) ? "adult" : "student";
+    // 칸이 비어 있으면 판단하지 않는다. 갱신 때 성인 회원이 학생으로 덮이면 요금이 틀려진다
+    const memberKind: "student" | "adult" | null = !kindRaw ? null : /성인|adult/i.test(kindRaw) ? "adult" : "student";
     const trackRaw = get("track");
     const track = (TRACKS as readonly string[]).includes(trackRaw) ? trackRaw : null;
     if (trackRaw && !track) warnings.push({ row: rowNo, message: `계열 '${trackRaw}'은(는) 문과/이과/예체능이 아니라 비웠습니다` });
@@ -161,8 +164,13 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
         address = null;
       }
     }
-    const enrollStart = normalizeDate(get("enrollStart")) ?? period?.startDate ?? null;
+    // 결제시트처럼 '등록기간'에 시작일 하나만 적고 종료일을 '등록마감일'에 따로 두는 시트가 있다
+    const periodRaw = get("period");
+    const periodStartOnly = period ? null : normalizeDate(periodRaw);
+    const enrollStart = normalizeDate(get("enrollStart")) ?? period?.startDate ?? periodStartOnly;
     const enrollEnd = normalizeDate(get("enrollEnd")) ?? period?.endDate ?? null;
+    if (periodRaw && !period && !periodStartOnly) warnings.push({ row: rowNo, message: `등록기간 '${periodRaw}' 표기를 읽을 수 없어 비웠습니다` });
+    if (enrollStart && !enrollEnd) warnings.push({ row: rowNo, message: "등록 종료일이 없어 등록기간을 만들지 않았습니다" });
     const seatRaw = get("seatNo");
     let seatNo: number | null = seatRaw ? Number(seatRaw) : null;
     const seatStatus = seatRaw && !Number.isInteger(seatNo) ? statusFromToken(seatRaw) : null;
@@ -203,7 +211,7 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
       gender: get("gender") || null,
       memberKind,
       studentType: get("studentType") || null,
-      focusCare: normalizeBool(get("focusCare")),
+      focusCare: get("focusCare") ? normalizeBool(get("focusCare")) : null,
       target: get("target") || null,
       school,
       grade,
@@ -289,14 +297,12 @@ async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, 
       phone: r.phone,
       birthDate: r.birthDate,
       gender: r.gender,
-      memberKind: r.memberKind,
       studentType: r.studentType,
       school: r.school,
       grade: r.grade,
       track: r.track,
       target: r.target,
       address: r.address,
-      focusCare: r.focusCare,
       memo: r.memo,
       fieldNote: r.fieldNote,
       firstRegisteredAt: r.firstRegisteredAt,
@@ -311,6 +317,9 @@ async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, 
         r.existingId,
         {
           ...base,
+          // 시트에 없던 칸은 기존 값을 그대로 둔다 (붙여넣은 시트가 일부 칸만 가진 경우가 많다)
+          memberKind: r.memberKind ?? cur.memberKind,
+          focusCare: r.focusCare ?? cur.focusCare,
           phone: r.phone ?? cur.phone,
           birthDate: r.birthDate ?? cur.birthDate,
           gender: r.gender ?? cur.gender,
@@ -329,7 +338,7 @@ async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, 
         db,
       );
     } else {
-      await createMember(ctx, { ...base, status: r.status, seatId: r.seatNo !== null ? (seatByNo.get(r.seatNo) ?? null) : null }, db);
+      await createMember(ctx, { ...base, memberKind: r.memberKind ?? "student", focusCare: r.focusCare ?? false, status: r.status, seatId: r.seatNo !== null ? (seatByNo.get(r.seatNo) ?? null) : null }, db);
     }
   }
 }

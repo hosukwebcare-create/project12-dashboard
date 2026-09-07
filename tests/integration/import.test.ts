@@ -136,6 +136,51 @@ describe("CSV 이관 · 검증과 반영", () => {
     expect(list.map((m) => [m.name, m.status]).sort()).toEqual([["김민수", "withdrawn"], ["박가림", "prospect"], ["이보나", "paused"], ["장지아", "enrolled"]].sort());
   });
 
+  it("결제시트 형태: 등록기간·등록마감일로 등록기간을 채우고, 시트에 없는 칸은 기존 값을 지우지 않는다", async () => {
+    const t = await seedTwoBranches();
+    // 성인이면서 집중관리 대상인 기존 회원
+    const id = await createMember(t.mgrCtx1, { name: "안여진", status: "enrolled", seatId: t.seats1[0].id, memberKind: "adult", focusCare: true, phone: "010-1234-5678" });
+
+    // 결제시트에는 구분·집중관리·연락처 칸이 아예 없다
+    const data = [
+      ["좌석번호", "이름", "결제일", "결제", "좌석", "금액", "등록기간", "등록마감일"],
+      ["1", "안여진", "9/2", "완료", "원목", "670,000", "2026년 9월 7일", "2026년 10월 5일"],
+    ];
+    const mapping = autoMapHeaders(data[0]);
+    expect(mapping).toMatchObject({ 0: "seatNo", 1: "name", 6: "period", 7: "enrollEnd" });
+    // '좌석'(등급) 칸은 좌석번호가 이미 잡혀 있어 무시된다
+    expect(mapping[4]).toBeNull();
+
+    const pv = await previewImport(t.mgrCtx1, data, mapping, "2026-09-07");
+    expect(pv.errors).toEqual([]);
+    expect(pv.rows[0]).toMatchObject({ name: "안여진", existingId: id, enrollStart: "2026-09-07", enrollEnd: "2026-10-05", memberKind: null, focusCare: null });
+
+    expect(await commitImport(t.mgrCtx1, pv.rows)).toMatchObject({ created: 0, updated: 1, failed: [] });
+    const d = await getMember(t.mgrCtx1, id);
+    expect(d.memberKind).toBe("adult"); // 학생으로 덮이면 요금이 틀려진다
+    expect(d.focusCare).toBe(true);
+    expect(d.phone).toBe("010-1234-5678");
+    expect(d.enrollments[0]).toMatchObject({ startDate: "2026-09-07", endDate: "2026-10-05" });
+  });
+
+  it("등록기간을 읽을 수 없거나 종료일이 없으면 경고하고 기간을 만들지 않는다", async () => {
+    const t = await seedTwoBranches();
+    const data = [
+      ["좌석번호", "이름", "등록기간", "등록마감일"],
+      ["1", "가나", "미정", ""],
+      ["2", "다라", "2026년 9월 7일", ""],
+    ];
+    const pv = await previewImport(t.mgrCtx1, data, autoMapHeaders(data[0]), "2026-09-07");
+    expect(pv.rows[0]).toMatchObject({ enrollStart: null, enrollEnd: null });
+    expect(pv.rows[1]).toMatchObject({ enrollStart: "2026-09-07", enrollEnd: null });
+    expect(pv.warnings.map((w) => w.message)).toEqual(expect.arrayContaining([expect.stringContaining("'미정' 표기를 읽을 수 없어"), expect.stringContaining("등록 종료일이 없어")]));
+
+    await commitImport(t.mgrCtx1, pv.rows);
+    const list = await listMembers(t.mgrCtx1, {});
+    const d = await getMember(t.mgrCtx1, list.find((m) => m.name === "다라")!.id);
+    expect(d.enrollments).toEqual([]);
+  });
+
   it("반영 중 한 행이 실패해도 나머지는 반영되고 실패 행을 돌려준다", async () => {
     const t = await seedTwoBranches();
     const data = [["좌석번호", "성명"], ["1", "정상"], ["2", "실패"]];

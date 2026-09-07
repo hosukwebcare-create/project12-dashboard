@@ -6,8 +6,8 @@ import { hashPassword, validatePassword } from "@/lib/auth/password";
 import { requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
-export type BranchListRow = { id: string; code: string; name: string; active: boolean; seatCount: number; memberCount: number; managerNames: string[]; roundsPerDay: number };
-export type CreateBranchInput = { code: string; name: string; seatCount?: number; roundsPerDay?: number; manager?: { loginId: string; name: string; password: string } };
+export type BranchListRow = { id: string; code: string; name: string; ownerName: string | null; active: boolean; seatCount: number; memberCount: number; managerNames: string[]; roundsPerDay: number };
+export type CreateBranchInput = { code: string; name: string; ownerName?: string | null; seatCount?: number; roundsPerDay?: number; manager?: { loginId: string; name: string; password: string } };
 
 function normCode(code: string) {
   const c = code.trim().toUpperCase();
@@ -30,7 +30,7 @@ export async function listBranches(ctx: Ctx, db: Db = defaultDb): Promise<Branch
   const memberBy = new Map(memberCounts.map((m) => [m.branch_id, Number(m.n)]));
   const mgrBy = new Map<string, string[]>();
   for (const m of managers) mgrBy.set(m.branchId, [...(mgrBy.get(m.branchId) ?? []), m.name]);
-  return rows.map((b) => ({ id: b.id, code: b.code, name: b.name, active: b.active, seatCount: seatBy.get(b.id) ?? 0, memberCount: memberBy.get(b.id) ?? 0, managerNames: mgrBy.get(b.id) ?? [], roundsPerDay: b.settings.roundsPerDay }));
+  return rows.map((b) => ({ id: b.id, code: b.code, name: b.name, ownerName: b.ownerName, active: b.active, seatCount: seatBy.get(b.id) ?? 0, memberCount: memberBy.get(b.id) ?? 0, managerNames: mgrBy.get(b.id) ?? [], roundsPerDay: b.settings.roundsPerDay }));
 }
 
 export async function createBranch(ctx: Ctx, input: CreateBranchInput, db: Db = defaultDb): Promise<{ branchId: string; managerId: string | null }> {
@@ -38,6 +38,7 @@ export async function createBranch(ctx: Ctx, input: CreateBranchInput, db: Db = 
   const code = normCode(input.code);
   const name = input.name.trim();
   if (!name) throw new ValidationError("지점 이름을 입력하세요");
+  const ownerName = input.ownerName?.trim() || null;
   const seatCount = input.seatCount ?? 0;
   if (!Number.isInteger(seatCount) || seatCount < 0 || seatCount > 500) throw new ValidationError("좌석 수는 0~500");
   const roundsPerDay = input.roundsPerDay ?? 12;
@@ -49,7 +50,7 @@ export async function createBranch(ctx: Ctx, input: CreateBranchInput, db: Db = 
   return db.transaction(async (tx) => {
     const [dup] = await tx.select({ id: branches.id }).from(branches).where(eq(branches.code, code)).limit(1);
     if (dup) throw new ValidationError(`지점 코드 ${code}가 이미 있습니다`);
-    const [b] = await tx.insert(branches).values({ code, name, settings: { roundsPerDay, maskNames: false } }).returning({ id: branches.id });
+    const [b] = await tx.insert(branches).values({ code, name, ownerName, settings: { roundsPerDay, maskNames: false } }).returning({ id: branches.id });
     if (seatCount > 0) {
       await tx.insert(seats).values(Array.from({ length: seatCount }, (_, i) => ({ branchId: b.id, seatNo: i + 1, zone: "A", sort: i + 1 })));
     }
@@ -62,23 +63,24 @@ export async function createBranch(ctx: Ctx, input: CreateBranchInput, db: Db = 
       await tx.insert(memberships).values({ userId: u.id, branchId: b.id, role: "branch_manager" });
       managerId = u.id;
     }
-    await writeAudit(tx, { userId: ctx.userId, branchId: b.id }, "branch", b.id, "create", null, { code, name, seatCount, managerId });
+    await writeAudit(tx, { userId: ctx.userId, branchId: b.id }, "branch", b.id, "create", null, { code, name, ownerName, seatCount, managerId });
     return { branchId: b.id, managerId };
   });
 }
 
-export async function updateBranchInfo(ctx: Ctx, branchId: string, input: { code: string; name: string }, db: Db = defaultDb): Promise<void> {
+export async function updateBranchInfo(ctx: Ctx, branchId: string, input: { code: string; name: string; ownerName?: string | null }, db: Db = defaultDb): Promise<void> {
   requireRole(ctx, "hq_admin");
   const code = normCode(input.code);
   const name = input.name.trim();
   if (!name) throw new ValidationError("지점 이름을 입력하세요");
+  const ownerName = input.ownerName === undefined ? undefined : input.ownerName?.trim() || null;
   await db.transaction(async (tx) => {
     const [b] = await tx.select().from(branches).where(eq(branches.id, branchId)).limit(1);
     if (!b) throw new NotFoundError("지점을 찾을 수 없습니다");
     const [dup] = await tx.select({ id: branches.id }).from(branches).where(and(eq(branches.code, code), ne(branches.id, branchId))).limit(1);
     if (dup) throw new ValidationError(`지점 코드 ${code}가 이미 있습니다`);
-    await tx.update(branches).set({ code, name }).where(eq(branches.id, branchId));
-    await writeAudit(tx, { userId: ctx.userId, branchId }, "branch", branchId, "update", { code: b.code, name: b.name }, { code, name });
+    await tx.update(branches).set({ code, name, ...(ownerName === undefined ? {} : { ownerName }) }).where(eq(branches.id, branchId));
+    await writeAudit(tx, { userId: ctx.userId, branchId }, "branch", branchId, "update", { code: b.code, name: b.name, ownerName: b.ownerName }, { code, name, ownerName: ownerName === undefined ? b.ownerName : ownerName });
   });
 }
 
