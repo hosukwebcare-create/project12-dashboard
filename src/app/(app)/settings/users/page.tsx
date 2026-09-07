@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import type { BranchRole } from "@/db/schema";
 import { getCtx, ROLE_LABEL } from "@/lib/auth/ctx";
 import { fmtDateTime } from "@/lib/format";
-import { unlockUserAction, upsertHqAdminAction, upsertUserAction } from "@/modules/settings/actions";
+import { addUserToBranchAction, removeUserFromBranchAction, unlockUserAction, upsertHqAdminAction, upsertUserAction } from "@/modules/settings/actions";
 import { listHqAdmins, listUsers } from "@/modules/settings/repo";
 import { guarded } from "@/lib/page-guard";
 
@@ -84,12 +84,42 @@ async function UsersSettingsPage() {
                     <input type="checkbox" name="active" defaultChecked={u.active} className="size-4" disabled={!editable} /> 활성
                   </label>
                 </InlineForm>
+                {u.otherBranches.length ? <span className="pb-1.5 text-xs text-muted-foreground">함께 맡는 지점 {u.otherBranches.join(" · ")}</span> : null}
+                {isHq && u.otherBranches.length ? (
+                  <InlineForm action={removeUserFromBranchAction} submitLabel="이 지점에서 제외">
+                    <input type="hidden" name="id" value={u.id} />
+                  </InlineForm>
+                ) : null}
                 {u.lockedUntil && isHq ? <LockNotice id={u.id} until={u.lockedUntil} /> : null}
               </div>
             );
           })}
         </CardContent>
       </Card>
+
+      {isHq ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>다른 지점 사용자 추가</CardTitle>
+            <CardDescription>
+              이미 있는 계정을 {ctx.branchName} 지점에도 소속시킵니다. 한 사람이 여러 지점을 맡을 때 씁니다(예: 점주가 직영 두 곳을 볼 때). 아이디와 비밀번호는 그대로 쓰고, 로그인
+              뒤 위쪽에서 지점을 바꿔 가며 봅니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <InlineForm action={addUserToBranchAction} submitLabel="이 지점에 추가">
+              <Input name="loginId" placeholder="기존 아이디" className="w-40" required autoComplete="off" />
+              <select name="role" defaultValue="branch_manager" className={selectClass}>
+                {roles.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </option>
+                ))}
+              </select>
+            </InlineForm>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {isHq ? (
         <Card>

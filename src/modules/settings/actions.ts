@@ -7,7 +7,7 @@ import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
 import { issueBoardToken } from "@/modules/board/repo";
 import type { CustomFieldType } from "@/lib/rules/custom-fields";
-import { bulkCreateSeats, setUserPin, unlockUser, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertHqAdmin, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
+import { addUserToBranch, bulkCreateSeats, removeUserFromBranch, setUserPin, unlockUser, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertHqAdmin, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
 
 const num = (v: FormDataEntryValue | null, d = 0) => {
   const n = Number(v);
@@ -150,6 +150,32 @@ export async function upsertHqAdminAction(_p: ActionState, fd: FormData): Promis
         password: password || undefined,
         active: bool(fd.get("active")),
       });
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/settings/users");
+    return { ok: true };
+  });
+}
+
+export async function addUserToBranchAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await addUserToBranch(ctx, String(fd.get("loginId") ?? ""), String(fd.get("role") ?? "assistant") as BranchRole);
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/settings/users");
+    return { ok: true };
+  });
+}
+
+export async function removeUserFromBranchAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await removeUserFromBranch(ctx, String(fd.get("id") ?? ""));
     } catch (e) {
       return { error: toMessage(e) };
     }

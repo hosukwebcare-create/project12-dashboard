@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { auditLogs, boardItems, branches, customFieldDefs, memberships, penaltyRules, seats, users, type BoardItemKind, type BranchRole, type BranchSettings } from "@/db/schema";
 import { CUSTOM_FIELD_TYPES, type CustomFieldType } from "@/lib/rules/custom-fields";
@@ -128,7 +128,7 @@ function stillLocked(until: Date | null): Date | null {
   return until && until.getTime() > Date.now() ? until : null;
 }
 
-export type UserRow = { id: string; loginId: string; name: string; phone: string | null; role: BranchRole; active: boolean; hasPin: boolean; lockedUntil: Date | null };
+export type UserRow = { id: string; loginId: string; name: string; phone: string | null; role: BranchRole; active: boolean; hasPin: boolean; lockedUntil: Date | null; /** 이 사람이 함께 맡고 있는 다른 지점 이름 */ otherBranches: string[] };
 
 export async function listUsers(ctx: Ctx, db: Db = defaultDb): Promise<UserRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
@@ -138,7 +138,46 @@ export async function listUsers(ctx: Ctx, db: Db = defaultDb): Promise<UserRow[]
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(eq(memberships.branchId, ctx.branchId))
     .orderBy(asc(memberships.role), asc(users.name));
-  return rows.map(({ pinHash, ...r }) => ({ ...r, hasPin: Boolean(pinHash), lockedUntil: stillLocked(r.lockedUntil) }));
+  // 한 사람이 여러 지점을 맡을 수 있다(점주가 직영 2개를 보는 경우 등). 목록에 함께 보여 준다.
+  const ids = rows.map((r) => r.id);
+  const others = ids.length
+    ? await db
+        .select({ userId: memberships.userId, branchName: branches.name })
+        .from(memberships)
+        .innerJoin(branches, eq(branches.id, memberships.branchId))
+        .where(and(inArray(memberships.userId, ids), ne(memberships.branchId, ctx.branchId)))
+    : [];
+  const byUser = new Map<string, string[]>();
+  for (const o of others) byUser.set(o.userId, [...(byUser.get(o.userId) ?? []), o.branchName]);
+  return rows.map(({ pinHash, ...r }) => ({ ...r, hasPin: Boolean(pinHash), lockedUntil: stillLocked(r.lockedUntil), otherBranches: byUser.get(r.id) ?? [] }));
+}
+
+/**
+ * 이미 있는 계정을 이 지점에도 소속시킨다. 지점을 넘나드는 일이라 본사 관리자만 할 수 있다.
+ * (설정 › 사용자의 '새 사용자'는 아이디 중복을 막으므로 같은 사람을 두 지점에 넣을 수 없다)
+ */
+export async function addUserToBranch(ctx: Ctx, loginId: string, role: BranchRole, db: Db = defaultDb): Promise<string> {
+  requireRole(ctx, "hq_admin");
+  const id = loginId.trim();
+  if (!id) throw new ValidationError("아이디를 입력하세요");
+  const [user] = await db.select({ id: users.id, name: users.name, isHqAdmin: users.isHqAdmin }).from(users).where(eq(users.loginId, id)).limit(1);
+  if (!user) throw new NotFoundError(`'${id}' 계정이 없습니다. 새 사용자로 먼저 만드세요`);
+  if (user.isHqAdmin) throw new ValidationError("본사 관리자는 이미 모든 지점을 봅니다");
+  const [already] = await db.select({ userId: memberships.userId }).from(memberships).where(and(eq(memberships.userId, user.id), eq(memberships.branchId, ctx.branchId))).limit(1);
+  if (already) throw new ValidationError(`${user.name} 님은 이미 이 지점 소속입니다`);
+  await db.insert(memberships).values({ userId: user.id, branchId: ctx.branchId, role });
+  await writeAudit(db, ctx, "user", user.id, "update", null, { addedToBranch: ctx.branchName, role });
+  return user.id;
+}
+
+/** 이 지점 소속에서만 뺀다(계정 자체는 남는다). 마지막 소속이면 갈 곳이 없어지므로 막는다 */
+export async function removeUserFromBranch(ctx: Ctx, userId: string, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, "hq_admin");
+  const rows = await db.select({ branchId: memberships.branchId }).from(memberships).where(eq(memberships.userId, userId));
+  if (!rows.some((r) => r.branchId === ctx.branchId)) throw new NotFoundError("이 지점 소속이 아닙니다");
+  if (rows.length < 2) throw new ValidationError("마지막 소속 지점입니다. 계정을 비활성으로 바꾸세요");
+  await db.delete(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId)));
+  await writeAudit(db, ctx, "user", userId, "update", { branch: ctx.branchName }, { removedFromBranch: ctx.branchName });
 }
 
 const BM_ALLOWED: BranchRole[] = ["mentor", "assistant"];

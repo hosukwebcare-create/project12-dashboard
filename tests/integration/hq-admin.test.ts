@@ -96,3 +96,43 @@ describe("비밀번호를 바꾸면 기존 세션이 끊긴다", () => {
     expect(await buildCtx(id, null)).not.toBeNull(); // 발급 시각을 안 주는 배치·스크립트는 영향 없다
   });
 });
+
+describe("한 사람이 여러 지점을 맡는 경우", () => {
+  beforeEach(resetDb);
+
+  it("본사 관리자가 기존 계정을 다른 지점에도 소속시킨다", async () => {
+    const t = await seedTwoBranches();
+    const { addUserToBranch, listUsers } = await import("@/modules/settings/repo");
+
+    // 지점1 지점장을 지점2에도 (점주가 직영 두 곳을 맡는 구조)
+    await expect(addUserToBranch(t.mgrCtx2, "mgr1", "branch_manager")).rejects.toThrow(ForbiddenError);
+    const hqCtx2 = (await buildCtx(t.users.hq.id, t.b2.id))!;
+    await addUserToBranch(hqCtx2, "mgr1", "branch_manager");
+
+    const ctx = await buildCtx(t.users.mgr1.id, null);
+    expect(ctx?.memberships.map((m) => m.branchName).sort()).toEqual(["지점1", "지점2"]);
+
+    // 목록에 함께 맡는 지점이 보인다
+    expect((await listUsers(hqCtx2)).find((u) => u.loginId === "mgr1")?.otherBranches).toEqual(["지점1"]);
+    expect((await listUsers(t.hqCtx1)).find((u) => u.loginId === "mgr1")?.otherBranches).toEqual(["지점2"]);
+  });
+
+  it("없는 아이디·중복 추가·본사 계정은 막는다", async () => {
+    const t = await seedTwoBranches();
+    const { addUserToBranch } = await import("@/modules/settings/repo");
+    await expect(addUserToBranch(t.hqCtx1, "없는아이디", "mentor")).rejects.toThrow(/계정이 없습니다/);
+    await expect(addUserToBranch(t.hqCtx1, "mentor1", "mentor")).rejects.toThrow(/이미 이 지점 소속/);
+    await expect(addUserToBranch(t.hqCtx1, "hq", "mentor")).rejects.toThrow(/모든 지점을 봅니다/);
+  });
+
+  it("마지막 소속 지점에서는 뺄 수 없다", async () => {
+    const t = await seedTwoBranches();
+    const { addUserToBranch, removeUserFromBranch } = await import("@/modules/settings/repo");
+    await expect(removeUserFromBranch(t.hqCtx1, t.users.mentor1.id)).rejects.toThrow(/마지막 소속 지점/);
+
+    const hqCtx2 = (await buildCtx(t.users.hq.id, t.b2.id))!;
+    await addUserToBranch(hqCtx2, "mentor1", "mentor");
+    await removeUserFromBranch(hqCtx2, t.users.mentor1.id);
+    expect((await buildCtx(t.users.mentor1.id, null))?.memberships.map((m) => m.branchName)).toEqual(["지점1"]);
+  });
+});
