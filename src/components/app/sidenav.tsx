@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Bell, BookOpen, CheckSquare, ClipboardList, Clock, Footprints, Home, Send, Settings, UtensilsCrossed, Users } from "lucide-react";
+import { AlertTriangle, Bell, BookOpen, CheckSquare, ClipboardList, Clock, CreditCard, Footprints, Home, NotebookPen, Send, Settings, UtensilsCrossed, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -19,13 +19,16 @@ const ICONS = {
   meal: UtensilsCrossed,
   clock: Clock,
   send: Send,
+  handover: NotebookPen,
+  won: CreditCard,
 } as const;
 
 /** 사이드바 그룹. 순서는 nav-items 의 순서를 따르되 그룹 머리글로 묶는다 */
 const GROUPS: { label: string; hrefs: string[] }[] = [
   { label: "운영", hrefs: ["/", "/members", "/counsel/weekly", "/mock-exams"] },
   { label: "현장", hrefs: ["/rounding", "/daily-checks", "/meals", "/worklog"] },
-  { label: "소통", hrefs: ["/issues", "/alimtalk", "/notifications"] },
+  { label: "정산", hrefs: ["/payments"] },
+  { label: "소통", hrefs: ["/handover", "/issues", "/alimtalk", "/notifications"] },
   { label: "관리", hrefs: ["/settings/branch"] },
 ];
 

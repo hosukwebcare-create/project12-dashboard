@@ -106,6 +106,8 @@ export const seats = pgTable(
     zone: text("zone").notNull().default("A"),
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
+    /** 좌석 등급(요금표). 결제 금액은 이 등급과 회원 구분(학생/성인)으로 정해진다 */
+    feePlanId: uuid("fee_plan_id"),
   },
   (t) => [branchRls("seats", t.branchId), uniqueIndex("seats_branch_seat_no_uq").on(t.branchId, t.seatNo)],
 ).enableRLS();
@@ -659,4 +661,136 @@ export const eventOutbox = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
   },
   (t) => [branchRls("event_outbox", t.branchId), index("event_outbox_status_idx").on(t.status, t.createdAt)],
+).enableRLS();
+
+// ---------- 상담일정 (예약) ----------
+/** 신규 상담인지 재상담인지. 신규는 아직 회원이 아니라 이름만으로 잡는다 */
+export type AppointmentKind = "new" | "member" | "guardian";
+export type AppointmentStatus = "scheduled" | "done" | "canceled" | "noshow";
+
+export const counselAppointments = pgTable(
+  "counsel_appointments",
+  {
+    id: id(),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    /** 'HH:MM'. 화면의 시간대(08~12 등)는 이 값으로 나눈다 */
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time"),
+    kind: text("kind").$type<AppointmentKind>().notNull().default("new"),
+    /** 재상담이면 회원, 신규면 비어 있고 personName 을 쓴다 */
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "set null" }),
+    personName: text("person_name"),
+    personPhone: text("person_phone"),
+    assignedTo: uuid("assigned_to").references(() => users.id),
+    note: text("note"),
+    status: text("status").$type<AppointmentStatus>().notNull().default("scheduled"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [branchRls("counsel_appointments", t.branchId), index("counsel_appointments_date_idx").on(t.branchId, t.date)],
+).enableRLS();
+
+// ---------- 인수인계 노트 ----------
+/** 공지는 목록 위에 고정된다 */
+export type HandoverKind = "handover" | "notice";
+
+export const handoverNotes = pgTable(
+  "handover_notes",
+  {
+    id: id(),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    /** 근무 타임 키(shift_slots.key). 어느 타임에 있었던 일인지 */
+    slotKey: text("slot_key"),
+    kind: text("kind").$type<HandoverKind>().notNull().default("handover"),
+    body: text("body").notNull(),
+    authorId: uuid("author_id").references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [branchRls("handover_notes", t.branchId), index("handover_notes_date_idx").on(t.branchId, t.date)],
+).enableRLS();
+
+/** 누가 어디까지 읽었는지. 자기 근무시간이 아닐 때 지나간 글을 찾아 읽게 하는 핵심 */
+export const handoverReads = pgTable(
+  "handover_reads",
+  {
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => handoverNotes.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    readAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.noteId, t.userId] })],
+);
+
+export const handoverComments = pgTable("handover_comments", {
+  id: id(),
+  noteId: uuid("note_id")
+    .notNull()
+    .references(() => handoverNotes.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").references(() => users.id),
+  body: text("body").notNull(),
+  createdAt: createdAt(),
+});
+
+// ---------- 좌석 이용료 · 결제 ----------
+/** 좌석 등급별 요금표. 학생·성인 요금이 다르다 (원목 490,000 / 성인 670,000 등) */
+export const feePlans = pgTable(
+  "fee_plans",
+  {
+    id: id(),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    studentPrice: integer("student_price").notNull().default(0),
+    adultPrice: integer("adult_price").notNull().default(0),
+    sort: integer("sort").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+  },
+  (t) => [branchRls("fee_plans", t.branchId), uniqueIndex("fee_plans_branch_name_uq").on(t.branchId, t.name)],
+).enableRLS();
+
+export type SeatPaymentStatus = "pending" | "paid" | "closed";
+
+/** 등록기간 한 건 = 결제 한 건. 금액은 요금표에서 계산해 채우되 손으로 고칠 수 있다 */
+export const seatPayments = pgTable(
+  "seat_payments",
+  {
+    id: id(),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    enrollmentId: uuid("enrollment_id").references(() => memberEnrollments.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    /** 계산 시점의 요금표 이름·기본 금액을 남긴다 (요금표를 바꿔도 지난 건은 그대로) */
+    planName: text("plan_name"),
+    baseAmount: integer("base_amount").notNull().default(0),
+    discount: integer("discount").notNull().default(0),
+    amount: integer("amount").notNull().default(0),
+    paidAt: date("paid_at"),
+    paidAmount: integer("paid_amount"),
+    status: text("status").$type<SeatPaymentStatus>().notNull().default("pending"),
+    note: text("note"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    branchRls("seat_payments", t.branchId),
+    uniqueIndex("seat_payments_enrollment_uq").on(t.enrollmentId),
+    index("seat_payments_branch_period_idx").on(t.branchId, t.periodStart),
+  ],
 ).enableRLS();

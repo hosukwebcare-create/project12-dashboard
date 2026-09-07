@@ -9,13 +9,24 @@ import { fmtDate, fmtRelative, fmtShortDate } from "@/lib/format";
 import { todayKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
 import { dashboard, hqOverview } from "@/modules/dashboard/repo";
+import { unreadNoteCount } from "@/modules/handover/repo";
+import { paymentSummary } from "@/modules/payments/repo";
+import { upcomingAppointments } from "@/modules/schedule/repo";
 import { guarded } from "@/lib/page-guard";
 
 async function DashboardPage() {
   const ctx = await getCtx();
   if (ctx.role === "assistant") redirect("/rounding");
   const today = todayKey();
-  const [d, overview] = await Promise.all([dashboard(ctx, today), ctx.isHqAdmin ? hqOverview(ctx, today) : Promise.resolve(null)]);
+  const canSeeMoney = ctx.role === "hq_admin" || ctx.role === "branch_manager";
+  const [d, overview, money, appointments, unreadNotes] = await Promise.all([
+    dashboard(ctx, today),
+    ctx.isHqAdmin ? hqOverview(ctx, today) : Promise.resolve(null),
+    canSeeMoney ? paymentSummary(ctx, today) : Promise.resolve(null),
+    upcomingAppointments(ctx, 7, today),
+    unreadNoteCount(ctx, 14, today),
+  ]);
+  const won = (n: number) => n.toLocaleString("ko-KR");
 
   return (
     <div>
@@ -84,6 +95,26 @@ async function DashboardPage() {
         </StatCard>
       </div>
 
+      {money ? (
+        <Link
+          href="/payments"
+          className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-lg bg-card px-5 py-4 ring-1 ring-border transition-colors hover:ring-primary"
+        >
+          <span className="text-sm font-semibold">받아야 할 돈</span>
+          <span className="text-sm text-muted-foreground">
+            좌석 <b className="ml-1 text-base font-semibold text-foreground tabular-nums">{won(money.seat.amount)}</b>원 · {money.seat.pending}건
+          </span>
+          <span className="text-sm text-muted-foreground">
+            식사 <b className="ml-1 text-base font-semibold text-foreground tabular-nums">{won(money.meal.amount)}</b>원 · {money.meal.pending}명
+          </span>
+          <span className="text-sm text-muted-foreground">
+            합계 <b className="ml-1 text-base font-semibold text-primary tabular-nums">{won(money.total)}</b>원
+          </span>
+          {money.unpriced > 0 ? <span className="text-[13px] text-amber-700">금액 미정 {money.unpriced}건 · 좌석 등급 지정 필요</span> : null}
+          <span className="ml-auto text-[13px] text-muted-foreground">결제 대상 열기</span>
+        </Link>
+      ) : null}
+
       <div className="mt-6 grid gap-8 md:grid-cols-5">
         <section className="md:col-span-3">
           <h2 className="mb-3 flex items-baseline justify-between text-sm font-semibold">
@@ -112,6 +143,37 @@ async function DashboardPage() {
         </section>
 
         <section className="md:col-span-2">
+          <h2 className="mb-3 flex items-baseline justify-between text-sm font-semibold">
+            다가오는 상담
+            <Link href="/counsel/schedule" className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline">
+              일정표
+            </Link>
+          </h2>
+          {appointments.length === 0 ? (
+            <p className="mb-8 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">7일 안에 잡힌 상담이 없습니다</p>
+          ) : (
+            <ul className="mb-8 divide-y divide-border border-y border-border text-sm">
+              {appointments.slice(0, 6).map((a) => (
+                <li key={a.id} className="flex items-center gap-2 py-2">
+                  <span className="w-24 shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {fmtShortDate(a.date)} {a.startTime}
+                  </span>
+                  <Link href={`/counsel/schedule?week=${a.date}&edit=${a.id}`} className="flex-1 truncate font-medium hover:underline">
+                    {a.displayName}
+                  </Link>
+                  {a.assigneeName ? <span className="shrink-0 text-xs text-muted-foreground">{a.assigneeName}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {unreadNotes > 0 ? (
+            <Link href="/handover" className="mb-8 flex items-center gap-2 rounded-lg bg-primary/8 px-4 py-3 text-sm ring-1 ring-primary/25 transition-colors hover:ring-primary">
+              <span className="font-medium text-primary">인수인계 안 읽은 글 {unreadNotes}건</span>
+              <span className="ml-auto text-xs text-muted-foreground">읽으러 가기</span>
+            </Link>
+          ) : null}
+
           <h2 className="mb-3 text-sm font-semibold">이번 주 벌점 상위</h2>
           {d.topPenalties.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">이번 주 벌점이 없습니다</p>

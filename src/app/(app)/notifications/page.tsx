@@ -16,12 +16,16 @@ const TYPE_LABEL: Record<string, string> = {
   issue_comment: "이슈 코멘트",
   mention: "멘션",
   comment: "상담 코멘트",
+  appointment: "상담 일정",
+  handover: "인수인계",
 };
 
 function hrefFor(n: NotificationRow): string | null {
   const p = n.payload as Record<string, unknown>;
   if (typeof p.issueId === "string") return `/issues/${p.issueId}`;
   if (typeof p.logId === "string") return `/counsel/logs/${p.logId}`;
+  if (typeof p.week === "string") return `/counsel/schedule?week=${p.week}`;
+  if (typeof p.noteId === "string") return `/handover#${p.noteId}`;
   return null;
 }
 

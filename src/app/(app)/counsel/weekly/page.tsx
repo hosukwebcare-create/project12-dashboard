@@ -66,6 +66,9 @@ async function WeeklyCounselPage({ searchParams }: { searchParams: Promise<Searc
             <Button asChild variant="outline" size="sm">
               <Link href="/counsel/focus">집중관리 일지</Link>
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/counsel/schedule">상담 일정</Link>
+            </Button>
           </>
         }
       />

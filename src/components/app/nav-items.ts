@@ -1,6 +1,6 @@
 import type { Role } from "@/lib/auth/ctx";
 
-export type NavItem = { href: string; label: string; roles: Role[]; icon: "home" | "users" | "book" | "walk" | "check" | "alert" | "bell" | "settings" | "exam" | "meal" | "clock" | "send" };
+export type NavItem = { href: string; label: string; roles: Role[]; icon: "home" | "users" | "book" | "walk" | "check" | "alert" | "bell" | "settings" | "exam" | "meal" | "clock" | "send" | "handover" | "won" };
 
 const ALL: Role[] = ["hq_admin", "branch_manager", "mentor", "assistant"];
 const STAFF: Role[] = ["hq_admin", "branch_manager", "mentor"];
@@ -15,6 +15,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/daily-checks", label: "일별 체크", roles: ["hq_admin", "branch_manager", "assistant"], icon: "check" },
   { href: "/meals", label: "식사주문", roles: ["hq_admin", "branch_manager", "assistant"], icon: "meal" },
   { href: "/worklog", label: "근무", roles: ALL, icon: "clock" },
+  { href: "/payments", label: "결제 대상", roles: MANAGERS, icon: "won" },
+  { href: "/handover", label: "인수인계", roles: ALL, icon: "handover" },
   { href: "/issues", label: "이슈함", roles: ALL, icon: "alert" },
   { href: "/alimtalk", label: "알림톡", roles: MANAGERS, icon: "send" },
   { href: "/notifications", label: "알림", roles: ALL, icon: "bell" },
@@ -28,6 +30,6 @@ export function navFor(role: Role): NavItem[] {
 /** 모바일 하단 탭은 최대 5개 */
 export function mobileNavFor(role: Role): NavItem[] {
   const items = navFor(role);
-  const preferred = role === "assistant" ? ["/rounding", "/daily-checks", "/members", "/issues", "/notifications"] : ["/", "/members", "/counsel/weekly", "/rounding", "/issues"];
+  const preferred = role === "assistant" ? ["/rounding", "/daily-checks", "/handover", "/issues", "/notifications"] : ["/", "/members", "/counsel/weekly", "/handover", "/issues"];
   return preferred.map((h) => items.find((i) => i.href === h)).filter((x): x is NavItem => Boolean(x)).slice(0, 5);
 }

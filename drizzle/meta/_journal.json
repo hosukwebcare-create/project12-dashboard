@@ -43,6 +43,13 @@
       "when": 1788726047965,
       "tag": "0005_session_epoch",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788756658514,
+      "tag": "0006_schedule_handover_payments",
+      "breakpoints": true
     }
   ]
 }
