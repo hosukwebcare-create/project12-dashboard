@@ -12,6 +12,7 @@ import {
   updateMember,
 } from "@/modules/members/repo";
 import { eq } from "drizzle-orm";
+import { buildCtx } from "@/lib/auth/ctx";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
@@ -120,5 +121,50 @@ describe("회원 저장소 · 상태와 좌석", () => {
     expect((await listMembers(t.mgrCtx1, { focusCare: true })).map((m) => m.name)).toEqual(["김집중"]);
     expect((await listMembers(t.mgrCtx1, { status: "prospect" })).map((m) => m.name)).toEqual(["이상담"]);
     expect((await listMembers(t.mgrCtx1, { q: "상담" })).map((m) => m.name)).toEqual(["이상담"]);
+  });
+});
+
+describe("회원 지점 이동", () => {
+  beforeEach(resetDb);
+
+  it("본사 관리자만 옮길 수 있고, 사람 기록은 따라가고 운영 기록은 남는다", async () => {
+    const t = await seedTwoBranches();
+    const { transferMember, transferTargets, getMember } = await import("@/modules/members/repo");
+    const { upsertLog } = await import("@/modules/counsel/repo");
+    const { startSession, upsertCheck } = await import("@/modules/rounding/repo");
+    const s = await import("@/db/schema");
+
+    const m = await createMember(t.mgrCtx1, { name: "이동해", status: "enrolled", seatId: t.seats1[0].id, memberKind: "student", focusCare: false });
+    // 사람 기록(상담일지)과 운영 기록(라운딩 체크)을 하나씩 만든다
+    await upsertLog(t.mgrCtx1, { memberId: m, logType: "weekly", periodDate: "2026-09-07", field: "issue", text: "지난 지점에서 쓴 상담" });
+    const sid = await startSession(t.asstCtx1, "2026-09-07");
+    await upsertCheck(t.asstCtx1, { memberId: m, date: "2026-09-07", itemKey: "round", roundNo: 1, sessionId: sid, grade: "b" });
+
+    await expect(transferMember(t.mgrCtx1, m, t.b2.id)).rejects.toThrow(ForbiddenError);
+    expect((await transferTargets(t.hqCtx1)).map((b) => b.name)).toEqual(["지점2"]);
+    await transferMember(t.hqCtx1, m, t.b2.id);
+
+    const [row] = await db.select().from(s.members).where(eq(s.members.id, m));
+    expect(row.branchId).toBe(t.b2.id);
+    expect(row.seatId).toBeNull(); // 좌석은 비우고 받는 지점에서 배정
+
+    const [log] = await db.select().from(s.counselLogs).where(eq(s.counselLogs.memberId, m));
+    expect(log.branchId).toBe(t.b2.id); // 상담일지는 따라간다
+
+    const [chk] = await db.select().from(s.checks).where(eq(s.checks.memberId, m));
+    expect(chk.branchId).toBe(t.b1.id); // 라운딩 체크는 남는다
+
+    // 받는 지점에서 보이고, 보낸 지점에서는 안 보인다
+    const hqAtB2 = (await buildCtx(t.users.hq.id, t.b2.id))!;
+    expect((await getMember(hqAtB2, m)).name).toBe("이동해");
+    await expect(getMember(t.mgrCtx1, m)).rejects.toThrow(NotFoundError);
+  });
+
+  it("같은 지점이나 없는 지점으로는 못 옮긴다", async () => {
+    const t = await seedTwoBranches();
+    const { transferMember } = await import("@/modules/members/repo");
+    const m = await createMember(t.mgrCtx1, { name: "이동해", status: "enrolled", memberKind: "student", focusCare: false });
+    await expect(transferMember(t.hqCtx1, m, t.b1.id)).rejects.toThrow(/이미 이 지점/);
+    await expect(transferMember(t.hqCtx1, m, "00000000-0000-0000-0000-000000000000")).rejects.toThrow(NotFoundError);
   });
 });

@@ -3,11 +3,14 @@ import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import {
   accessLogs,
   auditLogs,
+  branches,
   checks,
   counselComments,
   counselLogs,
+  heroLinks,
   issues,
   memberEnrollments,
+  memberFiles,
   memberGuardians,
   members,
   penaltyRules,
@@ -263,6 +266,47 @@ export async function assignSeat(ctx: Ctx, id: string, seatId: string | null, db
     await tx.update(members).set({ seatId }).where(eq(members.id, id));
     await writeAudit(tx, ctx, "member", id, "seat", { seatId: before.m.seatId, seatNo: before.seatNo }, { seatId });
   });
+}
+
+/**
+ * 회원을 다른 지점으로 옮긴다. 지점을 넘나드는 일이라 본사 관리자만 할 수 있다.
+ *
+ * 무엇이 따라가고 무엇이 남는가:
+ * - **따라감** — 사람에 관한 기록. 상담일지(코멘트 포함), 회원 파일, HERO 진단, 학부모·등록기간.
+ *   받는 지점이 이어서 관리하려면 지난 상담 내용이 보여야 한다.
+ * - **남음** — 그 지점에서 일어난 운영·정산 기록. 라운딩 체크, 식사 주문·정산, 모의고사 신청,
+ *   이슈, 알림톡 발송 이력. 옮겼다고 지난달 벌점 통계나 식사 정산 금액이 바뀌면 안 된다.
+ *
+ * 좌석은 비운 채로 옮긴다. 받는 지점에서 자리를 정하는 것이 맞기 때문이다.
+ */
+export async function transferMember(ctx: Ctx, id: string, toBranchId: string, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, "hq_admin");
+  await db.transaction(async (tx) => {
+    const before = await findOwned(ctx, id, tx);
+    if (toBranchId === ctx.branchId) throw new ValidationError("이미 이 지점 소속입니다");
+    const [to] = await tx.select({ id: branches.id, name: branches.name }).from(branches).where(and(eq(branches.id, toBranchId), eq(branches.active, true))).limit(1);
+    if (!to) throw new NotFoundError("옮길 지점을 찾을 수 없습니다");
+
+    await tx.update(members).set({ branchId: toBranchId, seatId: null }).where(eq(members.id, id));
+    // 사람에 관한 기록만 따라간다
+    await tx.update(counselLogs).set({ branchId: toBranchId }).where(eq(counselLogs.memberId, id));
+    await tx.update(memberFiles).set({ branchId: toBranchId }).where(eq(memberFiles.memberId, id));
+    await tx.update(heroLinks).set({ branchId: toBranchId }).where(eq(heroLinks.memberId, id));
+
+    await writeAudit(tx, ctx, "member", id, "update", { branch: ctx.branchName, seatNo: before.seatNo }, { movedTo: to.name, seatCleared: true });
+  });
+}
+
+export type BranchOption = { id: string; name: string };
+
+/** 회원을 옮길 수 있는 지점 목록 (본사 관리자 화면용, 지금 지점 제외) */
+export async function transferTargets(ctx: Ctx, db: Db = defaultDb): Promise<BranchOption[]> {
+  if (ctx.role !== "hq_admin") return [];
+  return db
+    .select({ id: branches.id, name: branches.name })
+    .from(branches)
+    .where(and(eq(branches.active, true), ne(branches.id, ctx.branchId)))
+    .orderBy(asc(branches.code));
 }
 
 export type SeatOccupancy = { seatId: string; seatNo: number; zone: string; active: boolean; memberId: string | null; memberName: string | null };

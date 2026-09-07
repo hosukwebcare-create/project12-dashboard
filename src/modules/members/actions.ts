@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import type { MemberStatus } from "@/db/schema";
 import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
-import { assignSeat, changeStatus, createMember, updateMember } from "./repo";
+import { assignSeat, changeStatus, createMember, transferMember, updateMember } from "./repo";
 import { formToMemberInput, MEMBER_STATUSES, type MemberInput } from "./schema";
 
 export async function createMemberAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -57,6 +57,21 @@ export async function assignSeatAction(_prev: ActionState, fd: FormData): Promis
     const seatId = String(fd.get("seatId") ?? "") || null;
     try {
       await assignSeat(ctx, id, seatId);
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/members");
+    revalidatePath(`/members/${id}`);
+    return { ok: true };
+  });
+}
+
+export async function transferMemberAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    const id = String(fd.get("id") ?? "");
+    try {
+      await transferMember(ctx, id, String(fd.get("toBranchId") ?? ""));
     } catch (e) {
       return { error: toMessage(e) };
     }

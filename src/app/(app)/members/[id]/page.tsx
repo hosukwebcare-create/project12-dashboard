@@ -7,7 +7,8 @@ import { MemberWeekView } from "@/components/app/member-week";
 import { SeatAssignForm } from "@/components/app/seat-assign-form";
 import { FocusBadge, StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InlineForm } from "@/components/app/inline-form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCtx, MANAGER_ROLES, STAFF_ROLES } from "@/lib/auth/ctx";
 import { fmtDate, fmtDateTime } from "@/lib/format";
@@ -16,8 +17,8 @@ import { todayKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
 import { FILE_KIND_LABEL, listMemberFiles } from "@/modules/files/repo";
 import { listHeroLinks } from "@/modules/hero/repo";
-import { changeStatusAction } from "@/modules/members/actions";
-import { getMember, listSeatsWithOccupant, memberTimeline } from "@/modules/members/repo";
+import { changeStatusAction, transferMemberAction } from "@/modules/members/actions";
+import { getMember, listSeatsWithOccupant, memberTimeline, transferTargets } from "@/modules/members/repo";
 import { MEMBER_STATUSES, STATUS_LABEL } from "@/modules/members/schema";
 import { memberWeek } from "@/modules/rounding/repo";
 import { customFieldsFor } from "@/modules/settings/repo";
@@ -53,12 +54,13 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
   const canManage = MANAGER_ROLES.includes(ctx.role);
   const isStaff = STAFF_ROLES.includes(ctx.role);
   const showPhone = ctx.role !== "assistant";
-  const [timeline, seats, customDefs, files, heroLinks] = await Promise.all([
+  const [timeline, seats, customDefs, files, heroLinks, transferTo] = await Promise.all([
     memberTimeline(ctx, id),
     canManage ? listSeatsWithOccupant(ctx) : Promise.resolve([]),
     customFieldsFor(ctx, "member"),
     isStaff ? listMemberFiles(ctx, id) : Promise.resolve([]),
     isStaff ? listHeroLinks(ctx, id) : Promise.resolve([]),
+    canManage ? transferTargets(ctx) : Promise.resolve([]),
   ]);
   const week = member.status === "enrolled" || member.status === "paused" ? await memberWeek(ctx, id, weekParam) : null;
 
@@ -402,6 +404,28 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                 <p className="mt-2 text-xs text-muted-foreground">퇴원·상담으로 바꾸면 좌석이 자동으로 해제됩니다</p>
               </CardContent>
             </Card>
+            {transferTo.length ? (
+              <Card className="md:col-span-2">
+                <CardHeader className="border-b">
+                  <CardTitle>지점 이동</CardTitle>
+                  <CardDescription>
+                    다른 지점으로 옮깁니다. 상담일지·회원 파일·학습진단은 함께 따라가고, 라운딩 체크·식사 주문·정산·이슈는 기록이 남아야 하므로 {ctx.branchName}에 그대로 둡니다. 좌석은 비운 채로 옮기니 받는 지점에서 배정하세요.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <InlineForm action={transferMemberAction} submitLabel="옮기기">
+                    <input type="hidden" name="id" value={member.id} />
+                    <select name="toBranchId" className="h-9 rounded-lg border border-input bg-card px-3 text-sm" aria-label="옮길 지점">
+                      {transferTo.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </InlineForm>
+                </CardContent>
+              </Card>
+            ) : null}
           </TabsContent>
         ) : null}
       </Tabs>
