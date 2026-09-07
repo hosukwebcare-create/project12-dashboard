@@ -72,8 +72,13 @@ const log = (...a: unknown[]) => console.log(...a);
 
 // ---------- 이름 매칭 ----------
 const cleanName = (raw: string) => raw.replace(/\s+/g, "").replace(/\/.*$/, "");
+type IndexRow = { id: string; status: string; seatNo: number | null };
 class MemberIndex {
-  byName = new Map<string, { id: string; status: string; seatNo: number | null }[]>();
+  byName = new Map<string, IndexRow[]>();
+  /** 대소문자만 다른 표기(김민지b → 김민지B)를 붙이기 위한 색인 */
+  byLower = new Map<string, IndexRow[]>();
+  /** 고객정보 시트에 없는 동명이인(B 이상)으로 새로 만든 이름. 고객 확인용으로 모아 둔다 */
+  newDistinct = new Set<string>();
   created = 0;
   constructor(private branchId: string) {}
   async load() {
@@ -83,17 +88,30 @@ class MemberIndex {
       .leftJoin(s.seats, eq(s.seats.id, s.members.seatId))
       .where(eq(s.members.branchId, this.branchId));
     this.byName.clear();
-    for (const r of rows) this.byName.set(cleanName(r.name), [...(this.byName.get(cleanName(r.name)) ?? []), r]);
+    this.byLower.clear();
+    for (const r of rows) {
+      const n = cleanName(r.name);
+      this.byName.set(n, [...(this.byName.get(n) ?? []), r]);
+      this.byLower.set(n.toLowerCase(), [...(this.byLower.get(n.toLowerCase()) ?? []), r]);
+    }
   }
-  /** 이름(+좌석)으로 찾고, 없으면 퇴원 상태의 자리표시 회원을 만든다 */
+  /**
+   * 이름(+좌석)으로 찾고, 없으면 퇴원 상태의 자리표시 회원을 만든다.
+   *
+   * 동명이인 표기 규칙: 시트는 같은 이름 두 사람을 'A'/'B'로 구분하고, 고객정보 시트에는
+   * 첫 번째가 접미사 없이(김민지), 두 번째가 B를 달고(김민지B) 등록돼 있다.
+   * 따라서 A 는 접미사 없는 사람을 가리키므로 떼고, B 이상은 다른 사람이므로 절대 합치지 않는다.
+   * (예전에는 끝 영문자를 무조건 떼어 김지민B 의 기록이 김지민에게 붙었다)
+   */
   async resolve(rawName: string, seatNo: number | null, note: string): Promise<string | null> {
     const name = cleanName(rawName);
     if (!name || /^(합계|체험|오류)$/.test(name)) return null;
-    let cands = this.byName.get(name) ?? [];
-    if (!cands.length) {
-      const base = name.replace(/[A-Za-z]$/, "");
-      if (base !== name) cands = this.byName.get(base) ?? [];
+    let cands = this.byName.get(name) ?? this.byLower.get(name.toLowerCase()) ?? [];
+    if (!cands.length && /[Aa]$/.test(name)) {
+      const base = name.slice(0, -1);
+      cands = this.byName.get(base) ?? this.byLower.get(base.toLowerCase()) ?? [];
     }
+    if (!cands.length && /[B-Zb-z]$/.test(name) && /^[가-힣]{2,4}[A-Za-z]$/.test(name)) this.newDistinct.add(name);
     if (cands.length) {
       const exact = seatNo !== null ? cands.find((c) => c.seatNo === seatNo) : undefined;
       return (exact ?? cands.find((c) => c.status === "enrolled") ?? cands[0]).id;
@@ -102,7 +120,9 @@ class MemberIndex {
       .insert(s.members)
       .values({ branchId: this.branchId, name, status: "withdrawn", memberKind: "student", memo: `시트 이관 시 자동 생성 (${note}에만 있는 이름)` })
       .returning({ id: s.members.id });
-    this.byName.set(name, [{ id: m.id, status: "withdrawn", seatNo: null }]);
+    const row: IndexRow = { id: m.id, status: "withdrawn", seatNo: null };
+    this.byName.set(name, [row]);
+    this.byLower.set(name.toLowerCase(), [row]);
     this.created++;
     return m.id;
   }
@@ -395,9 +415,22 @@ async function main() {
     let orders = 0, settlements = 0;
     for (const [tabName, g] of Object.entries(book)) {
       if (!/^\d{1,2}월$/.test(tabName)) continue;
-      const dateRow = g.findIndex((row) => row[0] === "날짜");
       const hdrRow = g.findIndex((row) => row[0] === "좌석번호");
-      if (dateRow < 0 || hdrRow < 0) continue;
+      // 날짜 행은 보통 A열이 '날짜'지만, 그 칸이 비어 있는 탭이 있다(동탄2 2월). 라벨이 없으면 헤더 바로 위에서 날짜가 늘어선 행을 찾는다.
+      let dateRow = g.findIndex((row) => row[0] === "날짜");
+      if (dateRow < 0 && hdrRow > 0) {
+        for (let r = hdrRow - 1; r >= 0 && r >= hdrRow - 3; r--) {
+          if (g[r].filter(isDate).length >= 5) {
+            dateRow = r;
+            break;
+          }
+        }
+      }
+      if (dateRow < 0 || hdrRow < 0) {
+        // 조용히 건너뛰면 그 달이 통째로 사라진다. 반드시 남긴다.
+        log(`    건너뜀: '${tabName}' 탭에서 ${hdrRow < 0 ? "좌석번호 행" : "날짜 행"}을 찾지 못했습니다`);
+        continue;
+      }
       const dateCols: { c: number; date: string; meal: s.MealKind }[] = [];
       let current = "";
       for (let c = 2; c < g[hdrRow].length; c++) {
@@ -507,6 +540,10 @@ async function main() {
       (select count(*) from meal_orders where branch_id = ${branch.id}) meals,
       (select count(*) from work_logs where branch_id = ${branch.id}) worklogs,
       (select count(*) from mock_exam_rounds where branch_id = ${branch.id}) mock_rounds`);
+  if (index.newDistinct.size) {
+    log(`  확인 필요: 고객정보 시트에 없는 동명이인 표기 ${index.newDistinct.size}건 → ${[...index.newDistinct].join(", ")}`);
+    log(`    (다른 시트에만 있는 이름이라 별도 회원으로 만들었습니다. 실제로 같은 사람이면 회원 화면에서 합쳐 주세요)`);
+  }
   log(`== 완료: 회원 ${agg.members}(등록 ${agg.enrolled}, 자리표시 생성 ${index.created}) · 체크 ${agg.checks} · 상담 ${agg.counsel} · 식사 ${agg.meals} · 근무 ${agg.worklogs} · 모의고사 회차 ${agg.mock_rounds}`);
 }
 

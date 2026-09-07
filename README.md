@@ -39,6 +39,8 @@ pnpm exec playwright test         # E2E (운영 빌드 + 전용 DB byeolha_e2e, 
 pnpm lint && pnpm build
 pnpm perf:seed && pnpm perf:measure   # 대량 데이터 성능 점검 (byeolha_perf DB)
 sh scripts/acceptance/run.sh          # 검수 워크스루: 운영 빌드 + 실제 수신기로 기획서 검수 기준 37항목 (acceptance-out/)
+DATABASE_URL=... pnpm exec tsx scripts/reconcile-sheets.ts --branch DT2 --dir ~/Downloads --members ... --board ...
+                                      # 시트 ↔ DB 대사: 회원 값·라운딩 등급/점수·식사 주문을 건별로 대조
 node scripts/acceptance/report.mjs acceptance-out   # → docs/09_검수_결과서.html
 ```
 

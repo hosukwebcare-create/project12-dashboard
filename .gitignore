@@ -47,3 +47,6 @@ next-env.d.ts
 
 # 검수 워크스루 출력
 acceptance-out/
+
+# 시트 대사 결과(실명 포함)
+대사결과/
