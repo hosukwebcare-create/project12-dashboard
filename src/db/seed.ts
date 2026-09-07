@@ -107,7 +107,7 @@ async function main() {
     "안도윤", "오하린", "유시온", "임채원", "장태오", "전소율", "조아인", "한지호", "홍다은", "황민준",
     "표수아", "탁현서", "마이현", "노건우",
   ];
-  const schools = ["별하고", "샛별고", "은하고", "가온고", "누리고"];
+  const schools = ["한빛고", "샛별고", "은하고", "가온고", "누리고"];
   const tracks = ["문과", "이과", "이과", "문과", "예체능"];
   const fieldNotes = [null, null, null, "매주 화 17시 학원 조퇴", "월수금 19시 등원", null, "12시 30분 점심 외출", null];
   const today = toDateKey(new Date());

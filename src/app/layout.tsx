@@ -3,7 +3,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: { default: "별하 · 프로젝트12 통합관리", template: "%s · 별하" },
+  title: { default: "Project 12 통합관리", template: "%s · Project 12" },
   description: "관리형 스터디카페 통합관리 플랫폼",
 };
 

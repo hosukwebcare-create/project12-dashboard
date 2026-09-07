@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { BrandMark } from "@/components/app/brand-mark";
 import { needsSetup } from "@/modules/setup/repo";
 import { LoginForm } from "./login-form";
 
@@ -17,12 +16,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       <section className="hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <div className="flex items-center gap-2">
-          <BrandMark className="size-6" />
-          <span className="text-lg font-semibold tracking-tight text-white">별하</span>
-        </div>
+        <div className="text-lg font-semibold tracking-tight text-white">Project 12</div>
         <div className="max-w-md">
-          <p className="text-sm text-sidebar-foreground/60">프로젝트12 통합관리 플랫폼</p>
+          <p className="text-sm text-sidebar-foreground/60">통합관리 플랫폼</p>
           <h2 className="mt-3 text-[32px] leading-[1.25] font-semibold tracking-tight text-white">
             흩어진 시트를 하나로,
             <br />
@@ -41,10 +37,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </section>
       <section className="flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <BrandMark className="size-6" />
-            <span className="text-lg font-semibold tracking-tight">별하</span>
-          </div>
+          <div className="mb-8 text-lg font-semibold tracking-tight lg:hidden">Project 12</div>
           <h1 className="text-2xl font-semibold tracking-tight">로그인</h1>
           <p className="mt-1 mb-6 text-sm text-muted-foreground">{setup === "done" ? "처음 설정이 끝났습니다. 방금 만든 본사 계정으로 들어가세요." : "지점에서 받은 계정으로 들어갑니다."}</p>
           <LoginForm next={next ?? ""} />

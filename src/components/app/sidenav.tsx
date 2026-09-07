@@ -69,7 +69,7 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
           </div>
         ))}
       </div>
-      <div className="border-t border-sidebar-border px-6 py-3 text-[11px] text-sidebar-foreground/35">프로젝트12 통합관리</div>
+      <div className="border-t border-sidebar-border px-6 py-3 text-[11px] text-sidebar-foreground/35">Project 12 통합관리</div>
     </nav>
   );
 }
