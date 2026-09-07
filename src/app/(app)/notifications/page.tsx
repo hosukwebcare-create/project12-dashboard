@@ -61,7 +61,7 @@ async function NotificationsPage() {
               <div className={cn("px-4 py-3", !n.readAt && "bg-accent/40")}>
                 <div className="flex items-center gap-2 text-sm">
                   <span className={cn(!n.readAt ? "font-semibold" : "font-medium text-muted-foreground")}>{TYPE_LABEL[n.type] ?? n.type}</span>
-                  {!n.readAt ? <span className="text-[11px] text-brand-foreground">새 알림</span> : null}
+                  {!n.readAt ? <span className="rounded-full bg-primary/10 px-1.5 py-px text-[11px] font-medium text-primary">새 알림</span> : null}
                   <span className="ml-auto text-xs text-muted-foreground">{fmtRelative(n.createdAt)}</span>
                 </div>
                 <p className="mt-0.5 truncate text-sm text-muted-foreground">{textFor(n)}</p>

@@ -13,7 +13,7 @@ const COLORS: Record<string, { bg: string; fg: string }> = {
   a: { bg: "oklch(0.66 0.13 158)", fg: "#fff" },
   b: { bg: "oklch(0.9 0.12 125)", fg: "oklch(0.32 0.06 125)" },
   p: { bg: "oklch(0.58 0.19 22)", fg: "#fff" },
-  na: { bg: "oklch(0.9 0.006 85)", fg: "oklch(0.45 0.02 262)" },
+  na: { bg: "oklch(0.8676 0.0034 286)", fg: "oklch(0.4387 0.0044 286)" },
 };
 
 function dayLabel(key: string) {
@@ -66,18 +66,18 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
   return (
     <div className="board" style={{ ["--cw" as string]: `${cellW}px` }}>
       <style>{`
-        .board { color: oklch(0.22 0.02 262); }
+        .board { color: oklch(0.2246 0.0027 286); }
         .board table { border-collapse: collapse; table-layout: fixed; }
-        .board th, .board td { border: 1px solid oklch(0.9 0.008 85); text-align: center; font-size: 12px; height: 22px; padding: 0; }
+        .board th, .board td { border: 1px solid oklch(0.8676 0.0034 286); text-align: center; font-size: 12px; height: 22px; padding: 0; }
         .board td.cell { width: var(--cw); min-width: var(--cw); }
         .board .sticky-l { position: sticky; left: 0; background: #fff; z-index: 2; }
         .board .sticky-l2 { position: sticky; left: 40px; background: #fff; z-index: 2; }
         .board .hdr { position: sticky; top: 0; background: #fff; z-index: 3; }
-        .board .hdr th { color: oklch(0.5 0.02 262); font-weight: 500; }
-        .board .name { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 1px; height: 64px; font-weight: 600; font-size: 12px; color: oklch(0.22 0.02 262); }
-        .board .day { background: oklch(0.955 0.007 85); font-weight: 600; text-align: left; padding-left: 8px; color: oklch(0.35 0.02 262); }
+        .board .hdr th { color: oklch(0.5387 0.0044 286); font-weight: 500; }
+        .board .name { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 1px; height: 64px; font-weight: 600; font-size: 12px; color: oklch(0.2246 0.0027 286); }
+        .board .day { background: oklch(0.9553 0.0021 286); font-weight: 600; text-align: left; padding-left: 8px; color: oklch(0.3246 0.0027 286); }
         .board .pts { font-weight: 700; color: oklch(0.5 0.19 22); background: oklch(0.97 0.02 22); }
-        .board .lbl { font-weight: 500; color: oklch(0.45 0.02 262); }
+        .board .lbl { font-weight: 500; color: oklch(0.4387 0.0044 286); }
       `}</style>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-border px-1 pb-2">
         <div>
@@ -133,7 +133,7 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
                     {dayLabel(day)}
                   </td>
                   {data.seats.map((s) => (
-                    <td key={s.seatNo} className="cell" style={{ background: "oklch(0.955 0.007 85)" }} />
+                    <td key={s.seatNo} className="cell" style={{ background: "oklch(0.9553 0.0021 286)" }} />
                   ))}
                 </tr>
                 {rowsPerDay.map((row) => (

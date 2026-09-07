@@ -7,7 +7,7 @@ import { BranchSwitcher } from "./branch-switcher";
 
 export function TopBar({ ctx, unread }: { ctx: Ctx; unread: number }) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background px-4 md:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-card px-4 md:px-6">
       <Link href={ctx.role === "assistant" ? "/rounding" : "/"} className="text-[17px] font-semibold tracking-tight" aria-label="홈">
         Project 12
       </Link>
@@ -16,7 +16,7 @@ export function TopBar({ ctx, unread }: { ctx: Ctx; unread: number }) {
         <Button asChild variant="ghost" size="icon" aria-label={`알림 ${unread}건`}>
           <Link href="/notifications" className="relative text-muted-foreground hover:text-foreground">
             <Bell className="size-[18px]" />
-            {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-brand" aria-hidden /> : null}
+            {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" aria-hidden /> : null}
           </Link>
         </Button>
         <span className="px-2 text-sm">

@@ -232,13 +232,13 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
           </header>
           <ul className="divide-y divide-border">
             {list.map((r) => (
-              <li key={r.memberId} className={cn("flex items-center gap-3 px-4 py-2.5 transition-colors", r.grade === "p" && "bg-rose-50/50")}>
-                <button type="button" onClick={() => setEditing(r)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+              <li key={r.memberId} className={cn("flex items-center gap-2 px-3 py-2 transition-colors sm:gap-3 sm:px-4", r.grade === "p" && "bg-rose-50/60")}>
+                <button type="button" onClick={() => setEditing(r)} className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3">
                   <SeatChip seatNo={r.seatNo} />
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-[15px] font-medium">{r.name}</span>
-                      {r.focusCare ? <span className="rounded-sm bg-violet-50 px-1 text-[10px] font-medium text-violet-700">집중</span> : null}
+                      {r.focusCare ? <span className="shrink-0 rounded-sm bg-violet-50 px-1 text-[10px] font-medium whitespace-nowrap text-violet-700">집중</span> : null}
                     </span>
                     {r.fieldNote ? <span className="block truncate text-xs text-muted-foreground">{r.fieldNote}</span> : null}
                     {r.priorPenalties.length ? (
@@ -262,7 +262,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                       onClick={() => quick(r, qk.grade)}
                       aria-pressed={r.grade === qk.grade}
                       className={cn(
-                        "h-9 min-w-10 px-2 text-xs font-semibold transition-colors",
+                        "h-11 min-w-11 px-1.5 text-[13px] font-semibold transition-colors sm:min-w-12 sm:px-2.5",
                         r.grade === qk.grade ? GRADE_STYLE[qk.grade] : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
@@ -277,7 +277,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
       ))}
 
       {completeAction && sessionId ? (
-        <div className="sticky bottom-16 z-20 -mx-4 border-t border-border bg-background px-4 py-3 md:-mx-8 md:bottom-0 md:px-8">
+        <div className="sticky bottom-16 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:-mx-8 md:bottom-0 md:px-8">
           <Button size="lg" className="h-12 w-full text-[15px]" onClick={complete} disabled={pending}>
             {completed ? "회차 다시 완료 처리" : `회차 완료 (미입력 ${rows.length - done}명은 a로 처리)`}
           </Button>
