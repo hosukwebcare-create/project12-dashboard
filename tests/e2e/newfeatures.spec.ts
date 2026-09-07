@@ -74,6 +74,24 @@ test("결제 대상: 요금표를 만들고 좌석 등급을 지정하면 금액
   await expect(page.getByRole("heading", { name: "결제 대상" })).toBeVisible();
   await expect(page.getByText("이투이실").first()).toBeVisible();
   await expect(page.getByText("좌석 이용료 미납")).toBeVisible();
+
+  // 한 줄의 입력은 칸마다 흩어져 있고 form 속성으로 한 폼에 묶인다. 같이 전송되는지 확인한다.
+  const row = page.locator("tbody tr").filter({ hasText: "이투이실" }).first();
+  const name = (await row.locator("td").nth(1).innerText()).split("\n")[0].trim();
+  await row.getByLabel(`${name} 금액`).fill("333000");
+  await row.getByLabel(`${name} 할인`).fill("33000");
+  await row.getByLabel(`${name} 메모`).fill("친구할인");
+  await row.getByRole("button", { name: "저장" }).click();
+  await expect(row.getByText("저장됨")).toBeVisible();
+
+  await page.goto("/payments");
+  const saved = page.locator("tbody tr").filter({ hasText: "이투이실" }).first();
+  await expect(saved.locator("td").nth(6)).toHaveText("300,000");
+  await expect(saved.getByLabel(`${name} 메모`)).toHaveValue("친구할인");
+
+  // 표는 카드 안에서만 가로로 넘치고 페이지 자체는 가로 스크롤이 생기지 않는다
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test("멘토는 결제 대상을 볼 수 없다", async ({ page }) => {

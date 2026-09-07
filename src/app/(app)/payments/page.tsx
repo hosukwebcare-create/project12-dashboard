@@ -81,66 +81,87 @@ async function PaymentsPage({ searchParams }: { searchParams: Promise<Search> })
       </nav>
 
       <div className="overflow-x-auto rounded-lg bg-card ring-1 ring-border">
-        <table className="data-table min-w-[60rem]">
+        <table className="data-table min-w-[70rem]">
           <thead>
             <tr>
               <th className="pl-3">좌석</th>
               <th>이름</th>
               <th>등급</th>
               <th>등록기간</th>
-              <th className="text-right">금액</th>
-              <th className="text-right">할인</th>
-              <th className="text-right">청구</th>
-              <th>결제일</th>
-              <th>상태</th>
+              <th className="px-2 text-right">금액</th>
+              <th className="px-2 text-right">할인</th>
+              <th className="px-2 text-right">청구</th>
+              <th className="px-2">결제일</th>
+              <th className="px-2">상태</th>
+              <th className="px-2">메모</th>
               <th className="pr-3" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-10 text-center text-muted-foreground">
+                <td colSpan={11} className="py-10 text-center text-muted-foreground">
                   해당하는 결제 건이 없습니다
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
-                <tr key={r.enrollmentId}>
-                  <td className="pl-3 tabular-nums">{r.seatNo ?? "-"}</td>
-                  <td className="font-medium">
-                    <Link href={`/members/${r.memberId}`} className="hover:underline">
-                      {r.memberName}
-                    </Link>
-                    {r.memberKind === "adult" ? <span className="ml-1 text-xs text-muted-foreground">성인</span> : null}
-                  </td>
-                  <td className={cn(!r.planName && "text-amber-700")}>{r.planName ?? "등급 없음"}</td>
-                  <td className="whitespace-nowrap tabular-nums">
-                    {fmtDate(r.periodStart)} ~ {fmtDate(r.periodEnd)}
-                  </td>
-                  <td colSpan={6} className="p-0">
-                    <InlineForm action={saveSeatPaymentAction} submitLabel="저장" className="flex-nowrap items-center gap-1.5 px-0 py-1">
-                      {r.id ? <input type="hidden" name="id" value={r.id} /> : null}
-                      <input type="hidden" name="enrollmentId" value={r.enrollmentId} />
-                      <input type="hidden" name="memberId" value={r.memberId} />
-                      <input type="hidden" name="periodStart" value={r.periodStart} />
-                      <input type="hidden" name="periodEnd" value={r.periodEnd} />
-                      <input type="hidden" name="planName" value={r.planName ?? ""} />
-                      <Input name="baseAmount" defaultValue={String(r.baseAmount)} className="w-24 text-right tabular-nums" aria-label={`${r.memberName} 금액`} />
-                      <Input name="discount" defaultValue={String(r.discount)} className="w-20 text-right tabular-nums" aria-label={`${r.memberName} 할인`} />
-                      <span className="w-24 text-right text-sm font-semibold tabular-nums">{won(r.amount)}</span>
-                      <Input name="paidAt" type="date" defaultValue={r.paidAt ?? ""} className="w-36" aria-label={`${r.memberName} 결제일`} />
-                      <select name="status" defaultValue={r.status} className="h-8 rounded-md border border-input bg-card px-2 text-sm" aria-label={`${r.memberName} 상태`}>
+              rows.map((r) => {
+                // 한 줄이 한 폼이지만 입력은 칸마다 흩어져 있어야 머리글과 맞는다. form 속성으로 묶는다.
+                const formId = `pay-${r.enrollmentId}`;
+                return (
+                  <tr key={r.enrollmentId}>
+                    <td className="pl-3 tabular-nums">{r.seatNo ?? "-"}</td>
+                    <td className="font-medium whitespace-nowrap">
+                      <Link href={`/members/${r.memberId}`} className="hover:underline">
+                        {r.memberName}
+                      </Link>
+                      {r.memberKind === "adult" ? <span className="ml-1 text-xs font-normal text-muted-foreground">성인</span> : null}
+                    </td>
+                    <td className={cn("whitespace-nowrap", !r.planName && "text-amber-700")}>{r.planName ?? "등급 없음"}</td>
+                    <td className="whitespace-nowrap tabular-nums">
+                      {fmtDate(r.periodStart)} ~ {fmtDate(r.periodEnd)}
+                    </td>
+                    <td className="px-2 text-right">
+                      <Input form={formId} name="baseAmount" defaultValue={String(r.baseAmount)} className="w-24 text-right tabular-nums" aria-label={`${r.memberName} 금액`} />
+                    </td>
+                    <td className="px-2 text-right">
+                      <Input form={formId} name="discount" defaultValue={String(r.discount)} className="w-20 text-right tabular-nums" aria-label={`${r.memberName} 할인`} />
+                    </td>
+                    <td className="px-2 text-right font-semibold whitespace-nowrap tabular-nums">{won(r.amount)}</td>
+                    <td className="px-2">
+                      <Input form={formId} name="paidAt" type="date" defaultValue={r.paidAt ?? ""} className="w-36" aria-label={`${r.memberName} 결제일`} />
+                    </td>
+                    <td className="px-2">
+                      <select
+                        form={formId}
+                        name="status"
+                        defaultValue={r.status}
+                        className="h-8 rounded-md border border-input bg-card px-2 text-sm"
+                        aria-label={`${r.memberName} 상태`}
+                      >
                         {PAYMENT_STATUSES.map((s) => (
                           <option key={s.key} value={s.key}>
                             {s.label}
                           </option>
                         ))}
                       </select>
-                      <Input name="note" defaultValue={r.note ?? ""} placeholder="메모" className="w-32" aria-label={`${r.memberName} 메모`} />
-                    </InlineForm>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-2">
+                      <Input form={formId} name="note" defaultValue={r.note ?? ""} placeholder="메모" className="w-28" aria-label={`${r.memberName} 메모`} />
+                    </td>
+                    <td className="pr-3">
+                      <InlineForm id={formId} action={saveSeatPaymentAction} submitLabel="저장" className="max-w-[13rem] items-center justify-end gap-1">
+                        {r.id ? <input type="hidden" name="id" value={r.id} /> : null}
+                        <input type="hidden" name="enrollmentId" value={r.enrollmentId} />
+                        <input type="hidden" name="memberId" value={r.memberId} />
+                        <input type="hidden" name="periodStart" value={r.periodStart} />
+                        <input type="hidden" name="periodEnd" value={r.periodEnd} />
+                        <input type="hidden" name="planName" value={r.planName ?? ""} />
+                      </InlineForm>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
