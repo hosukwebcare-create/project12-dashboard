@@ -87,6 +87,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
     ["생년월일", fmtDate(member.birthDate)],
     ["연락처", member.phone ?? "-"],
     ["주소", member.address ?? "-"],
+    ["마케팅 수신 동의", member.marketingOptIn === true ? "동의" : member.marketingOptIn === false ? "거부" : "미확인"],
   ];
   const dates: [string, ReactNode][] = [
     ["첫 등록일", fmtDate(member.firstRegisteredAt)],

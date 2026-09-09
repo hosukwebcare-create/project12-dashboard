@@ -33,6 +33,8 @@ export const memberInputSchema = z.object({
   seatId: z.preprocess(emptyToNull, z.string().uuid().nullable()).optional(),
   firstRegisteredAt: optDate(),
   firstCounseledAt: optDate(),
+  /** 동의·거부·미확인 세 값. 빈 문자열은 미확인(null) 이다 */
+  marketingOptIn: z.preprocess((v) => (v === "" || v === undefined || v === null ? null : v === "true" || v === true), z.boolean().nullable()).optional(),
   memo: optText(2000),
   fieldNote: optText(100),
   guardian: z

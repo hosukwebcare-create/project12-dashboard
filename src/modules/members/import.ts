@@ -29,6 +29,7 @@ export type ImportField =
   | "status"
   | "firstRegisteredAt"
   | "firstCounseledAt"
+  | "marketingOptIn"
   | "memo"
   | "fieldNote";
 
@@ -55,6 +56,7 @@ export const IMPORT_FIELDS: { key: ImportField; label: string; aliases: string[]
   { key: "status", label: "상태", aliases: ["상태", "status"] },
   { key: "firstRegisteredAt", label: "첫 등원일", aliases: ["첫 등원일", "첫등원일", "첫 등록일", "첫등록일", "최초 등록일", "등원일"] },
   { key: "firstCounseledAt", label: "첫 상담일", aliases: ["첫 상담일", "첫상담일", "최초 상담일"] },
+  { key: "marketingOptIn", label: "마케팅 수신 동의", aliases: ["마케팅 sms 동의", "마케팅sms동의", "마케팅 수신 동의", "sms 동의", "마케팅 동의", "수신 동의"] },
   { key: "memo", label: "메모", aliases: ["메모", "비고", "memo"] },
   { key: "fieldNote", label: "라운딩 특이사항", aliases: ["특이사항", "라운딩 특이사항"] },
 ];
@@ -105,6 +107,8 @@ export type ImportRow = {
   status: MemberStatus;
   firstRegisteredAt: string | null;
   firstCounseledAt: string | null;
+  /** 시트에 칸이 없거나 비었으면 null(미확인) */
+  marketingOptIn: boolean | null;
   memo: string | null;
   fieldNote: string | null;
   existingId?: string;
@@ -201,6 +205,9 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
     const firstCounseledAt = normalizeDate(get("firstCounseledAt"));
     if (get("firstRegisteredAt") && !firstRegisteredAt) warnings.push({ row: rowNo, message: `첫 등원일 '${get("firstRegisteredAt")}' 형식을 읽을 수 없어 비웠습니다` });
     if (get("firstCounseledAt") && !firstCounseledAt) warnings.push({ row: rowNo, message: `첫 상담일 '${get("firstCounseledAt")}' 형식을 읽을 수 없어 비웠습니다` });
+    // 동의/거부/미확인 세 값이다. 빈 칸을 거부로 바꾸면 실제로 동의한 사람에게 못 보내게 된다.
+    const optInRaw = get("marketingOptIn");
+    const marketingOptIn = !optInRaw ? null : /^(false|no|n|x|미동의|거부|비동의)$/i.test(optInRaw) ? false : normalizeBool(optInRaw) || /^(true|y|yes|동의)$/i.test(optInRaw);
     const memo = [get("memo"), ...memoParts].filter(Boolean).join(" · ") || null;
     const r: ImportRow = {
       row: rowNo,
@@ -225,6 +232,7 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
       status,
       firstRegisteredAt,
       firstCounseledAt,
+      marketingOptIn,
       memo,
       fieldNote: get("fieldNote") || null,
     };
@@ -307,6 +315,7 @@ async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, 
       fieldNote: r.fieldNote,
       firstRegisteredAt: r.firstRegisteredAt,
       firstCounseledAt: r.firstCounseledAt,
+      marketingOptIn: r.marketingOptIn,
       guardian,
       enrollment,
     };
@@ -333,6 +342,7 @@ async function commitRow(ctx: Ctx, r: ImportRow, seatByNo: Map<number, string>, 
           fieldNote: r.fieldNote ?? cur.fieldNote,
           firstRegisteredAt: r.firstRegisteredAt ?? cur.firstRegisteredAt,
           firstCounseledAt: r.firstCounseledAt ?? cur.firstCounseledAt,
+          marketingOptIn: r.marketingOptIn ?? cur.marketingOptIn,
           status: cur.status,
         },
         db,

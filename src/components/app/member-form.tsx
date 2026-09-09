@@ -91,6 +91,13 @@ export function MemberForm({ action, seats, member, submitLabel, customFields = 
             <input id="focusCare" name="focusCare" type="checkbox" defaultChecked={member?.focusCare ?? false} className="size-4" />
             <Label htmlFor="focusCare">집중관리 대상</Label>
           </div>
+          <Field id="marketingOptIn" label="마케팅 수신 동의" hint="시트의 '마케팅 SMS 동의' 칸입니다. 확인 안 된 상태와 거부를 구분합니다">
+            <select id="marketingOptIn" name="marketingOptIn" defaultValue={member?.marketingOptIn === true ? "true" : member?.marketingOptIn === false ? "false" : ""} className={selectClass}>
+              <option value="">미확인</option>
+              <option value="true">동의</option>
+              <option value="false">거부</option>
+            </select>
+          </Field>
           <Field id="memo" label="메모" className="sm:col-span-2 lg:col-span-3">
             <Textarea id="memo" name="memo" defaultValue={member?.memo ?? ""} rows={3} />
           </Field>

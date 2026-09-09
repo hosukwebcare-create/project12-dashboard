@@ -57,6 +57,13 @@
       "when": 1788760952431,
       "tag": "0007_branch_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788995893838,
+      "tag": "0008_member_marketing_opt_in",
+      "breakpoints": true
     }
   ]
 }

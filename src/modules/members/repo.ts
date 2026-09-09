@@ -165,6 +165,7 @@ function memberColumns(input: MemberInputParsed) {
     focusCare: input.focusCare,
     firstRegisteredAt: input.firstRegisteredAt ?? null,
     firstCounseledAt: input.firstCounseledAt ?? null,
+    marketingOptIn: input.marketingOptIn ?? null,
     memo: input.memo ?? null,
     fieldNote: input.fieldNote ?? null,
   };

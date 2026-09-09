@@ -136,6 +136,32 @@ describe("CSV 이관 · 검증과 반영", () => {
     expect(list.map((m) => [m.name, m.status]).sort()).toEqual([["김민수", "withdrawn"], ["박가림", "prospect"], ["이보나", "paused"], ["장지아", "enrolled"]].sort());
   });
 
+  it("마케팅 수신 동의는 동의·거부·미확인 세 값을 구분한다", async () => {
+    const t = await seedTwoBranches();
+    const data = [
+      ["좌석번호", "성명", "마케팅 SMS 동의"],
+      ["1", "동의한사람", "true"],
+      ["2", "거부한사람", "false"],
+      ["3", "안물어본사람", ""],
+    ];
+    const mapping = autoMapHeaders(data[0]);
+    expect(mapping[2]).toBe("marketingOptIn");
+    const pv = await previewImport(t.mgrCtx1, data, mapping, "2026-09-10");
+    expect(pv.rows.map((r) => r.marketingOptIn)).toEqual([true, false, null]);
+
+    await commitImport(t.mgrCtx1, pv.rows);
+    const list = await listMembers(t.mgrCtx1, {});
+    const optIn = async (name: string) => (await getMember(t.mgrCtx1, list.find((m) => m.name === name)!.id)).marketingOptIn;
+    expect(await optIn("동의한사람")).toBe(true);
+    expect(await optIn("거부한사람")).toBe(false);
+    expect(await optIn("안물어본사람")).toBeNull();
+
+    // 동의 칸이 없는 표로 갱신해도 이미 받은 동의가 지워지지 않는다
+    const again = await previewImport(t.mgrCtx1, [["좌석번호", "성명"], ["1", "동의한사람"]], autoMapHeaders(["좌석번호", "성명"]), "2026-09-10");
+    await commitImport(t.mgrCtx1, again.rows);
+    expect(await optIn("동의한사람")).toBe(true);
+  });
+
   it("결제시트 형태: 등록기간·등록마감일로 등록기간을 채우고, 시트에 없는 칸은 기존 값을 지우지 않는다", async () => {
     const t = await seedTwoBranches();
     // 성인이면서 집중관리 대상인 기존 회원

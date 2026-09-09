@@ -9,6 +9,10 @@
  * 적재 스크립트(migrate-sheets.ts)의 파서를 쓰지 않고 시트 셀을 직접 읽어 비교한다.
  * 같은 파서로 양쪽을 만들면 파서의 실수는 영원히 안 보이기 때문이다.
  *
+ * 대조 범위: 회원 · 라운딩 체크 · 식사 주문 · 근무 기록(타임 체크 포함) · 상담일지 · 모의고사.
+ * 처음에는 근무·상담이 건수만 찍고 통과 처리돼 있었다. 그래서 근무 타임 2,512칸이 통째로
+ * 빠진 것을 대사가 못 잡았다. 건수만 세는 절은 다시 만들지 않는다.
+ *
  * 콘솔에는 집계만 찍고, 실명·연락처가 들어가는 상세 목록은 --out 폴더의 HTML 로만 쓴다.
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -331,18 +335,174 @@ async function main() {
   }
 
   // ---------- 4. 근무 ----------
+  // (이름·날짜) 키로 근무시간·초과근무·타임 체크 수까지 맞춰 본다.
+  // 타임 체크는 근무 타임이 DB 에 없으면 통째로 버려지던 자리라 반드시 센다.
   if (files.worklog) {
-    const [{ n }] = await db.execute<{ n: string }>(`select count(*)::text as n from work_logs where branch_id = '${branch.id}'` as never);
-    const [{ u }] = await db.execute<{ u: string }>(`select count(distinct user_id)::text as u from work_logs where branch_id = '${branch.id}'` as never);
-    summary.push({ area: "근무 기록", sheet: 0, db: Number(n), ok: true, note: `직원 ${u}명. 시트는 날짜 탭마다 형식이 달라 건수 비교 대신 직원·날짜 범위로 확인` });
-    log(`  근무: DB ${n}건 · 직원 ${u}명`);
+    const book = readBook(path(files.worklog));
+    const FORMS = new Set(["주간조교", "야간조교", "원장", "컨설팅", "선생님"]);
+    type W = { hours: number; overtime: number; slots: number; reason: string };
+    const sheetMap = new Map<string, W>();
+    let tabs = 0;
+    for (const [tabName, g] of Object.entries(book)) {
+      if (!/^\d{1,2}\.\d{1,2}$/.test(tabName)) continue;
+      const date = normDate(g[0]?.[0] ?? "") ?? ((g[0]?.[0] ?? "").match(/^\d{4}-\d{2}-\d{2}/) ? (g[0][0] as string).slice(0, 10) : null);
+      const hdr = g.findIndex((row) => row[0] === "근무자");
+      if (!date || hdr < 0) continue;
+      tabs++;
+      const H = g[hdr];
+      const cH = H.indexOf("근무시간"), cO = H.indexOf("초과근무"), cR = H.indexOf("사유");
+      const slotCols = H.map((h, i) => (/^(일\s*)?\d+\s*타임$/.test((h ?? "").trim()) ? i : -1)).filter((i) => i >= 0);
+      for (let r = hdr + 1; r < g.length; r++) {
+        const name = (g[r][0] ?? "").trim(), form = (g[r][1] ?? "").trim();
+        if (!name || !FORMS.has(form)) continue;
+        const numOf = (v: string) => { const n = Number((v ?? "").replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
+        const slots = slotCols.filter((c) => (g[r][c] ?? "").toLowerCase() === "true").length;
+        const hours = cH >= 0 ? numOf(g[r][cH]) : 0;
+        const overtime = cO >= 0 ? numOf(g[r][cO]) : 0;
+        if (!slots && !hours && !overtime) continue;   // 적재 스크립트와 같은 기준으로 건너뛴다
+        sheetMap.set(`${name.replace(/\s+/g, "")}|${date}`, { hours, overtime, slots, reason: cR >= 0 ? (g[r][cR] ?? "").trim() : "" });
+      }
+    }
+    const dbRows = await db.execute<{ k: string; hours: string; overtime: string; slots: string }>(
+      `select replace(u.name,' ','')||'|'||w.date as k, (w.hours_x100/100.0)::text as hours, (w.overtime_x100/100.0)::text as overtime,
+              coalesce(jsonb_array_length(w.slot_keys), 0)::text as slots
+       from work_logs w join users u on u.id = w.user_id where w.branch_id = '${branch.id}'` as never,
+    );
+    const dbMap = new Map(dbRows.map((r) => [r.k, { hours: Number(r.hours), overtime: Number(r.overtime), slots: Number(r.slots) }]));
+    const missing: string[] = [], valueDiff: string[] = [], slotDiff: string[] = [];
+    let sheetSlots = 0, dbSlots = 0;
+    for (const [k, v] of sheetMap) {
+      sheetSlots += v.slots;
+      const d = dbMap.get(k);
+      if (!d) { missing.push(k); continue; }
+      dbSlots += d.slots;
+      if (Math.abs(d.hours - v.hours) > 0.005 || Math.abs(d.overtime - v.overtime) > 0.005) valueDiff.push(`${k} 시트 ${v.hours}h(+${v.overtime}) / DB ${d.hours}h(+${d.overtime})`);
+      if (d.slots !== v.slots) slotDiff.push(`${k} 시트 타임 ${v.slots}칸 / DB ${d.slots}칸`);
+    }
+    const extra = [...dbMap.keys()].filter((k) => !sheetMap.has(k));
+    for (const k of missing.slice(0, 100)) { const [nm, date] = k.split("|"); diffs.push({ row: 0, name: nm, field: "근무 기록", sheet: date, db: "(없음)", kind: "누락" }); }
+    for (const m of valueDiff.slice(0, 100)) diffs.push({ row: 0, name: m.split("|")[0], field: "근무시간", sheet: m, db: "", kind: "값 다름" });
+    for (const m of slotDiff.slice(0, 200)) diffs.push({ row: 0, name: m.split("|")[0], field: "근무 타임 체크", sheet: m, db: "", kind: "누락" });
+    summary.push({
+      area: "근무 기록",
+      sheet: sheetMap.size,
+      db: dbMap.size,
+      ok: missing.length === 0 && valueDiff.length === 0 && slotDiff.length === 0,
+      note: `날짜 탭 ${tabs} · 시트에만 ${missing.length} · DB에만 ${extra.length} · 시간 다름 ${valueDiff.length} · 타임 체크 시트 ${sheetSlots}칸 / DB ${dbSlots}칸 (불일치 ${slotDiff.length}행)`,
+    });
+    log(`  근무: 시트 ${sheetMap.size}행 · DB ${dbMap.size}행 · 시트에만 ${missing.length} · 시간 다름 ${valueDiff.length} · 타임 체크 ${sheetSlots} → ${dbSlots}`);
   }
 
   // ---------- 5. 상담 ----------
+  // 주간 상담일지의 주차 칸과 개인 탭의 날짜별 칸을 각각 본문 앞 20자까지 맞춰 본다.
   if (files.counsel) {
-    const [{ n }] = await db.execute<{ n: string }>(`select count(*)::text as n from counsel_logs where branch_id = '${branch.id}'` as never);
-    summary.push({ area: "상담일지", sheet: 0, db: Number(n), ok: true, note: "월 파일 단위. 주간 4칸 + 일별 기록" });
-    log(`  상담: DB ${n}건`);
+    const book = readBook(path(files.counsel));
+    const head = (t: string) => t.replace(/\s+/g, "").slice(0, 20);
+    const sheetTexts: { name: string; where: string; text: string }[] = [];
+    const wk = book["주간 상담일지"];
+    if (wk) {
+      for (let r = 1; r < wk.length; r++) {
+        const name = (wk[r][1] ?? "").trim();
+        if (!name) continue;
+        for (let c = 6; c < (wk[0] ?? []).length; c++) {
+          const t = (wk[r][c] ?? "").trim();
+          if (t && /\d주차/.test(wk[0][c] ?? "")) sheetTexts.push({ name: name.replace(/\s+/g, ""), where: `주간 ${wk[0][c]}`, text: head(t) });
+        }
+      }
+    }
+    for (const [tabName, g] of Object.entries(book)) {
+      if (tabName === "주간 상담일지" || /템플릿/.test(tabName)) continue;
+      const r1 = g[0] ?? [];
+      const ni = r1.findIndex((v) => v === "이름");
+      const name = (ni >= 0 ? r1[ni + 1] : tabName.replace(/^\d+\s*/, "")).replace(/\s+/g, "");
+      const hdr = g.findIndex((row) => row.some((v) => /원장/.test(v ?? "")));
+      const cI = hdr >= 0 ? g[hdr].findIndex((v) => /원장/.test(v ?? "")) : 1;
+      const cR = hdr >= 0 ? g[hdr].findIndex((v) => /선생님|멘토/.test(v ?? "")) : 4;
+      for (let r = hdr + 1; r < g.length; r++) {
+        for (const [c, label] of [[cI, "원장"], [cR, "선생님"]] as [number, string][]) {
+          if (c < 0) continue;
+          const t = (g[r][c] ?? "").trim();
+          if (t) sheetTexts.push({ name, where: `${tabName} ${r}행 ${label}`, text: head(t) });
+        }
+      }
+    }
+    const dbRows = await db.execute<{ name: string; t: string }>(
+      `select replace(m.name,' ','') as name, x.t from counsel_logs c join members m on m.id = c.member_id,
+        lateral (values (c.issue_text), (c.resolution_text)) as x(t)
+       where c.branch_id = '${branch.id}' and x.t is not null and x.t <> ''` as never,
+    );
+    const dbBag = new Map<string, number>();
+    for (const r of dbRows) { const k = `${r.name}|${head(r.t)}`; dbBag.set(k, (dbBag.get(k) ?? 0) + 1); }
+    const missing = sheetTexts.filter((x) => {
+      const k = `${x.name}|${x.text}`;
+      const n = dbBag.get(k) ?? 0;
+      if (n > 0) { dbBag.set(k, n - 1); return false; }
+      return true;
+    });
+    for (const m of missing.slice(0, 200)) diffs.push({ row: 0, name: m.name, field: "상담일지", sheet: `${m.where}: ${m.text}…`, db: "(없음)", kind: "누락" });
+    const leftover = [...dbBag.values()].reduce((a, b) => a + b, 0);
+    summary.push({
+      area: "상담일지",
+      sheet: sheetTexts.length,
+      db: dbRows.length,
+      ok: missing.length === 0,
+      note: `시트 본문 ${sheetTexts.length}칸 · DB ${dbRows.length}칸 · 시트에만 ${missing.length} · DB에만 ${leftover}`,
+    });
+    log(`  상담: 시트 ${sheetTexts.length}칸 · DB ${dbRows.length}칸 · 시트에만 ${missing.length} · DB에만 ${leftover}`);
+  }
+
+  // ---------- 6. 모의고사 ----------
+  // 고객정보 파일의 모의고사 탭: 월 블록마다 (이름·회차) 신청 여부와 결제일을 본다.
+  if (files.members) {
+    const book = readBook(path(files.members));
+    const entry = Object.entries(book).find(([n]) => n.startsWith("모의고사"));
+    if (entry) {
+      const [tabName, g] = entry;
+      const price = Number(((tabName.match(/(\d[\d,]*)원/) ?? [])[1] ?? "0").replace(/,/g, "")) || 0;
+      const blocks: { col: number; ym: string }[] = [];
+      (g[0] ?? []).forEach((v, c) => {
+        const m = (v ?? "").match(/(\d{4})년\s*(\d{1,2})월/);
+        if (m) blocks.push({ col: c, ym: `${m[1]}-${m[2].padStart(2, "0")}` });
+      });
+      const sheetMap = new Map<string, { applied: boolean; paidAt: string | null }>();
+      for (const b of blocks) {
+        const hdr = (g[1] ?? []).slice(b.col, b.col + 9);
+        const ci = (label: string) => { const i = hdr.findIndex((h) => (h ?? "").trim() === label); return i < 0 ? -1 : b.col + i; };
+        const cName = ci("성명"), cApplied = ci("신청여부"), cPaid = ci("결제일");
+        if (cName < 0) continue;
+        for (let r = 2; r < g.length; r++) {
+          const name = (g[r][cName] ?? "").trim();
+          if (!name) continue;
+          const paidRaw = cPaid >= 0 ? (g[r][cPaid] ?? "").trim() : "";
+          const paidAt = /^\d{4}-\d{2}-\d{2}/.test(paidRaw) ? paidRaw.slice(0, 10) : null;
+          const applied = cApplied >= 0 ? truthy(g[r][cApplied] ?? "") || !!paidAt : true;
+          sheetMap.set(`${name.replace(/\s+/g, "")}|${b.ym}`, { applied, paidAt });
+        }
+      }
+      const dbRows = await db.execute<{ k: string; applied: boolean; paid_at: string | null }>(
+        `select replace(m.name,' ','')||'|'||rd.year_month as k, a.applied, a.paid_at::text as paid_at
+         from mock_exam_applications a join mock_exam_rounds rd on rd.id = a.round_id join members m on m.id = a.member_id
+         where rd.branch_id = '${branch.id}'` as never,
+      );
+      const dbMap = new Map(dbRows.map((r) => [r.k, { applied: r.applied, paidAt: r.paid_at }]));
+      const missing: string[] = [], valueDiff: string[] = [];
+      for (const [k, v] of sheetMap) {
+        const d = dbMap.get(k);
+        if (!d) { missing.push(k); continue; }
+        if (d.applied !== v.applied || (d.paidAt ?? null) !== (v.paidAt ?? null)) valueDiff.push(`${k} 시트 신청${v.applied ? "O" : "X"}/${v.paidAt ?? "-"} · DB 신청${d.applied ? "O" : "X"}/${d.paidAt ?? "-"}`);
+      }
+      const extra = [...dbMap.keys()].filter((k) => !sheetMap.has(k));
+      for (const k of missing.slice(0, 100)) { const [nm, ym] = k.split("|"); diffs.push({ row: 0, name: nm, field: "모의고사 신청", sheet: ym, db: "(없음)", kind: "누락" }); }
+      for (const m of valueDiff.slice(0, 100)) diffs.push({ row: 0, name: m.split("|")[0], field: "모의고사", sheet: m, db: "", kind: "값 다름" });
+      summary.push({
+        area: "모의고사",
+        sheet: sheetMap.size,
+        db: dbMap.size,
+        ok: missing.length === 0 && valueDiff.length === 0,
+        note: `회차 ${blocks.length}개 · 1인 ${price.toLocaleString("ko-KR")}원 · 시트에만 ${missing.length} · DB에만 ${extra.length} · 값 다름 ${valueDiff.length}`,
+      });
+      log(`  모의고사: 시트 ${sheetMap.size} · DB ${dbMap.size} · 시트에만 ${missing.length} · 값 다름 ${valueDiff.length}`);
+    }
   }
 
   // ---------- 보고서 ----------

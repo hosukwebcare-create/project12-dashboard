@@ -262,6 +262,11 @@ async function main() {
         if (!name) continue;
         const memberId = await index.resolve(name, num(cell(wk, r, 0)), "주간 상담일지");
         if (!memberId) continue;
+        // 첫 상담일은 고객정보 시트에 없는 칸이다. 여기서만 얻을 수 있으므로 비어 있을 때 채운다.
+        const firstCounseled = isDate(cell(wk, r, 4)) ? dateOf(cell(wk, r, 4)) : null;
+        const firstRegistered = isDate(cell(wk, r, 3)) ? dateOf(cell(wk, r, 3)) : null;
+        if (firstCounseled) await db.update(s.members).set({ firstCounseledAt: firstCounseled }).where(and(eq(s.members.id, memberId), isNull(s.members.firstCounseledAt)));
+        if (firstRegistered) await db.update(s.members).set({ firstRegisteredAt: firstRegistered }).where(and(eq(s.members.id, memberId), isNull(s.members.firstRegisteredAt)));
         for (let c = 6; c < hdr.length; c++) {
           const text = cell(wk, r, c);
           if (!text) continue;
@@ -278,20 +283,36 @@ async function main() {
         }
       }
     }
+    // 개인 탭은 같은 템플릿을 복사한 것이라 '행 번호 → 날짜'가 모든 탭에서 같다.
+    // 날짜 칸을 지운 탭이 있어(동탄2 '1 김지민') 그 탭의 기록이 통째로 버려졌다. 행 위치로 날짜를 추정해 살린다.
+    const dateByRow = new Map<number, string>();
+    for (const g of Object.values(book)) {
+      let n = 0;
+      for (let r = 0; r < g.length; r++) if (isDate(cell(g, r, 0))) { if (!dateByRow.has(r)) dateByRow.set(r, dateOf(cell(g, r, 0))); n++; }
+      if (n > 5) break;
+    }
+    let guessedDates = 0;
     for (const [tabName, g] of Object.entries(book)) {
       if (tabName === "주간 상담일지" || /템플릿/.test(tabName)) continue;
       const r1 = g[0] ?? [];
       const nameIdx = r1.findIndex((v) => v === "이름");
       const name = nameIdx >= 0 ? r1[nameIdx + 1] : tabName.replace(/^\d+\s*/, "");
-      const seatNo = num(r1[1] ?? "");
+      // 좌석번호는 보통 1열이지만 날짜 칸이 없는 탭은 0열에 있다. 동명이인을 가르는 값이라 둘 다 본다.
+      const seatNo = num(r1[1] ?? "") ?? num(r1[0] ?? "");
       const memberId = await index.resolve(name, seatNo, "집중관리 일별 탭");
       if (!memberId) continue;
       const hdrRow = g.findIndex((row) => row.some((v) => /원장/.test(v)));
       const cIssue = hdrRow >= 0 ? g[hdrRow].findIndex((v) => /원장/.test(v)) : 1;
       const cRes = hdrRow >= 0 ? g[hdrRow].findIndex((v) => /선생님|멘토/.test(v)) : 4;
+      const hasDates = g.some((row) => isDate(row[0] ?? ""));
       for (let r = hdrRow + 1; r < g.length; r++) {
-        const d = cell(g, r, 0);
-        if (!isDate(d)) continue;
+        let d = cell(g, r, 0);
+        if (!isDate(d)) {
+          const guess = dateByRow.get(r);
+          const anyText = (cIssue >= 0 ? cell(g, r, cIssue) : "") || (cRes >= 0 ? cell(g, r, cRes) : "");
+          if (!hasDates && guess && anyText) { d = guess; guessedDates++; }
+          else continue;
+        }
         const issueText = cIssue >= 0 ? cell(g, r, cIssue) : "";
         const resolutionText = cRes >= 0 ? cell(g, r, cRes) : "";
         if (!issueText && !resolutionText) continue;
@@ -315,6 +336,7 @@ async function main() {
       await db.update(s.members).set({ focusCare: true }).where(eq(s.members.id, memberId));
     }
     log(`  상담일지: 주간 ${weekly}칸, 일별 ${daily}건`);
+    if (guessedDates) log(`    주의: 날짜 칸이 없는 탭의 ${guessedDates}건은 같은 템플릿의 행 위치로 날짜를 추정했습니다. 확인이 필요합니다.`);
   }
 
   // ---------- 5. 게시용 시트 → 체크 ----------

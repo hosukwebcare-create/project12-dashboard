@@ -138,6 +138,8 @@ export const members = pgTable(
     focusCare: boolean("focus_care").notNull().default(false),
     firstRegisteredAt: date("first_registered_at"),
     firstCounseledAt: date("first_counseled_at"),
+    /** 마케팅 문자·알림 수신 동의. null 은 아직 받지 않은 것(동의 거부와 구분한다) */
+    marketingOptIn: boolean("marketing_opt_in"),
     memo: text("memo"),
     /** 라운딩 목록에 항상 표시되는 짧은 특이사항 */
     fieldNote: text("field_note"),
