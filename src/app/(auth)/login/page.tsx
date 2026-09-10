@@ -15,25 +15,26 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (await needsSetup()) redirect("/setup");
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
-      <section className="hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <div className="text-lg font-semibold tracking-tight text-white">Project 12</div>
+      {/* 왼쪽 소개 패널은 흰 바탕이다. 예전 어두운 패널 시절의 text-white 를 그대로 두면 글씨가 사라진다. */}
+      <section className="hidden border-r border-border bg-card text-card-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+        <div className="text-lg font-semibold tracking-tight">Project 12</div>
         <div className="max-w-md">
-          <p className="text-sm text-sidebar-foreground/60">통합관리 플랫폼</p>
-          <h2 className="mt-3 text-[32px] leading-[1.25] font-semibold tracking-tight text-white">
+          <p className="text-sm text-muted-foreground">통합관리 플랫폼</p>
+          <h2 className="mt-3 text-[32px] leading-[1.25] font-semibold tracking-tight">
             흩어진 시트를 하나로,
             <br />
             현장은 더 가볍게.
           </h2>
-          <ul className="mt-10 divide-y divide-sidebar-border border-y border-sidebar-border">
+          <ul className="mt-10 divide-y divide-border border-y border-border">
             {POINTS.map((p) => (
               <li key={p.title} className="py-4">
-                <p className="font-medium text-white">{p.title}</p>
-                <p className="mt-1 text-sm leading-relaxed text-sidebar-foreground/70">{p.body}</p>
+                <p className="font-medium">{p.title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{p.body}</p>
               </li>
             ))}
           </ul>
         </div>
-        <p className="text-xs text-sidebar-foreground/40">관리형 스터디카페 체인 · 회원 · 상담 · 라운딩 · 식사 · 근무</p>
+        <p className="text-xs text-muted-foreground">관리형 스터디카페 체인 · 회원 · 상담 · 라운딩 · 식사 · 근무</p>
       </section>
       <section className="flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-sm">

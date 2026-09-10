@@ -73,42 +73,45 @@
   --card-foreground: oklch(0.2246 0.0027 286);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.2246 0.0027 286);
-  --primary: oklch(0.578 0.185 254);
+  --primary: oklch(0.54 0.185 254);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.938 0.0026 286);
   --secondary-foreground: oklch(0.2846 0.0027 286);
   --muted: oklch(0.9553 0.0021 286);
-  --muted-foreground: oklch(0.5387 0.0044 286);
+  --muted-foreground: oklch(0.53 0.0044 286);
   --accent: oklch(0.9505 0.0209 254);
   --accent-foreground: oklch(0.478 0.175 254);
   --destructive: oklch(0.543 0.218 27);
   --border: oklch(0.8676 0.0034 286);
   --input: oklch(0.8318 0.0038 286);
-  --ring: oklch(0.578 0.185 254);
-  /* 브랜드 포인트도 같은 파랑. 시스템 안에서 색이 두 개 이상 경쟁하지 않게 한다 */
-  --brand: oklch(0.578 0.185 254);
+  --ring: oklch(0.54 0.185 254);
+  /* 브랜드 포인트도 같은 파랑. 시스템 안에서 색이 두 개 이상 경쟁하지 않게 한다.
+     밝기 0.54 는 눈으로 고른 값이 아니라 계산한 값이다. 이 파랑은 세 자리에 쓰이는데
+     (버튼 바탕 위 흰 글씨 · 흰 카드 위 글씨 · 회색 바탕 위 탭 글씨) 셋 다 WCAG AA 4.5:1 을
+     넘겨야 하고, 가장 빡빡한 회색 바탕이 0.54 에서 4.56 이 된다. 더 밝히면 탭 글씨가 깨진다. */
+  --brand: oklch(0.54 0.185 254);
   --brand-foreground: oklch(1 0 0);
   --success: oklch(0.55 0.139 148);
   --success-foreground: oklch(1 0 0);
   --warning: oklch(0.548 0.148 52);
   --warning-foreground: oklch(1 0 0);
-  --info: oklch(0.578 0.185 254);
+  --info: oklch(0.54 0.185 254);
   --info-foreground: oklch(1 0 0);
-  --chart-1: oklch(0.578 0.185 254);
+  --chart-1: oklch(0.54 0.185 254);
   --chart-2: oklch(0.55 0.139 148);
   --chart-3: oklch(0.548 0.148 52);
   --chart-4: oklch(0.543 0.218 27);
-  --chart-5: oklch(0.5387 0.0044 286);
+  --chart-5: oklch(0.53 0.0044 286);
   --radius: 0.625rem;
   /* 셸(사이드바·상단바)은 흰색, 본문은 회색 바탕. 경계선 하나로 나눈다 */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.3246 0.0027 286);
-  --sidebar-primary: oklch(0.578 0.185 254);
+  --sidebar-primary: oklch(0.54 0.185 254);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.9505 0.0209 254);
   --sidebar-accent-foreground: oklch(0.478 0.175 254);
   --sidebar-border: oklch(0.8676 0.0034 286);
-  --sidebar-ring: oklch(0.578 0.185 254);
+  --sidebar-ring: oklch(0.54 0.185 254);
   /* 카드는 경계선으로 서고, 그림자는 진짜 떠 있는 것에만 */
   --shadow-card: 0 1px 2px oklch(0.2246 0.0027 286 / 0.04);
   --shadow-float: 0 12px 32px oklch(0.2246 0.0027 286 / 0.16), 0 2px 8px oklch(0.2246 0.0027 286 / 0.08);

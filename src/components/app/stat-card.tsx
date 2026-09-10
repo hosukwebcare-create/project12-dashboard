@@ -10,7 +10,7 @@ export function StatCard({ label, value, unit, hint, href, tone = "default", cla
     <div className={cn("flex flex-col gap-2 py-1 md:px-6 md:first:pl-0 md:last:pr-0 md:not-first:border-l md:not-first:border-border", className)}>
       <p className="text-sm text-muted-foreground">{label}</p>
       {value !== undefined ? (
-        <p className={cn("text-[34px] leading-none font-semibold tracking-tight", tone === "warning" && "text-amber-700")}>
+        <p className={cn("text-[34px] leading-none font-semibold tracking-tight", tone === "warning" && "text-warning")}>
           {value}
           {unit ? <span className="ml-1.5 text-sm font-normal text-muted-foreground">{unit}</span> : null}
         </p>

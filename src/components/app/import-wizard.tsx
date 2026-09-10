@@ -194,7 +194,7 @@ export function ImportWizard({ fields }: Props) {
                               </div>
                             ))}
                             {warns?.map((m, i) => (
-                              <div key={i} className="text-amber-700">
+                              <div key={i} className="text-warning">
                                 {m}
                               </div>
                             ))}

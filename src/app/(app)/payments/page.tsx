@@ -60,7 +60,7 @@ async function PaymentsPage({ searchParams }: { searchParams: Promise<Search> })
             <span className="ml-1 text-sm font-normal text-muted-foreground">원</span>
           </p>
           {summary.unpriced > 0 ? (
-            <Link href="/settings/fees" className="mt-1 inline-block text-[13px] text-amber-700 hover:underline">
+            <Link href="/settings/fees" className="mt-1 inline-block text-[13px] text-warning hover:underline">
               금액 미정 {summary.unpriced}건 · 좌석 등급을 지정하세요
             </Link>
           ) : null}
@@ -117,7 +117,7 @@ async function PaymentsPage({ searchParams }: { searchParams: Promise<Search> })
                       </Link>
                       {r.memberKind === "adult" ? <span className="ml-1 text-xs font-normal text-muted-foreground">성인</span> : null}
                     </td>
-                    <td className={cn("whitespace-nowrap", !r.planName && "text-amber-700")}>{r.planName ?? "등급 없음"}</td>
+                    <td className={cn("whitespace-nowrap", !r.planName && "text-warning")}>{r.planName ?? "등급 없음"}</td>
                     <td className="whitespace-nowrap tabular-nums">
                       {fmtDate(r.periodStart)} ~ {fmtDate(r.periodEnd)}
                     </td>

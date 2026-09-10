@@ -30,7 +30,7 @@ function Facts({ items, cols = 1 }: { items: [string, ReactNode][]; cols?: 1 | 2
       {items.map(([k, v]) => (
         <Fragment key={k}>
           <dt className="text-muted-foreground">{k}</dt>
-          <dd className={cn("min-w-0 break-words", (v === "-" || v === null || v === "") && "text-muted-foreground/60")}>{v || "-"}</dd>
+          <dd className={cn("min-w-0 break-words", (v === "-" || v === null || v === "") && "text-muted-foreground")}>{v || "-"}</dd>
         </Fragment>
       ))}
     </dl>
@@ -134,7 +134,7 @@ async function MemberDetailPage({ params, searchParams }: { params: Promise<{ id
                 </span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {enrollment.planType === "short" ? "단기 · " : ""}잔여 <span className={cn("font-medium", (member.daysLeft ?? 0) <= 7 ? "text-amber-700" : "text-foreground")}>{member.daysLeft}일</span>
+                  · {enrollment.planType === "short" ? "단기 · " : ""}잔여 <span className={cn("font-medium", (member.daysLeft ?? 0) <= 7 ? "text-warning" : "text-foreground")}>{member.daysLeft}일</span>
                 </span>
                 <span className="mt-2 block h-0.5 w-full max-w-xs bg-border" aria-hidden>
                   <span className={cn("block h-full", (member.daysLeft ?? 0) <= 7 ? "bg-amber-600" : "bg-foreground")} style={{ width: `${enrollPct}%` }} />

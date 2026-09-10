@@ -242,7 +242,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     </span>
                     {r.fieldNote ? <span className="block truncate text-xs text-muted-foreground">{r.fieldNote}</span> : null}
                     {r.priorPenalties.length ? (
-                      <span className="block truncate text-[11px] text-amber-700">오늘 이전 벌점: {r.priorPenalties.join(", ")}</span>
+                      <span className="block truncate text-[11px] text-warning">오늘 이전 벌점: {r.priorPenalties.join(", ")}</span>
                     ) : null}
                     {r.grade === "p" ? (
                       <span className="block truncate text-xs font-medium text-rose-600">
@@ -299,7 +299,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
               </SheetHeader>
               <div className="space-y-5 px-4 pb-5">
                 {editing.priorPenalties.length ? (
-                  <p className="text-xs text-amber-700">오늘 이전 벌점: {editing.priorPenalties.join(", ")}</p>
+                  <p className="text-xs text-warning">오늘 이전 벌점: {editing.priorPenalties.join(", ")}</p>
                 ) : null}
                 <div className="grid grid-cols-4 gap-2">
                   {QUICK.map((qk) => (
@@ -391,7 +391,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
               {[
                 ["점검 인원", `${summary.total}명`, ""],
                 ["벌점", `${summary.penalties}건 · ${summary.points}점`, summary.points > 0 ? "text-rose-600" : ""],
-                ["이슈 보고", `${summary.issues}건`, summary.issues > 0 ? "text-amber-700" : ""],
+                ["이슈 보고", `${summary.issues}건`, summary.issues > 0 ? "text-warning" : ""],
                 ["부재", `${summary.absent}명`, ""],
               ].map(([k, v, cls]) => (
                 <div key={k} className="rounded-md bg-muted/60 px-3 py-2.5">

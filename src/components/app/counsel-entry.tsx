@@ -97,13 +97,13 @@ function FieldColumn(props: { title: string; who: string; field: "issue" | "reso
             aria-label={`${props.title} 내용`}
             onChange={() => setDirty(true)}
             className={cn(
-              "block w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 text-[15px] leading-7 outline-none transition-colors placeholder:text-muted-foreground/60",
+              "block w-full resize-y rounded-md border border-transparent bg-transparent px-0 py-1 text-[15px] leading-7 outline-none transition-colors placeholder:text-muted-foreground",
               "hover:border-border focus:border-border focus:bg-card focus:px-3",
             )}
           />
           <div className="mt-2 flex items-center justify-end gap-3 border-t border-border pt-2">
             {state.error ? <p className="mr-auto text-sm text-destructive">{state.error}</p> : null}
-            {state.ok && !dirty ? <span className="text-xs text-muted-foreground">저장됨</span> : dirty ? <span className="text-xs text-amber-700">저장되지 않은 변경</span> : null}
+            {state.ok && !dirty ? <span className="text-xs text-muted-foreground">저장됨</span> : dirty ? <span className="text-xs text-warning">저장되지 않은 변경</span> : null}
             <Button type="submit" size="sm" disabled={pending}>
               {pending ? "저장 중…" : "저장"}
             </Button>
@@ -147,7 +147,7 @@ function CommentThread({ log }: { log: CounselLogDetail }) {
       )}
       <form action={action} key={log.comments.length} className="mt-3 border-t border-border pt-3">
         <input type="hidden" name="logId" value={log.id} />
-        <textarea name="body" rows={2} required placeholder="@이름 으로 멘션하면 알림이 갑니다" aria-label="코멘트" className="block w-full resize-y rounded-md border border-input bg-card px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/30" />
+        <textarea name="body" rows={2} required placeholder="@이름 으로 멘션하면 알림이 갑니다" aria-label="코멘트" className="block w-full resize-y rounded-md border border-input bg-card px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30" />
         {state.error ? <p className="mt-1 text-sm text-destructive">{state.error}</p> : null}
         <div className="mt-2 flex justify-end">
           <Button type="submit" size="sm" variant="outline" disabled={pending}>

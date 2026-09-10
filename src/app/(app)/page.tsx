@@ -110,7 +110,7 @@ async function DashboardPage() {
           <span className="text-sm text-muted-foreground">
             합계 <b className="ml-1 text-base font-semibold text-primary tabular-nums">{won(money.total)}</b>원
           </span>
-          {money.unpriced > 0 ? <span className="text-[13px] text-amber-700">금액 미정 {money.unpriced}건 · 좌석 등급 지정 필요</span> : null}
+          {money.unpriced > 0 ? <span className="text-[13px] text-warning">금액 미정 {money.unpriced}건 · 좌석 등급 지정 필요</span> : null}
           <span className="ml-auto text-[13px] text-muted-foreground">결제 대상 열기</span>
         </Link>
       ) : null}

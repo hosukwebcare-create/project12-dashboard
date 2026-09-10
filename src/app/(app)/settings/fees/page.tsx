@@ -56,7 +56,7 @@ async function FeesSettingsPage() {
           <CardTitle>좌석 등급 지정</CardTitle>
           <CardDescription>
             좌석마다 등급을 붙여야 금액이 계산됩니다.
-            {unassigned > 0 ? <b className="text-amber-700"> 아직 {unassigned}개 좌석에 등급이 없습니다.</b> : " 모든 좌석에 등급이 있습니다."}
+            {unassigned > 0 ? <b className="text-warning"> 아직 {unassigned}개 좌석에 등급이 없습니다.</b> : " 모든 좌석에 등급이 있습니다."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
