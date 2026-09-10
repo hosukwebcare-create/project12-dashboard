@@ -136,6 +136,31 @@ describe("CSV 이관 · 검증과 반영", () => {
     expect(list.map((m) => [m.name, m.status]).sort()).toEqual([["김민수", "withdrawn"], ["박가림", "prospect"], ["이보나", "paused"], ["장지아", "enrolled"]].sort());
   });
 
+  it("좌석도 연락처도 없는 행은 이름이 하나뿐일 때만 갱신하고, 동명이인이면 새로 만든다", async () => {
+    const t = await seedTwoBranches();
+    // 상담 회원: 좌석도 연락처도 없다 (시트에서 흔한 모양)
+    const solo = await createMember(t.mgrCtx1, { name: "혼자뿐", status: "prospect", memberKind: "student", focusCare: false });
+    await createMember(t.mgrCtx1, { name: "겹친이름", status: "prospect", memberKind: "student", focusCare: false });
+    await createMember(t.mgrCtx1, { name: "겹친이름", status: "withdrawn", memberKind: "student", focusCare: false });
+
+    const data = [
+      ["좌석번호", "성명", "메모"],
+      ["상담", "혼자뿐", "다시 넣어도 하나여야 한다"],
+      ["상담", "겹친이름", "누구인지 알 수 없다"],
+    ];
+    const pv = await previewImport(t.mgrCtx1, data, autoMapHeaders(data[0]), "2026-09-10");
+    expect(pv.rows[0].existingId).toBe(solo);
+    expect(pv.rows[1].existingId).toBeUndefined();
+    expect(pv.warnings.map((w) => w.message)).toEqual(
+      expect.arrayContaining([expect.stringContaining("이름이 같은 회원이 한 명뿐"), expect.stringContaining("같은 이름이 2명이라 새 회원으로 만듭니다")]),
+    );
+
+    expect(await commitImport(t.mgrCtx1, pv.rows)).toMatchObject({ created: 1, updated: 1, failed: [] });
+    const list = await listMembers(t.mgrCtx1, {});
+    expect(list.filter((m) => m.name === "혼자뿐")).toHaveLength(1);
+    expect(list.filter((m) => m.name === "겹친이름")).toHaveLength(3);
+  });
+
   it("마케팅 수신 동의는 동의·거부·미확인 세 값을 구분한다", async () => {
     const t = await seedTwoBranches();
     const data = [

@@ -263,10 +263,23 @@ export async function previewImport(ctx: Ctx, data: string[][], mapping: Record<
       }
     }
 
-    const match = existing.find((m) => m.name === name && ((r.seatNo !== null && m.seatNo === r.seatNo) || (phone && m.phone === phone)));
+    // 좌석이나 연락처로 먼저 찾는다. 둘 다 확실한 열쇠다.
+    let match = existing.find((m) => m.name === name && ((r.seatNo !== null && m.seatNo === r.seatNo) || (phone && m.phone === phone)));
+    let matchNote = "기존 회원과 일치하여 정보를 갱신합니다";
+    if (!match) {
+      // 상담·퇴원 회원은 시트에 좌석도 연락처도 없는 일이 흔하다. 그대로 두면 다시 넣을 때마다
+      // 같은 사람이 한 명씩 늘어난다. 이름이 같은 회원이 한 명뿐이면 그 사람으로 본다.
+      const sameName = existing.filter((m) => m.name === name);
+      if (sameName.length === 1) {
+        match = sameName[0];
+        matchNote = "이름이 같은 회원이 한 명뿐이라 그 회원을 갱신합니다 (좌석·연락처로는 확인하지 못했습니다)";
+      } else if (sameName.length > 1) {
+        warnings.push({ row: rowNo, message: `${name}: 같은 이름이 ${sameName.length}명이라 새 회원으로 만듭니다. 좌석번호나 연락처를 넣어 구분하세요` });
+      }
+    }
     if (match) {
       r.existingId = match.id;
-      warnings.push({ row: rowNo, message: `${name}: 기존 회원과 일치하여 정보를 갱신합니다` });
+      warnings.push({ row: rowNo, message: `${name}: ${matchNote}` });
     }
     rows.push(r);
   });
