@@ -1,0 +1,1 @@
+ALTER TABLE "staff_profiles" ADD COLUMN "weekly_target_hours_x100" integer;

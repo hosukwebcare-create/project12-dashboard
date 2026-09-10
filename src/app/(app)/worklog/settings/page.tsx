@@ -60,7 +60,7 @@ async function WorklogSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>직원 근무 정보</CardTitle>
-          <CardDescription>근무 형태·시급·근무 요일·하루 근무 예정 시간. 시급은 월 집계의 예상 급여 계산에만 쓰이며 급여 확정은 담당자가 합니다. 예정 시간은 출퇴근 게이지가 채워지는 목표치이고, 비워 두면 8시간으로 봅니다.</CardDescription>
+          <CardDescription>근무 형태·시급·근무 요일·하루 근무 예정 시간. 시급은 월 집계의 예상 급여 계산에만 쓰이며 급여 확정은 담당자가 합니다. 하루 예정 시간은 출퇴근 링이 한 바퀴 도는 기준이고 비워 두면 8시간, 주 소정근로시간은 이번 주 막대의 기준이고 비워 두면 하루 예정 × 5 로 봅니다.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
           {staff.map((s) => (
@@ -79,7 +79,8 @@ async function WorklogSettingsPage() {
               </select>
               <Input name="hourlyRate" type="number" min={0} step={10} defaultValue={s.hourlyRate ?? ""} placeholder="시급" className="w-28" />
               <Input name="workDays" defaultValue={s.workDays ?? ""} placeholder="근무요일 (월~수)" className="w-32" />
-              <Input name="targetHours" defaultValue={s.targetHoursX100 !== null ? formatHours(s.targetHoursX100) : ""} placeholder="예정 8" className="w-20" aria-label="하루 근무 예정 시간" />
+              <Input name="targetHours" defaultValue={s.targetHoursX100 !== null ? formatHours(s.targetHoursX100) : ""} placeholder="하루 8" className="w-20" aria-label="하루 근무 예정 시간" />
+              <Input name="weeklyTargetHours" defaultValue={s.weeklyTargetHoursX100 !== null ? formatHours(s.weeklyTargetHoursX100) : ""} placeholder="주 40" className="w-20" aria-label="주 소정근로시간" />
               <label className="flex items-center gap-1 text-sm">
                 <input type="checkbox" name="direct" defaultChecked={s.direct} className="size-4" /> 직영
               </label>

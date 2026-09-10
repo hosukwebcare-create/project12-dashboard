@@ -502,6 +502,8 @@ export const staffProfiles = pgTable("staff_profiles", {
   workDays: text("work_days"),
   /** 하루 근무 예정 시간 × 100. 출퇴근 게이지가 채워지는 목표치이고, 비워 두면 8시간으로 본다 */
   targetHoursX100: integer("target_hours_x100"),
+  /** 주 소정근로시간 × 100. 비워 두면 하루 예정 시간 × 5 로 본다 */
+  weeklyTargetHoursX100: integer("weekly_target_hours_x100"),
   direct: boolean("direct").notNull().default(true),
   updatedAt: updatedAt(),
 }, (t) => [branchRls("staff_profiles", t.branchId, true)]).enableRLS();

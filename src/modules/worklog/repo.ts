@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
+import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
 import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100 } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
@@ -39,7 +40,7 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
   return row.id;
 }
 
-export type StaffProfileInput = { userId: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100?: number | null };
+export type StaffProfileInput = { userId: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100?: number | null; weeklyTargetHoursX100?: number | null };
 
 export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db: Db = defaultDb): Promise<void> {
   requireRole(ctx, ...MANAGER_ROLES);
@@ -47,24 +48,25 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
   if (!ms) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
   if (input.hourlyRate !== null && (!Number.isInteger(input.hourlyRate) || input.hourlyRate < 0)) throw new ValidationError("시급은 0 이상의 정수");
   if (input.targetHoursX100 !== null && input.targetHoursX100 !== undefined && (input.targetHoursX100 < 0 || input.targetHoursX100 > 2400)) throw new ValidationError("하루 근무 예정 시간은 0~24시간");
-  const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct, targetHoursX100: input.targetHoursX100 ?? null };
+  if (input.weeklyTargetHoursX100 !== null && input.weeklyTargetHoursX100 !== undefined && (input.weeklyTargetHoursX100 < 0 || input.weeklyTargetHoursX100 > 16800)) throw new ValidationError("주 소정근로시간은 0~168시간");
+  const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct, targetHoursX100: input.targetHoursX100 ?? null, weeklyTargetHoursX100: input.weeklyTargetHoursX100 ?? null };
   await db
     .insert(staffProfiles)
     .values({ userId: input.userId, ...vals })
     .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
 }
 
-export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; hasProfile: boolean };
+export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; weeklyTargetHoursX100: number | null; hasProfile: boolean };
 
 export async function listStaff(ctx: Ctx, db: Db = defaultDb): Promise<StaffRow[]> {
   const rows = await db
-    .select({ userId: users.id, name: users.name, role: memberships.role, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate, workDays: staffProfiles.workDays, direct: staffProfiles.direct, targetHoursX100: staffProfiles.targetHoursX100 })
+    .select({ userId: users.id, name: users.name, role: memberships.role, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate, workDays: staffProfiles.workDays, direct: staffProfiles.direct, targetHoursX100: staffProfiles.targetHoursX100, weeklyTargetHoursX100: staffProfiles.weeklyTargetHoursX100 })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .leftJoin(staffProfiles, eq(staffProfiles.userId, users.id))
     .where(and(eq(memberships.branchId, ctx.branchId), eq(users.active, true)));
   return rows
-    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, targetHoursX100: r.targetHoursX100 ?? null, hasProfile: r.employmentType !== null }))
+    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, targetHoursX100: r.targetHoursX100 ?? null, weeklyTargetHoursX100: r.weeklyTargetHoursX100 ?? null, hasProfile: r.employmentType !== null }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
@@ -104,6 +106,9 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
  */
 export type WorkClockState = {
   date: string;
+  userName: string;
+  /** 주간조교·컨설팅 같은 근무 형태. 카드에 이름표로 붙는다 */
+  employmentType: string;
   clockInAt: string | null;
   clockOutAt: string | null;
   /** 이미 기록된 인정 시간 ×100 (퇴근을 눌렀거나 타임을 체크한 경우) */
@@ -113,6 +118,14 @@ export type WorkClockState = {
   locked: boolean;
   /** 서버가 이 화면을 그린 시각. 첫 그림과 브라우저의 첫 그림이 어긋나지 않게 기준을 맞춘다 */
   nowIso: string;
+  week: {
+    startDate: string;
+    endDate: string;
+    /** 이번 주에 이미 기록된 시간 ×100 (오늘 근무 중인 시간은 뺀 값 — 화면에서 더한다) */
+    workedX100: number;
+    overtimeX100: number;
+    targetX100: number;
+  };
 };
 
 /**
@@ -122,20 +135,37 @@ export type WorkClockState = {
 export async function myWorkClock(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkClockState | null> {
   const [ms] = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.userId, ctx.userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) return null;
-  const [row] = await db
-    .select()
-    .from(workLogs)
-    .where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date)))
-    .limit(1);
-  const [profile] = await db.select({ target: staffProfiles.targetHoursX100 }).from(staffProfiles).where(eq(staffProfiles.userId, ctx.userId)).limit(1);
+  const from = toDateKey(weekStart(date));
+  const to = toDateKey(addDays(from, 6));
+  const [weekRows, profileRows] = await Promise.all([
+    db
+      .select()
+      .from(workLogs)
+      .where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), gte(workLogs.date, from), lte(workLogs.date, to))),
+    db.select({ target: staffProfiles.targetHoursX100, weekly: staffProfiles.weeklyTargetHoursX100, employmentType: staffProfiles.employmentType }).from(staffProfiles).where(eq(staffProfiles.userId, ctx.userId)).limit(1),
+  ]);
+  const profile = profileRows[0];
+  const row = weekRows.find((r) => r.date === date);
+  const target = profile?.target ?? DEFAULT_TARGET_HOURS_X100;
+  // 오늘 근무 중인 시간은 아직 기록에 없다. 화면에서 흐르는 시간을 더해 보여 준다.
+  const workedX100 = weekRows.reduce((a, r) => a + r.hoursX100, 0);
   return {
     date,
+    userName: ctx.userName,
+    employmentType: profile?.employmentType ?? (ms.role === "assistant" ? "주간조교" : ms.role === "mentor" ? "컨설팅" : "원장"),
     clockInAt: row?.clockInAt?.toISOString() ?? null,
     clockOutAt: row?.clockOutAt?.toISOString() ?? null,
     hoursX100: row?.hoursX100 ?? 0,
-    targetHoursX100: profile?.target ?? DEFAULT_TARGET_HOURS_X100,
+    targetHoursX100: target,
     locked: Boolean(row?.hqConfirmedAt),
     nowIso: new Date().toISOString(),
+    week: {
+      startDate: from,
+      endDate: to,
+      workedX100,
+      overtimeX100: weekRows.reduce((a, r) => a + r.overtimeX100, 0),
+      targetX100: profile?.weekly ?? target * 5,
+    },
   };
 }
 

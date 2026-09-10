@@ -69,7 +69,9 @@ export async function upsertStaffProfileAction(_p: ActionState, fd: FormData): P
     const ctx = await getCtx();
     const rateRaw = String(fd.get("hourlyRate") ?? "").trim();
     const targetRaw = String(fd.get("targetHours") ?? "").trim();
+    const weeklyRaw = String(fd.get("weeklyTargetHours") ?? "").trim();
     if (targetRaw && parseHoursToX100(targetRaw) === null) return { error: "하루 근무 예정 시간은 8 또는 7.5 같은 형식으로 입력하세요" };
+    if (weeklyRaw && parseHoursToX100(weeklyRaw) === null) return { error: "주 소정근로시간은 40 같은 형식으로 입력하세요" };
     try {
       await upsertStaffProfile(ctx, {
         userId: String(fd.get("userId") ?? ""),
@@ -78,6 +80,7 @@ export async function upsertStaffProfileAction(_p: ActionState, fd: FormData): P
         workDays: String(fd.get("workDays") ?? "").trim() || null,
         direct: fd.get("direct") === "on",
         targetHoursX100: targetRaw ? parseHoursToX100(targetRaw) : null,
+        weeklyTargetHoursX100: weeklyRaw ? parseHoursToX100(weeklyRaw) : null,
       });
     } catch (e) {
       return { error: toMessage(e) };

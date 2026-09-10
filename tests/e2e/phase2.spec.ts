@@ -177,20 +177,34 @@ test("출퇴근 시계: 출근하면 타이머가 흐르고 퇴근하면 시간�
   await page.goto("/worklog");
 
   const card = page.locator('[data-slot="work-clock"]');
-  await expect(card.getByText("출근을 누르면 시간이 흐릅니다")).toBeVisible();
+  const clockIn = card.getByRole("button", { name: "출근", exact: true });
+  const clockOut = card.getByRole("button", { name: "퇴근", exact: true });
 
-  await card.getByRole("button", { name: "출근", exact: true }).click();
-  await expect(card.getByRole("button", { name: "퇴근" })).toBeVisible();
-  await expect(card.getByText(/^출근 \d\d:\d\d$/)).toBeVisible();
+  await expect(card.getByText("출근 전입니다.")).toBeVisible();
+  await expect(card.getByText("출근 : --:--:--")).toBeVisible();
+  // 출근 전에는 퇴근을 누를 수 없다
+  await expect(clockOut).toBeDisabled();
+  await clockIn.click();
 
-  // 1초마다 다시 그려진다
-  const first = await card.getByText(/^\d+:\d\d:\d\d$/).innerText();
+  await expect(card.getByText("근무 중입니다.")).toBeVisible();
+  await expect(card.getByText(/^출근 : \d\d:\d\d:\d\d$/)).toBeVisible();
+  await expect(clockIn).toBeDisabled();
+  await expect(clockOut).toBeEnabled();
+
+  // 링 안의 시간이 1초마다 다시 그려진다
+  const timer = card.getByText(/^\d\dh \d\dm \d\ds$/);
+  const first = await timer.innerText();
   await page.waitForTimeout(2200);
-  expect(await card.getByText(/^\d+:\d\d:\d\d$/).innerText()).not.toBe(first);
+  expect(await timer.innerText()).not.toBe(first);
 
-  await card.getByRole("button", { name: "퇴근" }).click();
-  await expect(card.getByRole("button", { name: "다시 출근" })).toBeVisible();
-  await expect(card.getByText(/퇴근 \d\d:\d\d/)).toBeVisible();
+  await clockOut.click();
+  await expect(card.getByText("오늘 퇴근했습니다.")).toBeVisible();
+  await expect(card.getByText(/^퇴근 : \d\d:\d\d:\d\d$/)).toBeVisible();
+  await expect(card.getByRole("button", { name: "다시 출근" })).toBeEnabled();
+
+  // 이번 주 요약이 함께 보인다
+  await expect(card.getByText("주 소정근로시간")).toBeVisible();
+  await expect(card.getByRole("progressbar", { name: "이번 주 누적 근로시간" })).toBeVisible();
 
   // 지점장 일별 현황에 출퇴근 시각이 남는다
   const ctx2 = await browser.newContext();

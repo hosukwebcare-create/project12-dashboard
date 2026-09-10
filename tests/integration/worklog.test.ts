@@ -138,6 +138,32 @@ describe("출퇴근 시계", () => {
     expect((await myWorkClock(t.asstCtx1, D))!.locked).toBe(true);
   });
 
+  it("이번 주 누적·연장·목표를 함께 준다", async () => {
+    const t = await seedSlots();
+    // 지난 이틀치 기록 (같은 주)
+    const monday = "2026-09-07";
+    await clockIn(t.asstCtx1, monday, new Date(`${monday}T09:00:00+09:00`));
+    await clockOut(t.asstCtx1, monday, new Date(`${monday}T14:00:00+09:00`));
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-08", slotKeys: ["t2"], overtimeX100: 50, overtimeReason: "정리", note: null });
+
+    const s = (await myWorkClock(t.asstCtx1, "2026-09-10"))!;
+    expect(s.week).toMatchObject({ startDate: monday, endDate: "2026-09-13", workedX100: 600, overtimeX100: 50 });
+    expect(s.week.targetX100).toBe(4000); // 하루 8시간 × 5
+    expect(s.userName).toBeTruthy();
+    expect(s.employmentType).toBe("주간조교");
+  });
+
+  it("주 소정근로시간을 따로 정하면 그 값이 기준이 된다", async () => {
+    const t = await seedTwoBranches();
+    await upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: null, workDays: null, direct: true, targetHoursX100: 500, weeklyTargetHoursX100: 2000 });
+    const s = (await myWorkClock(t.asstCtx1, D))!;
+    expect(s.targetHoursX100).toBe(500);
+    expect(s.week.targetX100).toBe(2000);
+    await expect(
+      upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: null, workDays: null, direct: true, weeklyTargetHoursX100: 20000 }),
+    ).rejects.toThrow(/0~168시간/);
+  });
+
   it("지점에 소속되지 않은 본사 관리자는 출퇴근 카드를 받지 않는다", async () => {
     const t = await seedTwoBranches();
     expect(await myWorkClock(t.hqCtx1, D)).toBeNull();
