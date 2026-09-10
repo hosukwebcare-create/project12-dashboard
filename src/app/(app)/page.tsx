@@ -28,8 +28,7 @@ async function DashboardPage() {
     canSeeMoney ? paymentSummary(ctx, today) : Promise.resolve(null),
     upcomingAppointments(ctx, 7, today),
     unreadNoteCount(ctx, 14, today),
-    // 본사 관리자는 지점 소속이 아니라 출퇴근을 찍지 않는다
-    ctx.isHqAdmin ? Promise.resolve(null) : myWorkClock(ctx, today),
+    myWorkClock(ctx, today), // 지점 소속이 아니면 null 이라 카드가 뜨지 않는다
   ]);
   const won = (n: number) => n.toLocaleString("ko-KR");
 

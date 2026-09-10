@@ -115,7 +115,13 @@ export type WorkClockState = {
   nowIso: string;
 };
 
-export async function myWorkClock(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkClockState> {
+/**
+ * 지점에 소속되지 않은 사람(본사 관리자)은 출퇴근을 찍지 않으므로 null 을 준다.
+ * 화면마다 조건을 따로 쓰면 한 곳을 빠뜨린다 — 실제로 근무 화면이 그랬다.
+ */
+export async function myWorkClock(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkClockState | null> {
+  const [ms] = await db.select({ role: memberships.role }).from(memberships).where(and(eq(memberships.userId, ctx.userId), eq(memberships.branchId, ctx.branchId))).limit(1);
+  if (!ms) return null;
   const [row] = await db
     .select()
     .from(workLogs)

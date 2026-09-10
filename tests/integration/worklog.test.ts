@@ -74,17 +74,17 @@ describe("출퇴근 시계", () => {
   it("출근하면 시작 시각이 남고, 퇴근하면 그 사이가 인정 시간이 된다", async () => {
     const t = await seedSlots();
 
-    let s = await myWorkClock(t.asstCtx1, D);
+    let s = (await myWorkClock(t.asstCtx1, D))!;
     expect(s).toMatchObject({ clockInAt: null, clockOutAt: null, hoursX100: 0 });
     expect(s.targetHoursX100).toBe(800); // 설정 전에는 8시간
 
     await clockIn(t.asstCtx1, D, at(9, 3));
-    s = await myWorkClock(t.asstCtx1, D);
+    s = (await myWorkClock(t.asstCtx1, D))!;
     expect(s.clockInAt).toBe(at(9, 3).toISOString());
     expect(s.clockOutAt).toBeNull();
 
     await clockOut(t.asstCtx1, D, at(18, 12));
-    s = await myWorkClock(t.asstCtx1, D);
+    s = (await myWorkClock(t.asstCtx1, D))!;
     expect(s.clockOutAt).toBe(at(18, 12).toISOString());
     expect(s.hoursX100).toBe(915); // 9시간 9분
   });
@@ -93,11 +93,11 @@ describe("출퇴근 시계", () => {
     const t = await seedSlots();
     await clockIn(t.asstCtx1, D, at(9));
     await clockIn(t.asstCtx1, D, at(11));
-    expect((await myWorkClock(t.asstCtx1, D)).clockInAt).toBe(at(9).toISOString());
+    expect((await myWorkClock(t.asstCtx1, D))!.clockInAt).toBe(at(9).toISOString());
 
     await clockOut(t.asstCtx1, D, at(17));
     await clockOut(t.asstCtx1, D, at(19));
-    expect((await myWorkClock(t.asstCtx1, D)).hoursX100).toBe(800);
+    expect((await myWorkClock(t.asstCtx1, D))!.hoursX100).toBe(800);
   });
 
   it("실수로 퇴근을 눌렀다면 다시 출근해도 처음 출근 시각이 남는다", async () => {
@@ -105,11 +105,11 @@ describe("출퇴근 시계", () => {
     await clockIn(t.asstCtx1, D, at(9));
     await clockOut(t.asstCtx1, D, at(12));
     await clockIn(t.asstCtx1, D, at(12, 1));
-    const s = await myWorkClock(t.asstCtx1, D);
+    const s = (await myWorkClock(t.asstCtx1, D))!;
     expect(s.clockInAt).toBe(at(9).toISOString());
     expect(s.clockOutAt).toBeNull();
     await clockOut(t.asstCtx1, D, at(18));
-    expect((await myWorkClock(t.asstCtx1, D)).hoursX100).toBe(900);
+    expect((await myWorkClock(t.asstCtx1, D))!.hoursX100).toBe(900);
   });
 
   it("출근하지 않고 퇴근할 수 없다", async () => {
@@ -123,7 +123,7 @@ describe("출퇴근 시계", () => {
     await clockOut(t.asstCtx1, D, at(18));
     // 어느 타임을 맡았는지는 따로 남기되, 잰 시간은 바뀌지 않는다
     await saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["t1"], overtimeX100: 0, overtimeReason: null, note: null });
-    const s = await myWorkClock(t.asstCtx1, D);
+    const s = (await myWorkClock(t.asstCtx1, D))!;
     expect(s.hoursX100).toBe(900);
     expect((await myWorkLog(t.asstCtx1, D))!.slotKeys).toEqual(["t1"]);
   });
@@ -135,13 +135,19 @@ describe("출퇴근 시계", () => {
     const [row] = await dailyWorkLogs(t.mgrCtx1, D);
     await confirmWorkLog(t.hqCtx1, row.id);
     await expect(clockIn(t.asstCtx1, D, at(19))).rejects.toThrow(/본사 확인/);
-    expect((await myWorkClock(t.asstCtx1, D)).locked).toBe(true);
+    expect((await myWorkClock(t.asstCtx1, D))!.locked).toBe(true);
+  });
+
+  it("지점에 소속되지 않은 본사 관리자는 출퇴근 카드를 받지 않는다", async () => {
+    const t = await seedTwoBranches();
+    expect(await myWorkClock(t.hqCtx1, D)).toBeNull();
+    await expect(clockIn(t.hqCtx1, D)).rejects.toThrow(/지점 소속/);
   });
 
   it("지점장이 정한 하루 근무 예정 시간이 게이지 목표가 된다", async () => {
     const t = await seedTwoBranches();
     await upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: null, workDays: null, direct: true, targetHoursX100: 450 });
-    expect((await myWorkClock(t.asstCtx1, D)).targetHoursX100).toBe(450);
+    expect((await myWorkClock(t.asstCtx1, D))!.targetHoursX100).toBe(450);
     await expect(
       upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: null, workDays: null, direct: true, targetHoursX100: 3000 }),
     ).rejects.toThrow(/0~24시간/);

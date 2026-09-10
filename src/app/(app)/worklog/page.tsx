@@ -34,7 +34,7 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
       {/* 오늘 것을 보고 있을 때만 시계를 띄운다. 지난 날짜에 출근을 누를 일은 없다 */}
-      {date === todayKey() ? (
+      {clock && date === todayKey() ? (
         <div className="lg:col-span-2">
           <WorkClock state={clock} clockIn={clockInAction} clockOut={clockOutAction} />
         </div>
