@@ -170,7 +170,7 @@ export const memberEnrollments = pgTable("member_enrollments", {
   planType: text("plan_type").notNull().default("regular"),
   note: text("note"),
   createdAt: createdAt(),
-});
+}, (t) => [index("member_enrollments_member_idx").on(t.memberId, t.startDate)]);
 
 export const memberGuardians = pgTable("member_guardians", {
   id: id(),
@@ -181,7 +181,7 @@ export const memberGuardians = pgTable("member_guardians", {
   relation: text("relation"),
   phone: text("phone"),
   primaryContact: boolean("primary_contact").notNull().default(true),
-});
+}, (t) => [index("member_guardians_member_idx").on(t.memberId)]);
 
 export const mockExamRounds = pgTable(
   "mock_exam_rounds",
@@ -294,7 +294,7 @@ export const counselComments = pgTable("counsel_comments", {
   body: text("body").notNull(),
   createdAt: createdAt(),
   editedAt: timestamp("edited_at", { withTimezone: true }),
-});
+}, (t) => [index("counsel_comments_log_idx").on(t.logId)]);
 
 // ---------- 라운딩 · 체크 ----------
 export const roundingSessions = pgTable(
@@ -383,7 +383,7 @@ export const issueComments = pgTable("issue_comments", {
     .references(() => users.id),
   body: text("body").notNull(),
   createdAt: createdAt(),
-});
+}, (t) => [index("issue_comments_issue_idx").on(t.issueId)]);
 
 export const notifications = pgTable(
   "notifications",
@@ -744,7 +744,7 @@ export const handoverComments = pgTable("handover_comments", {
   authorId: uuid("author_id").references(() => users.id),
   body: text("body").notNull(),
   createdAt: createdAt(),
-});
+}, (t) => [index("handover_comments_note_idx").on(t.noteId)]);
 
 // ---------- 좌석 이용료 · 결제 ----------
 /** 좌석 등급별 요금표. 학생·성인 요금이 다르다 (원목 490,000 / 성인 670,000 등) */

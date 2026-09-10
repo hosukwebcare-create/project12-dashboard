@@ -130,12 +130,23 @@ export async function deleteNote(ctx: Ctx, id: string, db: Db = defaultDb): Prom
   await db.delete(handoverNotes).where(and(eq(handoverNotes.id, id), eq(handoverNotes.branchId, ctx.branchId)));
 }
 
-/** 읽음 표시. 이미 읽었으면 아무 일도 하지 않는다 */
+/**
+ * 읽음 표시. 이미 읽었으면 아무 일도 하지 않는다.
+ *
+ * handover_reads 에는 지점 열이 없어 RLS 가 걸리지 않는다. 글 id 는 화면에서 그대로
+ * 넘어오므로, 남의 지점 글 id 를 넣어 그 지점 읽음 수를 올리지 못하도록 여기서 거른다.
+ */
 export async function markRead(ctx: Ctx, noteIds: string[], db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, ...ALL_ROLES);
   if (!noteIds.length) return;
+  const mine = await db
+    .select({ id: handoverNotes.id })
+    .from(handoverNotes)
+    .where(and(eq(handoverNotes.branchId, ctx.branchId), inArray(handoverNotes.id, noteIds)));
+  if (!mine.length) return;
   await db
     .insert(handoverReads)
-    .values(noteIds.map((noteId) => ({ noteId, userId: ctx.userId })))
+    .values(mine.map((n) => ({ noteId: n.id, userId: ctx.userId })))
     .onConflictDoNothing();
 }
 

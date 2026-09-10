@@ -10,6 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "audit:contrast": "node scripts/contrast-audit.mjs",
+    "audit:authz": "node scripts/authz-audit.mjs",
+    "audit:sweep": "node scripts/smoke-sweep.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

@@ -88,6 +88,17 @@ describe("인수인계 노트", () => {
     expect(await listNotes(t.mgrCtx1, 14, TODAY)).toHaveLength(0);
   });
 
+  it("다른 지점 글은 읽음 표시도 할 수 없다", async () => {
+    const t = await seedTwoBranches();
+    const id = await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "지점1 인수인계" });
+    // 지점2 사람이 지점1 글 id 를 알아내도 읽음 수를 올릴 수 없다
+    await markRead(t.mgrCtx2, [id]);
+    expect((await listNotes(t.mgrCtx1, 14, TODAY))[0].readCount).toBe(0);
+    // 자기 지점 글은 정상 동작
+    await markRead(t.mgrCtx1, [id]);
+    expect((await listNotes(t.asstCtx1, 14, TODAY))[0].readCount).toBe(1);
+  });
+
   it("다른 지점 글은 보이지 않는다", async () => {
     const t = await seedTwoBranches();
     await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "지점1 인수인계" });
