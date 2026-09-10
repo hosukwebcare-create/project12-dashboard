@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
 import { parseHoursToX100 } from "@/lib/rules/worklog";
-import { confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
+import { clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
 
 export async function saveWorkLogAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   return withRequestRls(async () => {
@@ -68,6 +68,8 @@ export async function upsertStaffProfileAction(_p: ActionState, fd: FormData): P
   return withRequestRls(async () => {
     const ctx = await getCtx();
     const rateRaw = String(fd.get("hourlyRate") ?? "").trim();
+    const targetRaw = String(fd.get("targetHours") ?? "").trim();
+    if (targetRaw && parseHoursToX100(targetRaw) === null) return { error: "하루 근무 예정 시간은 8 또는 7.5 같은 형식으로 입력하세요" };
     try {
       await upsertStaffProfile(ctx, {
         userId: String(fd.get("userId") ?? ""),
@@ -75,11 +77,44 @@ export async function upsertStaffProfileAction(_p: ActionState, fd: FormData): P
         hourlyRate: rateRaw ? Number(rateRaw) : null,
         workDays: String(fd.get("workDays") ?? "").trim() || null,
         direct: fd.get("direct") === "on",
+        targetHoursX100: targetRaw ? parseHoursToX100(targetRaw) : null,
       });
     } catch (e) {
       return { error: toMessage(e) };
     }
     revalidatePath("/worklog", "layout");
+    return { ok: true };
+  });
+}
+
+/**
+ * 출근·퇴근. 시각은 서버에서 찍는다 — 브라우저 시계를 믿으면 근무 시간이 조작된다.
+ * 대시보드와 근무 화면 양쪽에 같은 카드가 있어 두 경로를 모두 다시 그린다.
+ */
+export async function clockInAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await clockIn(ctx, String(fd.get("date") ?? ""));
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/worklog", "layout");
+    revalidatePath("/");
+    return { ok: true };
+  });
+}
+
+export async function clockOutAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await clockOut(ctx, String(fd.get("date") ?? ""));
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/worklog", "layout");
+    revalidatePath("/");
     return { ok: true };
   });
 }

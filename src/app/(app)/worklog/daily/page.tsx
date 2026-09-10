@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
-import { fmtDateTime, fmtShortDate } from "@/lib/format";
+import { fmtDateTime, fmtShortDate, fmtTime } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { formatHours } from "@/lib/rules/worklog";
@@ -46,6 +46,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
                 <tr>
                   <th className="py-1">근무자</th>
                   <th className="py-1">형태</th>
+                  <th className="py-1">출퇴근</th>
                   <th className="py-1">타임</th>
                   <th className="py-1 text-right">근무</th>
                   <th className="py-1 text-right">초과</th>
@@ -58,6 +59,16 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
                   <tr key={r.id} className="border-t">
                     <td className="py-1.5 font-medium">{r.userName}</td>
                     <td className="py-1.5">{r.employmentType}</td>
+                    <td className="py-1.5 whitespace-nowrap tabular-nums">
+                      {r.clockInAt ? (
+                        <>
+                          {fmtTime(r.clockInAt)}
+                          {r.clockOutAt ? ` ~ ${fmtTime(r.clockOutAt)}` : <span className="ml-1 text-xs font-medium text-primary">근무 중</span>}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
                     <td className="py-1.5">{r.slotKeys.map((k) => slotLabel.get(k) ?? k).join(", ") || "-"}</td>
                     <td className="py-1.5 text-right tabular-nums">{formatHours(r.hoursX100)}h</td>
                     <td className="py-1.5 text-right tabular-nums">{r.overtimeX100 ? `${formatHours(r.overtimeX100)}h` : ""}</td>

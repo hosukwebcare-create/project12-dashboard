@@ -170,3 +170,33 @@ test.describe("3단계 연동", () => {
     await expect(page.locator('input[name="name"][value="동탄2 채널"]')).toBeVisible();
   });
 });
+
+// 앞 테스트가 최조교의 오늘 기록을 본사 확인으로 잠그므로(그게 정상 동작이다) 다른 계정을 쓴다
+test("출퇴근 시계: 출근하면 타이머가 흐르고 퇴근하면 시간이 기록된다", async ({ page, browser }) => {
+  await login(page, "mentor");
+  await page.goto("/worklog");
+
+  const card = page.locator('[data-slot="work-clock"]');
+  await expect(card.getByText("출근을 누르면 시간이 흐릅니다")).toBeVisible();
+
+  await card.getByRole("button", { name: "출근", exact: true }).click();
+  await expect(card.getByRole("button", { name: "퇴근" })).toBeVisible();
+  await expect(card.getByText(/^출근 \d\d:\d\d$/)).toBeVisible();
+
+  // 1초마다 다시 그려진다
+  const first = await card.getByText(/^\d+:\d\d:\d\d$/).innerText();
+  await page.waitForTimeout(2200);
+  expect(await card.getByText(/^\d+:\d\d:\d\d$/).innerText()).not.toBe(first);
+
+  await card.getByRole("button", { name: "퇴근" }).click();
+  await expect(card.getByRole("button", { name: "다시 출근" })).toBeVisible();
+  await expect(card.getByText(/퇴근 \d\d:\d\d/)).toBeVisible();
+
+  // 지점장 일별 현황에 출퇴근 시각이 남는다
+  const ctx2 = await browser.newContext();
+  const p2 = await ctx2.newPage();
+  await login(p2, "manager");
+  await p2.goto("/worklog/daily");
+  await expect(p2.locator("tbody tr").filter({ hasText: "이멘토" }).first()).toContainText(/\d\d:\d\d ~ \d\d:\d\d/);
+  await ctx2.close();
+});

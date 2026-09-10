@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { IssueStatusBadge, SeverityBadge } from "@/components/app/issue-badges";
 import { PageHeader } from "@/components/app/page-header";
 import { StatCard } from "@/components/app/stat-card";
+import { WorkClock } from "@/components/app/work-clock";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCtx, ROLE_LABEL } from "@/lib/auth/ctx";
 import { fmtDate, fmtRelative, fmtShortDate } from "@/lib/format";
@@ -12,6 +13,8 @@ import { dashboard, hqOverview } from "@/modules/dashboard/repo";
 import { unreadNoteCount } from "@/modules/handover/repo";
 import { paymentSummary } from "@/modules/payments/repo";
 import { upcomingAppointments } from "@/modules/schedule/repo";
+import { clockInAction, clockOutAction } from "@/modules/worklog/actions";
+import { myWorkClock } from "@/modules/worklog/repo";
 import { guarded } from "@/lib/page-guard";
 
 async function DashboardPage() {
@@ -19,12 +22,14 @@ async function DashboardPage() {
   if (ctx.role === "assistant") redirect("/rounding");
   const today = todayKey();
   const canSeeMoney = ctx.role === "hq_admin" || ctx.role === "branch_manager";
-  const [d, overview, money, appointments, unreadNotes] = await Promise.all([
+  const [d, overview, money, appointments, unreadNotes, clock] = await Promise.all([
     dashboard(ctx, today),
     ctx.isHqAdmin ? hqOverview(ctx, today) : Promise.resolve(null),
     canSeeMoney ? paymentSummary(ctx, today) : Promise.resolve(null),
     upcomingAppointments(ctx, 7, today),
     unreadNoteCount(ctx, 14, today),
+    // 본사 관리자는 지점 소속이 아니라 출퇴근을 찍지 않는다
+    ctx.isHqAdmin ? Promise.resolve(null) : myWorkClock(ctx, today),
   ]);
   const won = (n: number) => n.toLocaleString("ko-KR");
 
@@ -94,6 +99,12 @@ async function DashboardPage() {
           )}
         </StatCard>
       </div>
+
+      {clock ? (
+        <div className="mt-6">
+          <WorkClock state={clock} clockIn={clockInAction} clockOut={clockOutAction} compact />
+        </div>
+      ) : null}
 
       {money ? (
         <Link

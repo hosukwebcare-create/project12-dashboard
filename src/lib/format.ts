@@ -23,6 +23,13 @@ export function fmtDateTime(d: Date | string | null | undefined): string {
   return `${x.getFullYear()}.${mm}.${dd} ${hh}:${mi}`;
 }
 
+/** 시각만. 서버 시간대(Asia/Seoul)를 그대로 쓴다 */
+export function fmtTime(d: Date | string | null | undefined): string {
+  if (!d) return "-";
+  const x = typeof d === "string" ? new Date(d) : d;
+  return `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`;
+}
+
 export function fmtRelative(d: Date): string {
   const diff = Date.now() - d.getTime();
   const m = Math.floor(diff / 60000);

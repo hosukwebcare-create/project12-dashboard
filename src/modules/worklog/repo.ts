@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
-import { computeHoursX100 } from "@/lib/rules/worklog";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100 } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
 export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; hoursX100: number; weekend: boolean; sort: number; active: boolean };
@@ -39,31 +39,32 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
   return row.id;
 }
 
-export type StaffProfileInput = { userId: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean };
+export type StaffProfileInput = { userId: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100?: number | null };
 
 export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db: Db = defaultDb): Promise<void> {
   requireRole(ctx, ...MANAGER_ROLES);
   const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, input.userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
   if (input.hourlyRate !== null && (!Number.isInteger(input.hourlyRate) || input.hourlyRate < 0)) throw new ValidationError("시급은 0 이상의 정수");
-  const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct };
+  if (input.targetHoursX100 !== null && input.targetHoursX100 !== undefined && (input.targetHoursX100 < 0 || input.targetHoursX100 > 2400)) throw new ValidationError("하루 근무 예정 시간은 0~24시간");
+  const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct, targetHoursX100: input.targetHoursX100 ?? null };
   await db
     .insert(staffProfiles)
     .values({ userId: input.userId, ...vals })
     .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
 }
 
-export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; hasProfile: boolean };
+export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; hasProfile: boolean };
 
 export async function listStaff(ctx: Ctx, db: Db = defaultDb): Promise<StaffRow[]> {
   const rows = await db
-    .select({ userId: users.id, name: users.name, role: memberships.role, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate, workDays: staffProfiles.workDays, direct: staffProfiles.direct })
+    .select({ userId: users.id, name: users.name, role: memberships.role, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate, workDays: staffProfiles.workDays, direct: staffProfiles.direct, targetHoursX100: staffProfiles.targetHoursX100 })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .leftJoin(staffProfiles, eq(staffProfiles.userId, users.id))
     .where(and(eq(memberships.branchId, ctx.branchId), eq(users.active, true)));
   return rows
-    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, hasProfile: r.employmentType !== null }))
+    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, targetHoursX100: r.targetHoursX100 ?? null, hasProfile: r.employmentType !== null }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
@@ -83,7 +84,9 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, userId), eq(workLogs.date, input.date))).limit(1);
     if (existing?.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 수정할 수 없습니다");
     const slots = await listShiftSlots(ctx, db);
-    const hoursX100 = computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, weekend: s.weekend })), input.slotKeys);
+    // 출근·퇴근을 모두 누른 날은 시계가 잰 시간이 사실이다. 타임 체크를 고쳐도 시간을 되돌리지 않는다.
+    const clocked = existing?.clockInAt && existing?.clockOutAt;
+    const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, weekend: s.weekend })), input.slotKeys);
     const vals = { slotKeys: input.slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? input.overtimeReason?.trim() ?? null : null, note: input.note?.trim() || null };
     const [row] = await tx
       .insert(workLogs)
@@ -93,6 +96,78 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     if (userId !== ctx.userId) await writeAudit(tx, ctx, "work_log", row.id, existing ? "update" : "create", existing ? { slotKeys: existing.slotKeys, overtimeX100: existing.overtimeX100 } : null, { ...vals, userId, date: input.date });
     return row.id;
   });
+}
+
+/**
+ * 지금 근무 중인지, 게이지가 어디까지 찼는지. 대시보드와 근무 화면이 같이 쓴다.
+ * 경과 시간은 화면에서 1초마다 다시 세므로 여기서는 기준 시각만 넘긴다.
+ */
+export type WorkClockState = {
+  date: string;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  /** 이미 기록된 인정 시간 ×100 (퇴근을 눌렀거나 타임을 체크한 경우) */
+  hoursX100: number;
+  targetHoursX100: number;
+  /** 본사 확인이 끝나면 더 이상 누를 수 없다 */
+  locked: boolean;
+  /** 서버가 이 화면을 그린 시각. 첫 그림과 브라우저의 첫 그림이 어긋나지 않게 기준을 맞춘다 */
+  nowIso: string;
+};
+
+export async function myWorkClock(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkClockState> {
+  const [row] = await db
+    .select()
+    .from(workLogs)
+    .where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date)))
+    .limit(1);
+  const [profile] = await db.select({ target: staffProfiles.targetHoursX100 }).from(staffProfiles).where(eq(staffProfiles.userId, ctx.userId)).limit(1);
+  return {
+    date,
+    clockInAt: row?.clockInAt?.toISOString() ?? null,
+    clockOutAt: row?.clockOutAt?.toISOString() ?? null,
+    hoursX100: row?.hoursX100 ?? 0,
+    targetHoursX100: profile?.target ?? DEFAULT_TARGET_HOURS_X100,
+    locked: Boolean(row?.hqConfirmedAt),
+    nowIso: new Date().toISOString(),
+  };
+}
+
+/** 출근. 이미 근무 중이면 아무 일도 하지 않는다(두 번 눌러도 시작 시각이 밀리지 않게) */
+export async function clockIn(ctx: Ctx, date: string, now = new Date(), db: Db = defaultDb): Promise<void> {
+  await assertBranchMember(ctx, ctx.userId, db);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date))).limit(1);
+    if (existing?.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 고칠 수 없습니다");
+    if (existing?.clockInAt && !existing.clockOutAt) return; // 이미 근무 중
+    // 퇴근을 눌렀다가 다시 출근하면 처음 출근 시각을 유지하고 퇴근만 지운다.
+    // 실수로 퇴근을 누른 경우이므로 총 근무 시간이 끊기지 않아야 한다.
+    const vals = existing?.clockInAt ? { clockOutAt: null } : { clockInAt: now, clockOutAt: null };
+    await tx
+      .insert(workLogs)
+      .values({ branchId: ctx.branchId, userId: ctx.userId, date, clockInAt: now })
+      .onConflictDoUpdate({ target: [workLogs.branchId, workLogs.userId, workLogs.date], set: { ...vals, updatedAt: now } });
+  });
+}
+
+/** 퇴근. 출근 시각부터 지금까지를 인정 시간으로 적는다 */
+export async function clockOut(ctx: Ctx, date: string, now = new Date(), db: Db = defaultDb): Promise<number> {
+  await assertBranchMember(ctx, ctx.userId, db);
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date))).limit(1);
+    if (!existing?.clockInAt) throw new ValidationError("출근을 먼저 눌러야 합니다");
+    if (existing.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 고칠 수 없습니다");
+    if (existing.clockOutAt) return existing.hoursX100; // 이미 퇴근
+    const hoursX100 = elapsedToHoursX100(existing.clockInAt.getTime(), now.getTime());
+    await tx.update(workLogs).set({ clockOutAt: now, hoursX100, updatedAt: now }).where(eq(workLogs.id, existing.id));
+    return hoursX100;
+  });
+}
+
+async function assertBranchMember(ctx: Ctx, userId: string, db: Db): Promise<void> {
+  const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId))).limit(1);
+  if (!ms) throw new ForbiddenError("이 지점 소속 사용자만 출퇴근을 기록할 수 있습니다");
 }
 
 export async function myWorkLog(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkLogRow | null> {

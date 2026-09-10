@@ -8,8 +8,9 @@ import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { formatHours } from "@/lib/rules/worklog";
-import { saveWorkLogAction } from "@/modules/worklog/actions";
-import { listShiftSlots, monthLogsForUser, myWorkLog } from "@/modules/worklog/repo";
+import { WorkClock } from "@/components/app/work-clock";
+import { clockInAction, clockOutAction, saveWorkLogAction } from "@/modules/worklog/actions";
+import { listShiftSlots, monthLogsForUser, myWorkClock, myWorkLog } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무일지" };
 
@@ -17,7 +18,12 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
   const ctx = await getCtx();
   const sp = await searchParams;
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayKey();
-  const [slots, mine, monthLogs] = await Promise.all([listShiftSlots(ctx), myWorkLog(ctx, date), monthLogsForUser(ctx, ctx.userId, date.slice(0, 7))]);
+  const [slots, mine, monthLogs, clock] = await Promise.all([
+    listShiftSlots(ctx),
+    myWorkLog(ctx, date),
+    monthLogsForUser(ctx, ctx.userId, date.slice(0, 7)),
+    myWorkClock(ctx, date),
+  ]);
   const dates = [-2, -1, 0].map((d) => toDateKey(addDays(todayKey(), d)));
   const dow = new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))).getDay();
   const isWeekend = dow === 0 || dow === 6;
@@ -27,6 +33,12 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+      {/* 오늘 것을 보고 있을 때만 시계를 띄운다. 지난 날짜에 출근을 누를 일은 없다 */}
+      {date === todayKey() ? (
+        <div className="lg:col-span-2">
+          <WorkClock state={clock} clockIn={clockInAction} clockOut={clockOutAction} />
+        </div>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>{fmtShortDate(date)} 근무 체크</CardTitle>

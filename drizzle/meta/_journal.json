@@ -71,6 +71,13 @@
       "when": 1789009469362,
       "tag": "0009_fk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789011604866,
+      "tag": "0010_work_clock",
+      "breakpoints": true
     }
   ]
 }

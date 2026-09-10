@@ -500,6 +500,8 @@ export const staffProfiles = pgTable("staff_profiles", {
   employmentType: text("employment_type").notNull().default("주간조교"),
   hourlyRate: integer("hourly_rate"),
   workDays: text("work_days"),
+  /** 하루 근무 예정 시간 × 100. 출퇴근 게이지가 채워지는 목표치이고, 비워 두면 8시간으로 본다 */
+  targetHoursX100: integer("target_hours_x100"),
   direct: boolean("direct").notNull().default(true),
   updatedAt: updatedAt(),
 }, (t) => [branchRls("staff_profiles", t.branchId, true)]).enableRLS();
@@ -536,7 +538,14 @@ export const workLogs = pgTable(
       .references(() => users.id),
     date: date("date").notNull(),
     slotKeys: jsonb("slot_keys").$type<string[]>().notNull().default([]),
-    /** 인정 시간 × 100 (소수 오차 방지) */
+    /** 실제로 출근 버튼을 누른 시각. 누르지 않고 타임 체크만 해도 되므로 비어 있을 수 있다 */
+    clockInAt: timestamp("clock_in_at", { withTimezone: true }),
+    clockOutAt: timestamp("clock_out_at", { withTimezone: true }),
+    /**
+     * 인정 시간 × 100 (소수 오차 방지).
+     * 출근·퇴근을 모두 누른 날은 그 사이 시간이 곧 인정 시간이고 타임 체크로 덮어쓰지 않는다.
+     * 누르지 않은 날은 지금처럼 체크한 타임의 인정 시간을 더한다.
+     */
     hoursX100: integer("hours_x100").notNull().default(0),
     overtimeX100: integer("overtime_x100").notNull().default(0),
     overtimeReason: text("overtime_reason"),
