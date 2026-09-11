@@ -26,6 +26,10 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chrome: var(--chrome);
+  --color-chrome-foreground: var(--chrome-foreground);
+  --color-chrome-muted: var(--chrome-muted);
+  --color-chrome-border: var(--chrome-border);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -102,8 +106,14 @@
   --chart-3: oklch(0.548 0.148 52);
   --chart-4: oklch(0.543 0.218 27);
   --chart-5: oklch(0.53 0.0044 286);
-  --radius: 0.625rem;
-  /* 셸(사이드바·상단바)은 흰색, 본문은 회색 바탕. 경계선 하나로 나눈다 */
+  /* 모서리 6px. 10px 은 어느 앱에나 있는 기본값이라 이 시스템의 것이 아니다 */
+  --radius: 0.375rem;
+  /* 상단바는 본문 글자와 같은 잉크색. 업무 시스템은 위가 어둡고 아래가 밝다 */
+  --chrome: oklch(0.2246 0.0027 286);
+  --chrome-foreground: oklch(1 0 0);
+  --chrome-muted: oklch(0.74 0.004 286);
+  --chrome-border: oklch(1 0 0 / 16%);
+  /* 사이드바는 흰색, 본문은 회색 바탕. 경계선 하나로 나눈다 */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.3246 0.0027 286);
   --sidebar-primary: oklch(0.54 0.185 254);
@@ -149,6 +159,10 @@
   --chart-3: oklch(0.735 0.145 60);
   --chart-4: oklch(0.672 0.183 25);
   --chart-5: oklch(0.6822 0.0041 286);
+  --chrome: oklch(0.17 0.003 286);
+  --chrome-foreground: oklch(0.95 0 0);
+  --chrome-muted: oklch(0.7 0.004 286);
+  --chrome-border: oklch(1 0 0 / 12%);
   --sidebar: oklch(0.2064 0.003 286);
   --sidebar-foreground: oklch(0.8322 0.0035 286);
   --sidebar-primary: oklch(0.685 0.166 253);

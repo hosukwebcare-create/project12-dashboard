@@ -83,14 +83,14 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
   return (
     <nav
       data-rail={rail ? "true" : undefined}
-      className={cn("hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex", rail ? "w-14" : "w-56")}
+      className={cn("hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex", rail ? "w-14" : "w-52")}
     >
-      <div className={cn("flex-1 space-y-6 py-5", rail ? "px-2" : "px-3")}>
+      {/* 펼쳤을 때는 글자만 — 업무 메뉴는 이름으로 찾는다. 아이콘은 접힌 레일에서만 이름을 대신한다 */}
+      <div className={cn("flex-1 space-y-5 py-4", rail ? "px-2" : "px-3")}>
         {groups.map((g) => (
           <div key={g.label}>
-            {/* 접혔을 때는 그룹 이름 대신 얇은 선으로 묶음을 나눈다 */}
-            {rail ? <div className="mx-2 mb-2 border-t border-sidebar-border first:hidden" aria-hidden /> : <p className="mb-1 px-3 text-[11px] font-medium tracking-wide text-muted-foreground">{g.label}</p>}
-            <ul>
+            {rail ? <div className="mx-2 mb-2 border-t border-sidebar-border first:hidden" aria-hidden /> : <p className="mb-1 px-2.5 text-[11px] font-semibold tracking-wide text-muted-foreground">{g.label}</p>}
+            <ul className={cn(!rail && "space-y-px")}>
               {g.items.map((item) => {
                 const Icon = ICONS[item.icon];
                 const active = isActive(pathname, item.href);
@@ -103,14 +103,13 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
                       aria-label={rail ? item.label : undefined}
                       title={rail ? item.label : undefined}
                       className={cn(
-                        "relative flex items-center gap-2.5 rounded-md text-[13.5px] transition-colors",
-                        rail ? "h-10 justify-center px-0" : "px-3 py-[7px]",
+                        "relative flex items-center rounded-md text-[13.5px] transition-colors",
+                        rail ? "h-10 justify-center px-0" : "h-8 px-2.5",
                         active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-muted",
                       )}
                     >
-                      <Icon className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")} aria-hidden />
-                      {rail ? null : <span className="flex-1">{item.label}</span>}
-                      {badge && !rail ? <span className="rounded-full bg-primary px-1.5 py-px text-[11px] font-semibold text-primary-foreground tabular-nums">{unread}</span> : null}
+                      {rail ? <Icon className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")} aria-hidden /> : <span className="flex-1">{item.label}</span>}
+                      {badge && !rail ? <span className="rounded-sm bg-primary px-1.5 py-px text-[11px] font-semibold text-primary-foreground tabular-nums">{unread}</span> : null}
                       {badge && rail ? <span className="absolute top-2 right-2 size-1.5 rounded-full bg-primary" aria-hidden /> : null}
                     </Link>
                   </li>
@@ -120,8 +119,8 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
           </div>
         ))}
       </div>
-      <div className={cn("flex items-center border-t border-sidebar-border py-2", rail ? "justify-center px-2" : "justify-between pr-2 pl-6")}>
-        {rail ? null : <span className="text-[11px] text-muted-foreground">Project 12 통합관리</span>}
+      <div className={cn("flex items-center border-t border-sidebar-border py-2", rail ? "justify-center px-2" : "justify-between pr-2 pl-5")}>
+        {rail ? null : <span className="text-[11px] text-muted-foreground">v1 · 동탄2 이관 완료</span>}
         <button
           type="button"
           onClick={() => setRail(!rail)}
