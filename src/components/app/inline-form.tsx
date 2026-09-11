@@ -1,7 +1,8 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ActionState } from "@/lib/action-utils";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,14 @@ export function InlineForm({ action, submitLabel = "저장", className, id, chil
       router.refresh();
     }
   }, [state, router]);
+  // "저장됨"은 저장 직후에만 뜬다. 다시 만지기 시작하거나 몇 초 지나면 그 결과를 '본 것'으로 치워 옛 표시가 남지 않는다
+  const [seen, setSeen] = useState<ActionState | null>(null);
+  const saved = Boolean(state.ok && !state.error) && seen !== state;
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSeen(state), 4000);
+    return () => clearTimeout(t);
+  }, [saved, state]);
   return (
     <form
       ref={formRef}
@@ -42,14 +51,24 @@ export function InlineForm({ action, submitLabel = "저장", className, id, chil
         const fd = new FormData(e.currentTarget);
         startTransition(() => formAction(fd));
       }}
+      onInput={() => setSeen(state)}
       className={cn("flex flex-wrap items-end gap-2", className)}
     >
       {children}
-      <Button type="submit" size="sm" variant="outline" disabled={pending}>
-        {pending ? "저장 중…" : submitLabel}
+      {/* 결과는 버튼 자리에서 보인다. 표 한 칸이 폼일 때 글자를 옆에 붙이면 칸이 늘어나 행 높이가 뛴다 */}
+      <Button type="submit" size="sm" variant="outline" disabled={pending} className={cn(saved && "border-success/40 text-success hover:text-success")}>
+        {pending ? (
+          "저장 중…"
+        ) : saved ? (
+          <span className="inline-flex items-center gap-1 animate-in fade-in duration-200">
+            <Check className="size-3.5" aria-hidden />
+            저장됨
+          </span>
+        ) : (
+          submitLabel
+        )}
       </Button>
       {state.error ? <span className="basis-full text-xs break-keep text-destructive">{state.error}</span> : null}
-      {state.ok && !state.error ? <span className="basis-full text-xs break-keep text-emerald-700">저장됨</span> : null}
     </form>
   );
 }

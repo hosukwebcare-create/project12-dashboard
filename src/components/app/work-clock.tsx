@@ -179,7 +179,7 @@ export function WorkClock({ state, clockIn, clockOut, compact = false }: Props) 
       <div className={cn("mt-4 flex flex-wrap items-center", compact ? "gap-x-5 gap-y-4" : "gap-x-7 gap-y-5")}>
         <Ring pct={pct} overPct={overPct} size={compact ? 104 : 184} value={compact ? hm(elapsedMs) : hms(elapsedMs)} />
 
-        <div className="min-w-60 flex-1 space-y-4">
+        <div className={cn("flex-1 space-y-4", compact ? "min-w-52" : "min-w-60")}>
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div>
               <p className="leading-snug font-semibold">
@@ -237,7 +237,7 @@ export function WorkClock({ state, clockIn, clockOut, compact = false }: Props) 
             {md(state.week.startDate)} ~ {md(state.week.endDate)}
           </p>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+        <div className={cn("mt-3 grid grid-cols-2 gap-x-4 gap-y-3", !compact && "sm:grid-cols-4")}>
           <Stat label="주 소정근로시간" value={`${formatHours(weekTarget)}h`} />
           <Stat label="누적 근로시간" value={`${formatHours(weekWorked)}h`} />
           <Stat label="잔여 근로시간" value={`${formatHours(weekLeft)}h`} />

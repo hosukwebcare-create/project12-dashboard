@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Bell, BookOpen, CheckSquare, ClipboardList, Clock, CreditCard, Footprints, Home, NotebookPen, Send, Settings, UtensilsCrossed, Users } from "lucide-react";
+import { AlertTriangle, Bell, BookOpen, CheckSquare, ClipboardList, Clock, CreditCard, Footprints, Home, NotebookPen, PanelLeftClose, PanelLeftOpen, Send, Settings, UtensilsCrossed, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "./nav-items";
 
@@ -32,6 +33,43 @@ const GROUPS: { label: string; hrefs: string[] }[] = [
   { label: "관리", hrefs: ["/settings/branch"] },
 ];
 
+/**
+ * 접힘 상태는 브라우저에만 기억한다. 1280px 노트북에서 표가 넓은 화면(결제·회원)을 볼 때
+ * 170px 을 돌려주기 위한 것이라 계정 설정까지 갈 일은 아니다.
+ * 서버 렌더는 항상 펼친 상태 — 접어둔 사람은 첫 그림에서 잠깐 펼쳐졌다 접힌다.
+ */
+const RAIL_KEY = "byeolha.sidenav.rail";
+const railListeners = new Set<() => void>();
+function readRail(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeRail(v: boolean) {
+  try {
+    localStorage.setItem(RAIL_KEY, v ? "1" : "0");
+  } catch {
+    /* 저장소 사용 불가 시 이번 화면에서만 유지 */
+  }
+  railListeners.forEach((cb) => cb());
+}
+function subscribeRail(cb: () => void) {
+  railListeners.add(cb);
+  return () => {
+    railListeners.delete(cb);
+  };
+}
+function useRail() {
+  const rail = useSyncExternalStore(
+    subscribeRail,
+    readRail,
+    useCallback(() => false, []),
+  );
+  return [rail, writeRail] as const;
+}
+
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   const base = href.split("/").slice(0, 2).join("/");
@@ -40,32 +78,40 @@ function isActive(pathname: string, href: string) {
 
 export function SideNav({ items, unread }: { items: NavItem[]; unread: number }) {
   const pathname = usePathname();
+  const [rail, setRail] = useRail();
   const groups = GROUPS.map((g) => ({ ...g, items: g.hrefs.map((h) => items.find((i) => i.href === h)).filter((x): x is NavItem => Boolean(x)) })).filter((g) => g.items.length);
   return (
-    <nav className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex-1 space-y-6 px-3 py-5">
+    <nav
+      data-rail={rail ? "true" : undefined}
+      className={cn("hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex", rail ? "w-14" : "w-56")}
+    >
+      <div className={cn("flex-1 space-y-6 py-5", rail ? "px-2" : "px-3")}>
         {groups.map((g) => (
           <div key={g.label}>
-            <p className="mb-1 px-3 text-[11px] font-medium tracking-wide text-muted-foreground">{g.label}</p>
+            {/* 접혔을 때는 그룹 이름 대신 얇은 선으로 묶음을 나눈다 */}
+            {rail ? <div className="mx-2 mb-2 border-t border-sidebar-border first:hidden" aria-hidden /> : <p className="mb-1 px-3 text-[11px] font-medium tracking-wide text-muted-foreground">{g.label}</p>}
             <ul>
               {g.items.map((item) => {
                 const Icon = ICONS[item.icon];
                 const active = isActive(pathname, item.href);
+                const badge = item.href === "/notifications" && unread > 0;
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
                       aria-current={active ? "page" : undefined}
+                      aria-label={rail ? item.label : undefined}
+                      title={rail ? item.label : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13.5px] transition-colors",
+                        "relative flex items-center gap-2.5 rounded-md text-[13.5px] transition-colors",
+                        rail ? "h-10 justify-center px-0" : "px-3 py-[7px]",
                         active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-muted",
                       )}
                     >
-                      <Icon className={cn("size-4", active ? "text-sidebar-primary" : "text-muted-foreground")} aria-hidden />
-                      <span className="flex-1">{item.label}</span>
-                      {item.href === "/notifications" && unread > 0 ? (
-                        <span className="rounded-full bg-primary px-1.5 py-px text-[11px] font-semibold text-primary-foreground tabular-nums">{unread}</span>
-                      ) : null}
+                      <Icon className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")} aria-hidden />
+                      {rail ? null : <span className="flex-1">{item.label}</span>}
+                      {badge && !rail ? <span className="rounded-full bg-primary px-1.5 py-px text-[11px] font-semibold text-primary-foreground tabular-nums">{unread}</span> : null}
+                      {badge && rail ? <span className="absolute top-2 right-2 size-1.5 rounded-full bg-primary" aria-hidden /> : null}
                     </Link>
                   </li>
                 );
@@ -74,7 +120,19 @@ export function SideNav({ items, unread }: { items: NavItem[]; unread: number })
           </div>
         ))}
       </div>
-      <div className="border-t border-sidebar-border px-6 py-3 text-[11px] text-muted-foreground">Project 12 통합관리</div>
+      <div className={cn("flex items-center border-t border-sidebar-border py-2", rail ? "justify-center px-2" : "justify-between pr-2 pl-6")}>
+        {rail ? null : <span className="text-[11px] text-muted-foreground">Project 12 통합관리</span>}
+        <button
+          type="button"
+          onClick={() => setRail(!rail)}
+          aria-label={rail ? "메뉴 펼치기" : "메뉴 접기"}
+          aria-expanded={!rail}
+          title={rail ? "메뉴 펼치기" : "메뉴 접기"}
+          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {rail ? <PanelLeftOpen className="size-4" aria-hidden /> : <PanelLeftClose className="size-4" aria-hidden />}
+        </button>
+      </div>
     </nav>
   );
 }

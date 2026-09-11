@@ -15,14 +15,17 @@ export type DashboardData = {
   topPenalties: { memberId: string; name: string; seatNo: number | null; points: number }[];
   missingWeekly: number;
   expiring: { memberId: string; name: string; seatNo: number | null; endDate: string; daysLeft: number }[];
+  /** 오늘까지 7일, 날마다 완료한 회차 수. 이번 주 라운딩이 실제로 돌았는지 한눈에 본다 */
+  recentRounds: { date: string; done: number }[];
 };
 
 export async function dashboard(ctx: Ctx, today: string, db: Db = defaultDb): Promise<DashboardData> {
   const ws = toDateKey(weekStart(today));
   const days = weekDays(ws).map(toDateKey);
   const within = toDateKey(addDays(today, 7));
+  const recentFrom = toDateKey(addDays(today, -6));
 
-  const [[done], allIssues, penalties, missingWeekly, expiringRows] = await Promise.all([
+  const [[done], allIssues, penalties, missingWeekly, expiringRows, recentRows] = await Promise.all([
     db
       .select({ n: count() })
       .from(roundingSessions)
@@ -53,7 +56,13 @@ export async function dashboard(ctx: Ctx, today: string, db: Db = defaultDb): Pr
         ),
       )
       .orderBy(asc(memberEnrollments.endDate), asc(seats.seatNo)),
+    db
+      .select({ date: roundingSessions.date, n: count() })
+      .from(roundingSessions)
+      .where(and(eq(roundingSessions.branchId, ctx.branchId), gte(roundingSessions.date, recentFrom), lte(roundingSessions.date, today), isNotNull(roundingSessions.completedAt)))
+      .groupBy(roundingSessions.date),
   ]);
+  const doneByDate = new Map(recentRows.map((r) => [r.date, Number(r.n)]));
 
   // 회원별로 가장 늦은 종료일 하나만
   const seen = new Map<string, (typeof expiringRows)[number]>();
@@ -70,6 +79,10 @@ export async function dashboard(ctx: Ctx, today: string, db: Db = defaultDb): Pr
     topPenalties: penalties.map((p) => ({ memberId: p.memberId, name: p.name, seatNo: p.seatNo, points: Number(p.points ?? 0) })),
     missingWeekly,
     expiring: [...seen.values()].map((r) => ({ ...r, daysLeft: daysLeft({ startDate: today, endDate: r.endDate }, today) })),
+    recentRounds: Array.from({ length: 7 }, (_, k) => {
+      const date = toDateKey(addDays(recentFrom, k));
+      return { date, done: doneByDate.get(date) ?? 0 };
+    }),
   };
 }
 

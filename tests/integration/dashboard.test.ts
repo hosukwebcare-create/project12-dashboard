@@ -34,6 +34,9 @@ describe("대시보드", () => {
     ]);
     expect(d.missingWeekly).toBe(2);
     expect(d.expiring.map((e) => [e.name, e.endDate])).toEqual([["가", "2026-09-10"]]);
+    expect(d.recentRounds).toHaveLength(7);
+    expect(d.recentRounds[0].date).toBe("2026-08-30");
+    expect(d.recentRounds[6]).toEqual({ date: TODAY, done: 1 });
   });
 
   it("타 지점 데이터는 섞이지 않는다", async () => {
