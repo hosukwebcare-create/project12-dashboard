@@ -1,4 +1,48 @@
+import type { StaffGroup } from "@/db/schema";
+
+export type { StaffGroup };
 export type SlotSpec = { key: string; hoursX100: number; weekend: boolean };
+
+/** 근무일지의 직군. 조교·원장·멘토는 근무 시간대가 서로 달라 타임표를 따로 쓴다 */
+export const STAFF_GROUPS: { key: StaffGroup; label: string }[] = [
+  { key: "assistant", label: "조교" },
+  { key: "manager", label: "원장" },
+  { key: "mentor", label: "멘토" },
+];
+export const STAFF_GROUP_LABEL: Record<StaffGroup, string> = { assistant: "조교", manager: "원장", mentor: "멘토" };
+
+/**
+ * 직군을 정한다. 근무 형태를 적어 둔 직원은 그것이 우선이고(계정은 조교인데 원장 일을 하는 경우),
+ * 없거나 '기타'면 계정 역할로 본다.
+ */
+export function staffGroupOf(role: string, employmentType?: string | null): StaffGroup {
+  if (employmentType === "주간조교" || employmentType === "야간조교") return "assistant";
+  if (employmentType === "컨설팅") return "mentor";
+  if (employmentType === "원장") return "manager";
+  if (role === "assistant") return "assistant";
+  if (role === "mentor") return "mentor";
+  return "manager";
+}
+
+/** 그날 그 직군이 체크할 수 있는 타임: 평일/주말이 맞고, 자기 직군 것이거나 공통인 것 */
+export function slotsForGroup<T extends { weekend: boolean; audience: StaffGroup | null }>(slots: T[], group: StaffGroup, isWeekend: boolean): T[] {
+  return slots.filter((s) => s.weekend === isWeekend && (s.audience === null || s.audience === group));
+}
+
+/** "07:50"~"15:00" → 717 (7.17시간). 자정을 넘기면 다음 날로 본다 */
+export function spanToHoursX100(start: string, end: string): number {
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  let d = min(end) - min(start);
+  if (d < 0) d += 24 * 60;
+  return Math.round((d / 60) * 100);
+}
+
+/** 직군별 기본 타임. 동탄점이 알려 준 실제 근무 시간대 (2026-09) */
+export const GROUP_SLOT_PRESET: { key: string; label: string; audience: StaffGroup; startTime: string; endTime: string }[] = [
+  { key: "asst", label: "조교 근무", audience: "assistant", startTime: "07:50", endTime: "15:00" },
+  { key: "mgr", label: "원장 근무", audience: "manager", startTime: "16:00", endTime: "23:00" },
+  { key: "mentor", label: "멘토 근무", audience: "mentor", startTime: "19:00", endTime: "23:00" },
+];
 
 /** 체크한 타임의 인정 시간(×100) 합계 */
 export function computeHoursX100(slots: SlotSpec[], selected: string[]): number {

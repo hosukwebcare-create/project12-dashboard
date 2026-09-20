@@ -20,6 +20,8 @@ import {
 export type BranchRole = "branch_manager" | "mentor" | "assistant";
 export type MemberStatus = "prospect" | "enrolled" | "paused" | "withdrawn";
 export type MemberKind = "student" | "adult";
+/** 근무일지의 직군. 타임표와 현황을 이 셋으로 나눈다 */
+export type StaffGroup = "assistant" | "manager" | "mentor";
 export type Grade = "a" | "b" | "p" | "na";
 export type IssueStatus = "open" | "in_progress" | "resolved";
 export type CounselLogType = "weekly" | "focus_daily";
@@ -522,6 +524,8 @@ export const shiftSlots = pgTable(
     /** 이 타임을 체크했을 때 인정 시간 (예: 0.5, 1.5) */
     hours: integer("hours_x100").notNull(),
     weekend: boolean("weekend").notNull().default(false),
+    /** 이 타임을 쓰는 직군. 비어 있으면 모든 직군 공통 */
+    audience: text("audience").$type<StaffGroup>(),
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
   },

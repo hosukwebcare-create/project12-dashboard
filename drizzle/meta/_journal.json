@@ -85,6 +85,13 @@
       "when": 1789016584021,
       "tag": "0011_weekly_target",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789888756172,
+      "tag": "0012_shift_slot_audience",
+      "breakpoints": true
     }
   ]
 }

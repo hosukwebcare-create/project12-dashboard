@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
-import { clockIn, clockOut, confirmWorkLog, dailyWorkLogs, listShiftSlots, monthlySummary, myWorkClock, myWorkLog, saveWorkLog, upsertShiftSlot, upsertStaffProfile } from "@/modules/worklog/repo";
+import { applyGroupSlotPreset, clockIn, clockOut, confirmWorkLog, dailyWorkLogs, listShiftSlots, monthlySummary, myStaffGroup, myWorkClock, myWorkLog, saveWorkLog, upsertShiftSlot, upsertStaffProfile } from "@/modules/worklog/repo";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
@@ -22,6 +22,48 @@ describe("근무 타임 설정", () => {
     expect(await listShiftSlots(t.mgrCtx2)).toEqual([]);
     await expect(upsertShiftSlot(t.asstCtx1, { key: "x", label: "x", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 9, active: true })).rejects.toThrow(ForbiddenError);
     await expect(upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "중복", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 9, active: true })).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("직군별 타임", () => {
+  beforeEach(resetDb);
+
+  it("기본 타임을 넣으면 세 직군 타임이 생기고 평일 공통 타임은 쉬게 된다. 지난 기록의 시간은 그대로다", async () => {
+    const t = await seedSlots();
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 0, overtimeReason: null, note: null });
+    await expect(applyGroupSlotPreset(t.asstCtx1)).rejects.toThrow(ForbiddenError);
+
+    expect(await applyGroupSlotPreset(t.mgrCtx1)).toEqual({ added: 3, retired: 2 });
+    const active = await listShiftSlots(t.mgrCtx1);
+    expect(active.map((s) => [s.key, s.audience, s.hours])).toEqual([
+      ["w1", null, 300],
+      ["asst", "assistant", 717],
+      ["mgr", "manager", 700],
+      ["mentor", "mentor", 400],
+    ]);
+    // 다시 눌러도 같다
+    expect(await applyGroupSlotPreset(t.mgrCtx1)).toEqual({ added: 0, retired: 0 });
+    // 다른 지점은 건드리지 않는다
+    expect(await listShiftSlots(t.mgrCtx2)).toEqual([]);
+
+    // 쉬게 된 타임으로 적어 둔 지난 근무를 메모만 고쳐 다시 저장해도 시간이 사라지지 않는다
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 0, overtimeReason: null, note: "메모 추가" });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-03")).toMatchObject({ hoursX100: 150, note: "메모 추가" });
+
+    // 조교는 조교 타임으로 저장한다
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-04", slotKeys: ["asst"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-04")).toMatchObject({ hoursX100: 717 });
+  });
+
+  it("직군은 근무 형태가 있으면 그것으로, 없으면 계정 역할로 정한다", async () => {
+    const t = await seedSlots();
+    expect(await myStaffGroup(t.asstCtx1)).toBe("assistant");
+    expect(await myStaffGroup(t.mentorCtx1)).toBe("mentor");
+    expect(await myStaffGroup(t.mgrCtx1)).toBe("manager");
+    await upsertStaffProfile(t.mgrCtx1, { userId: t.users.mentor1.id, employmentType: "원장", hourlyRate: null, workDays: null, direct: true });
+    expect(await myStaffGroup(t.mentorCtx1)).toBe("manager");
+    await saveWorkLog(t.mentorCtx1, { date: "2026-09-03", slotKeys: ["t1"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect((await dailyWorkLogs(t.mgrCtx1, "2026-09-03")).map((d) => [d.userName, d.group])).toEqual([["멘토1", "manager"]]);
   });
 });
 

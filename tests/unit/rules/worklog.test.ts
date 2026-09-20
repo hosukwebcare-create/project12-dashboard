@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeHoursX100, elapsedToHoursX100, formatDuration, formatHours, parseHoursToX100 } from "@/lib/rules/worklog";
+import { computeHoursX100, elapsedToHoursX100, formatDuration, formatHours, GROUP_SLOT_PRESET, parseHoursToX100, slotsForGroup, spanToHoursX100, staffGroupOf } from "@/lib/rules/worklog";
 
 const slots = [
   { key: "t1", hoursX100: 50, weekend: false },
@@ -52,5 +52,40 @@ describe("출퇴근 시계", () => {
     expect(formatDuration(3_600_000)).toBe("1:00:00");
     expect(formatDuration(3_723_000)).toBe("1:02:03");
     expect(formatDuration(-5000)).toBe("0:00:00");
+  });
+});
+
+describe("직군별 타임", () => {
+  it("근무 형태가 계정 역할보다 우선한다", () => {
+    expect(staffGroupOf("assistant", null)).toBe("assistant");
+    expect(staffGroupOf("mentor", undefined)).toBe("mentor");
+    expect(staffGroupOf("branch_manager", null)).toBe("manager");
+    expect(staffGroupOf("hq_admin", null)).toBe("manager");
+    // 계정은 조교인데 원장 일을 하는 직원
+    expect(staffGroupOf("assistant", "원장")).toBe("manager");
+    expect(staffGroupOf("branch_manager", "야간조교")).toBe("assistant");
+    // '기타'는 아무것도 말해 주지 않으므로 역할로 본다
+    expect(staffGroupOf("mentor", "기타")).toBe("mentor");
+  });
+
+  it("내 직군 타임과 공통 타임만, 평일/주말에 맞춰 고른다", () => {
+    const slots = [
+      { key: "asst", weekend: false, audience: "assistant" as const },
+      { key: "mgr", weekend: false, audience: "manager" as const },
+      { key: "mentor", weekend: false, audience: "mentor" as const },
+      { key: "t1", weekend: false, audience: null },
+      { key: "w1", weekend: true, audience: null },
+    ];
+    expect(slotsForGroup(slots, "assistant", false).map((s) => s.key)).toEqual(["asst", "t1"]);
+    expect(slotsForGroup(slots, "mentor", false).map((s) => s.key)).toEqual(["mentor", "t1"]);
+    expect(slotsForGroup(slots, "manager", true).map((s) => s.key)).toEqual(["w1"]);
+  });
+
+  it("기본 타임의 인정 시간은 시작~끝 길이다", () => {
+    expect(spanToHoursX100("07:50", "15:00")).toBe(717);
+    expect(spanToHoursX100("16:00", "23:00")).toBe(700);
+    expect(spanToHoursX100("19:00", "23:00")).toBe(400);
+    expect(spanToHoursX100("22:00", "01:00")).toBe(300);
+    expect(GROUP_SLOT_PRESET.map((p) => p.audience)).toEqual(["assistant", "manager", "mentor"]);
   });
 });

@@ -1,15 +1,15 @@
 import { and, asc, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
-import { memberships, shiftSlots, staffProfiles, users, workLogs } from "@/db/schema";
+import { memberships, shiftSlots, staffProfiles, users, workLogs, type StaffGroup } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
 import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
-import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100 } from "@/lib/rules/worklog";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, GROUP_SLOT_PRESET, spanToHoursX100, STAFF_GROUPS, staffGroupOf } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
-export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; hoursX100: number; weekend: boolean; sort: number; active: boolean };
+export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; hoursX100: number; weekend: boolean; audience?: StaffGroup | null; sort: number; active: boolean };
 export const EMPLOYMENT_TYPES = ["주간조교", "야간조교", "컨설팅", "원장", "기타"] as const;
 
 export async function listShiftSlots(ctx: Pick<Ctx, "branchId">, db: Db = defaultDb, includeInactive = false): Promise<ShiftSlot[]> {
@@ -29,7 +29,8 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
   if (input.id) conds.push(ne(shiftSlots.id, input.id));
   const [dup] = await db.select({ id: shiftSlots.id }).from(shiftSlots).where(and(...conds)).limit(1);
   if (dup) throw new ValidationError(`타임 키 '${key}'가 이미 있습니다`);
-  const vals = { key, label: input.label.trim(), startTime: input.startTime, endTime: input.endTime, hours: input.hoursX100, weekend: input.weekend, sort: input.sort, active: input.active };
+  if (input.audience && !STAFF_GROUPS.some((g) => g.key === input.audience)) throw new ValidationError("직군이 올바르지 않습니다");
+  const vals = { key, label: input.label.trim(), startTime: input.startTime, endTime: input.endTime, hours: input.hoursX100, weekend: input.weekend, audience: input.audience ?? null, sort: input.sort, active: input.active };
   if (input.id) {
     const [existing] = await db.select().from(shiftSlots).where(and(eq(shiftSlots.id, input.id), eq(shiftSlots.branchId, ctx.branchId))).limit(1);
     if (!existing) throw new NotFoundError("타임을 찾을 수 없습니다");
@@ -38,6 +39,29 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
   }
   const [row] = await db.insert(shiftSlots).values({ ...vals, branchId: ctx.branchId }).returning({ id: shiftSlots.id });
   return row.id;
+}
+
+/**
+ * 직군별 기본 타임(조교·원장·멘토)을 이 지점에 넣는다. 이미 있는 키는 건드리지 않아 여러 번 눌러도 같다.
+ * 직군 없이 쓰던 평일 타임은 지우지 않고 '사용 안 함'으로 돌린다 — 지난 근무 기록이 그 키를 가리키고 있다.
+ */
+export async function applyGroupSlotPreset(ctx: Ctx, db: Db = defaultDb): Promise<{ added: number; retired: number }> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  return db.transaction(async (tx) => {
+    const existing = await tx.select().from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId));
+    const keys = new Set(existing.map((s) => s.key));
+    const maxSort = existing.reduce((m, s) => Math.max(m, s.sort), 0);
+    const fresh = GROUP_SLOT_PRESET.filter((p) => !keys.has(p.key));
+    if (fresh.length) {
+      await tx.insert(shiftSlots).values(
+        fresh.map((p, k) => ({ branchId: ctx.branchId, key: p.key, label: p.label, startTime: p.startTime, endTime: p.endTime, hours: spanToHoursX100(p.startTime, p.endTime), weekend: false, audience: p.audience, sort: maxSort + 1 + k, active: true })),
+      );
+    }
+    const retire = existing.filter((s) => s.active && !s.weekend && s.audience === null);
+    if (retire.length) await tx.update(shiftSlots).set({ active: false }).where(inArray(shiftSlots.id, retire.map((s) => s.id)));
+    await writeAudit(tx, ctx, "shift_slot", ctx.branchId, "update", { retired: retire.map((s) => s.key) }, { added: fresh.map((p) => p.key) });
+    return { added: fresh.length, retired: retire.length };
+  });
 }
 
 export type StaffProfileInput = { userId: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100?: number | null; weeklyTargetHoursX100?: number | null };
@@ -56,7 +80,7 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
     .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
 }
 
-export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; weeklyTargetHoursX100: number | null; hasProfile: boolean };
+export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; weeklyTargetHoursX100: number | null; hasProfile: boolean; group: StaffGroup };
 
 export async function listStaff(ctx: Ctx, db: Db = defaultDb): Promise<StaffRow[]> {
   const rows = await db
@@ -66,7 +90,7 @@ export async function listStaff(ctx: Ctx, db: Db = defaultDb): Promise<StaffRow[
     .leftJoin(staffProfiles, eq(staffProfiles.userId, users.id))
     .where(and(eq(memberships.branchId, ctx.branchId), eq(users.active, true)));
   return rows
-    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, targetHoursX100: r.targetHoursX100 ?? null, weeklyTargetHoursX100: r.weeklyTargetHoursX100 ?? null, hasProfile: r.employmentType !== null }))
+    .map((r) => ({ ...r, employmentType: r.employmentType ?? (r.role === "assistant" ? "주간조교" : r.role === "mentor" ? "컨설팅" : "원장"), direct: r.direct ?? true, targetHoursX100: r.targetHoursX100 ?? null, weeklyTargetHoursX100: r.weeklyTargetHoursX100 ?? null, hasProfile: r.employmentType !== null, group: staffGroupOf(r.role, r.employmentType) }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
@@ -85,7 +109,8 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
   return db.transaction(async (tx) => {
     const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, userId), eq(workLogs.date, input.date))).limit(1);
     if (existing?.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 수정할 수 없습니다");
-    const slots = await listShiftSlots(ctx, db);
+    // 지난 날짜에는 지금은 쓰지 않는 타임이 체크돼 있을 수 있다. 그 시간도 계속 인정한다
+    const slots = await listShiftSlots(ctx, db, true);
     // 출근·퇴근을 모두 누른 날은 시계가 잰 시간이 사실이다. 타임 체크를 고쳐도 시간을 되돌리지 않는다.
     const clocked = existing?.clockInAt && existing?.clockOutAt;
     const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, weekend: s.weekend })), input.slotKeys);
@@ -206,26 +231,33 @@ async function assertBranchMember(ctx: Ctx, userId: string, db: Db): Promise<voi
   if (!ms) throw new ForbiddenError("이 지점 소속 사용자만 출퇴근을 기록할 수 있습니다");
 }
 
+/** 내 직군. 근무 체크 화면이 이 직군의 타임만 보여준다 */
+export async function myStaffGroup(ctx: Ctx, db: Db = defaultDb): Promise<StaffGroup> {
+  const [p] = await db.select({ employmentType: staffProfiles.employmentType }).from(staffProfiles).where(and(eq(staffProfiles.userId, ctx.userId), eq(staffProfiles.branchId, ctx.branchId))).limit(1);
+  return staffGroupOf(ctx.role, p?.employmentType);
+}
+
 export async function myWorkLog(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkLogRow | null> {
   const [row] = await db.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date))).limit(1);
   return row ?? null;
 }
 
-export type DailyWorkRow = WorkLogRow & { userName: string; employmentType: string; hqConfirmedByName: string | null };
+export type DailyWorkRow = WorkLogRow & { userName: string; employmentType: string; group: StaffGroup; hqConfirmedByName: string | null };
 
 export async function dailyWorkLogs(ctx: Ctx, date: string, db: Db = defaultDb): Promise<DailyWorkRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
   const rows = await db
-    .select({ w: workLogs, userName: users.name, employmentType: staffProfiles.employmentType })
+    .select({ w: workLogs, userName: users.name, employmentType: staffProfiles.employmentType, role: memberships.role })
     .from(workLogs)
     .innerJoin(users, eq(users.id, workLogs.userId))
     .leftJoin(staffProfiles, eq(staffProfiles.userId, workLogs.userId))
+    .leftJoin(memberships, and(eq(memberships.userId, workLogs.userId), eq(memberships.branchId, workLogs.branchId)))
     .where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.date, date)));
   const confirmerIds = [...new Set(rows.map((r) => r.w.hqConfirmedBy).filter((x): x is string => Boolean(x)))];
   const confirmers = confirmerIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, confirmerIds)) : [];
   const nameById = new Map(confirmers.map((c) => [c.id, c.name]));
   return rows
-    .map((r) => ({ ...r.w, userName: r.userName, employmentType: r.employmentType ?? "-", hqConfirmedByName: r.w.hqConfirmedBy ? (nameById.get(r.w.hqConfirmedBy) ?? null) : null }))
+    .map((r) => ({ ...r.w, userName: r.userName, employmentType: r.employmentType ?? "-", group: staffGroupOf(r.role ?? "", r.employmentType), hqConfirmedByName: r.w.hqConfirmedBy ? (nameById.get(r.w.hqConfirmedBy) ?? null) : null }))
     .sort((a, b) => a.userName.localeCompare(b.userName, "ko"));
 }
 
@@ -241,21 +273,22 @@ export async function unconfirmWorkLog(ctx: Ctx, id: string, db: Db = defaultDb)
   await db.update(workLogs).set({ hqConfirmedBy: null, hqConfirmedAt: null }).where(and(eq(workLogs.id, id), eq(workLogs.branchId, ctx.branchId)));
 }
 
-export type MonthlyRow = { userId: string; userName: string; employmentType: string; days: number; hoursX100: number; overtimeX100: number; confirmedX100: number; hourlyRate: number | null; estimatedPay: number | null };
+export type MonthlyRow = { userId: string; userName: string; employmentType: string; group: StaffGroup; days: number; hoursX100: number; overtimeX100: number; confirmedX100: number; hourlyRate: number | null; estimatedPay: number | null };
 
 export async function monthlySummary(ctx: Ctx, yearMonth: string, db: Db = defaultDb): Promise<MonthlyRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
   if (!/^\d{4}-\d{2}$/.test(yearMonth)) throw new ValidationError("월 형식 오류");
   const dates = monthDates(yearMonth);
   const rows = await db
-    .select({ w: workLogs, userName: users.name, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate })
+    .select({ w: workLogs, userName: users.name, employmentType: staffProfiles.employmentType, hourlyRate: staffProfiles.hourlyRate, role: memberships.role })
     .from(workLogs)
     .innerJoin(users, eq(users.id, workLogs.userId))
     .leftJoin(staffProfiles, eq(staffProfiles.userId, workLogs.userId))
+    .leftJoin(memberships, and(eq(memberships.userId, workLogs.userId), eq(memberships.branchId, workLogs.branchId)))
     .where(and(eq(workLogs.branchId, ctx.branchId), gte(workLogs.date, dates[0]), lte(workLogs.date, dates[dates.length - 1])));
   const map = new Map<string, MonthlyRow>();
   for (const r of rows) {
-    const cur = map.get(r.w.userId) ?? { userId: r.w.userId, userName: r.userName, employmentType: r.employmentType ?? "-", days: 0, hoursX100: 0, overtimeX100: 0, confirmedX100: 0, hourlyRate: r.hourlyRate, estimatedPay: null };
+    const cur = map.get(r.w.userId) ?? { userId: r.w.userId, userName: r.userName, employmentType: r.employmentType ?? "-", group: staffGroupOf(r.role ?? "", r.employmentType), days: 0, hoursX100: 0, overtimeX100: 0, confirmedX100: 0, hourlyRate: r.hourlyRate, estimatedPay: null };
     cur.days += 1;
     cur.hoursX100 += r.w.hoursX100;
     cur.overtimeX100 += r.w.overtimeX100;

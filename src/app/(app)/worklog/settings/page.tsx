@@ -3,8 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { getCtx, MANAGER_ROLES, requireRole, ROLE_LABEL } from "@/lib/auth/ctx";
 import { guarded } from "@/lib/page-guard";
-import { formatHours } from "@/lib/rules/worklog";
-import { upsertShiftSlotAction, upsertStaffProfileAction } from "@/modules/worklog/actions";
+import { formatHours, GROUP_SLOT_PRESET, STAFF_GROUP_LABEL, STAFF_GROUPS } from "@/lib/rules/worklog";
+import { applyGroupSlotPresetAction, upsertShiftSlotAction, upsertStaffProfileAction } from "@/modules/worklog/actions";
 import { EMPLOYMENT_TYPES, listShiftSlots, listStaff } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무 설정" };
@@ -15,15 +15,39 @@ async function WorklogSettingsPage() {
   const ctx = await getCtx();
   requireRole(ctx, ...MANAGER_ROLES);
   const [slots, staff] = await Promise.all([listShiftSlots(ctx, undefined, true), listStaff(ctx)]);
+  const hasGroupSlots = slots.some((s) => s.audience !== null);
+  // 직군별로 나눠 보여준다: 조교 · 원장 · 멘토 · 공통(직군 없음)
+  const sections = [...STAFF_GROUPS.map((g) => ({ key: g.key as string, label: g.label, slots: slots.filter((s) => s.audience === g.key) })), { key: "all", label: "공통", slots: slots.filter((s) => s.audience === null) }].filter((g) => g.slots.length > 0);
+  const audienceSelect = (defaultValue: string) => (
+    <select name="audience" defaultValue={defaultValue} className={selectClass} aria-label="직군">
+      <option value="">공통</option>
+      {STAFF_GROUPS.map((g) => (
+        <option key={g.key} value={g.key}>
+          {g.label}
+        </option>
+      ))}
+    </select>
+  );
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>근무 타임</CardTitle>
-          <CardDescription>시트의 1~7타임·일1/일2타임에 해당합니다. 인정 시간은 타임을 체크했을 때 더해지는 시간입니다.</CardDescription>
+          <CardDescription>직군을 정한 타임은 그 직군 직원의 근무 체크에만 보이고, 공통 타임은 모두에게 보입니다. 인정 시간은 타임을 체크했을 때 더해지는 시간입니다.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
-          {slots.map((s) => (
+          {!hasGroupSlots ? (
+            <div className="pb-3">
+              <p className="mb-2 text-sm">
+                아직 직군별 타임이 없습니다. 기본값을 넣으면 {GROUP_SLOT_PRESET.map((p) => `${STAFF_GROUP_LABEL[p.audience]} ${p.startTime}~${p.endTime}`).join(", ")} 세 타임이 생기고, 지금 쓰는 평일 공통 타임은 &lsquo;사용 안 함&rsquo;으로 바뀝니다. 지난 근무 기록과 시간은 그대로이며, 넣은 뒤에 시각과 인정 시간을 고칠 수 있습니다.
+              </p>
+              <InlineForm action={applyGroupSlotPresetAction} submitLabel="직군별 기본 타임 넣기" />
+            </div>
+          ) : null}
+          {sections.map((sec) => (
+            <div key={sec.key} className="py-2">
+              <p className="text-xs font-semibold">{sec.label}</p>
+          {sec.slots.map((s) => (
             <InlineForm key={s.id} action={upsertShiftSlotAction} className="py-2">
               <input type="hidden" name="id" value={s.id} />
               <Input name="key" defaultValue={s.key} className="w-20" aria-label="키" />
@@ -32,6 +56,7 @@ async function WorklogSettingsPage() {
               <Input name="endTime" type="time" defaultValue={s.endTime} className="w-32" aria-label="종료" />
               <Input name="hours" defaultValue={formatHours(s.hours)} className="w-20" aria-label="인정 시간" />
               <Input name="sort" type="number" defaultValue={s.sort} className="w-16" aria-label="순서" />
+              {audienceSelect(s.audience ?? "")}
               <label className="flex items-center gap-1 text-sm">
                 <input type="checkbox" name="weekend" defaultChecked={s.weekend} className="size-4" /> 주말
               </label>
@@ -39,6 +64,8 @@ async function WorklogSettingsPage() {
                 <input type="checkbox" name="active" defaultChecked={s.active} className="size-4" /> 사용
               </label>
             </InlineForm>
+          ))}
+            </div>
           ))}
           <div className="pt-3">
             <p className="mb-1 text-xs text-muted-foreground">새 타임</p>
@@ -50,6 +77,7 @@ async function WorklogSettingsPage() {
               <Input name="endTime" type="time" className="w-32" required aria-label="종료" />
               <Input name="hours" placeholder="시간 (0.5)" className="w-24" required />
               <Input name="sort" type="number" defaultValue={slots.length + 1} className="w-16" />
+              {audienceSelect("")}
               <label className="flex items-center gap-1 text-sm">
                 <input type="checkbox" name="weekend" className="size-4" /> 주말
               </label>

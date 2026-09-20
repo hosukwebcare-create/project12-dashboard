@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
 import { guarded } from "@/lib/page-guard";
 import { todayKey } from "@/lib/rules/week";
-import { formatHours } from "@/lib/rules/worklog";
+import { formatHours, STAFF_GROUPS } from "@/lib/rules/worklog";
 import { hqWorklogSummary, monthlySummary } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무 월 집계" };
@@ -80,8 +80,19 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
                 <th className="px-3 py-2 text-right">예상 급여</th>
               </tr>
             </thead>
-            <tbody>
-              {rows.map((r) => (
+            {STAFF_GROUPS.map((g) => ({ ...g, rows: rows.filter((r) => r.group === g.key) }))
+              .filter((g) => g.rows.length > 0)
+              .map((g) => (
+            <tbody key={g.key}>
+              <tr className="border-t">
+                <th colSpan={8} scope="rowgroup" className="bg-muted/30 px-3 py-1.5 text-left text-xs font-semibold">
+                  {g.label}
+                  <span className="ml-2 font-normal text-muted-foreground tabular-nums">
+                    {g.rows.length}명 · {formatHours(g.rows.reduce((a, r) => a + r.hoursX100 + r.overtimeX100, 0))}h
+                  </span>
+                </th>
+              </tr>
+              {g.rows.map((r) => (
                 <tr key={r.userId} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.userName}</td>
                   <td className="px-3 py-2">{r.employmentType}</td>
@@ -94,6 +105,7 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
                 </tr>
               ))}
             </tbody>
+              ))}
             <tfoot className="bg-muted/30 font-semibold">
               <tr>
                 <td className="px-3 py-2" colSpan={7}>

@@ -3,9 +3,10 @@
 import { withRequestRls } from "@/lib/rls";
 import { revalidatePath } from "next/cache";
 import { toMessage, type ActionState } from "@/lib/action-utils";
+import type { StaffGroup } from "@/db/schema";
 import { getCtx } from "@/lib/auth/ctx";
 import { parseHoursToX100 } from "@/lib/rules/worklog";
-import { clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
+import { applyGroupSlotPreset, clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
 
 export async function saveWorkLogAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   return withRequestRls(async () => {
@@ -53,6 +54,7 @@ export async function upsertShiftSlotAction(_p: ActionState, fd: FormData): Prom
         endTime: String(fd.get("endTime") ?? ""),
         hoursX100: hours,
         weekend: fd.get("weekend") === "on",
+        audience: (String(fd.get("audience") ?? "") || null) as StaffGroup | null,
         sort: Number(fd.get("sort") ?? 0),
         active: fd.get("active") === "on" || fd.get("active") === "true",
       });
@@ -118,6 +120,20 @@ export async function clockOutAction(_p: ActionState, fd: FormData): Promise<Act
     }
     revalidatePath("/worklog", "layout");
     revalidatePath("/");
+    return { ok: true };
+  });
+}
+
+/** 직군별 기본 타임 넣기. 버튼 하나짜리 폼이라 입력값은 없다 */
+export async function applyGroupSlotPresetAction(): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await applyGroupSlotPreset(ctx);
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/worklog", "layout");
     return { ok: true };
   });
 }
