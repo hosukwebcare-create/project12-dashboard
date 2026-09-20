@@ -3,10 +3,10 @@
 import { withRequestRls } from "@/lib/rls";
 import { revalidatePath } from "next/cache";
 import { toMessage, type ActionState } from "@/lib/action-utils";
-import type { StaffGroup } from "@/db/schema";
+import type { SlotAudience } from "@/db/schema";
 import { getCtx } from "@/lib/auth/ctx";
-import { parseHoursToX100 } from "@/lib/rules/worklog";
-import { applyGroupSlotPreset, clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
+import { parseHoursToX100, parseMinutes } from "@/lib/rules/worklog";
+import { applySheetSlotPreset, clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
 
 export async function saveWorkLogAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   return withRequestRls(async () => {
@@ -43,8 +43,8 @@ export async function confirmWorkLogAction(fd: FormData): Promise<void> {
 export async function upsertShiftSlotAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
-    const hours = parseHoursToX100(String(fd.get("hours") ?? ""));
-    if (hours === null) return { error: "인정 시간은 0.5 같은 소수 형식" };
+    const minutes = parseMinutes(String(fd.get("minutes") ?? ""));
+    if (minutes === null) return { error: "인정 시간은 분 단위 정수로 입력하세요 (예: 15)" };
     try {
       await upsertShiftSlot(ctx, {
         id: String(fd.get("id") ?? "") || undefined,
@@ -52,9 +52,9 @@ export async function upsertShiftSlotAction(_p: ActionState, fd: FormData): Prom
         label: String(fd.get("label") ?? ""),
         startTime: String(fd.get("startTime") ?? ""),
         endTime: String(fd.get("endTime") ?? ""),
-        hoursX100: hours,
+        minutes,
         weekend: fd.get("weekend") === "on",
-        audience: (String(fd.get("audience") ?? "") || null) as StaffGroup | null,
+        audience: (String(fd.get("audience") ?? "") || null) as SlotAudience | null,
         sort: Number(fd.get("sort") ?? 0),
         active: fd.get("active") === "on" || fd.get("active") === "true",
       });
@@ -124,12 +124,12 @@ export async function clockOutAction(_p: ActionState, fd: FormData): Promise<Act
   });
 }
 
-/** 직군별 기본 타임 넣기. 버튼 하나짜리 폼이라 입력값은 없다 */
-export async function applyGroupSlotPresetAction(): Promise<ActionState> {
+/** 시트 타임표 넣기. 버튼 하나짜리 폼이라 입력값은 없다 */
+export async function applySheetSlotPresetAction(): Promise<ActionState> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      await applyGroupSlotPreset(ctx);
+      await applySheetSlotPreset(ctx);
     } catch (e) {
       return { error: toMessage(e) };
     }

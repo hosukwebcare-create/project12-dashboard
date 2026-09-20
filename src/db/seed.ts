@@ -17,6 +17,7 @@ async function main() {
   const s = await import("./schema");
   const { hashPassword } = await import("@/lib/auth/password");
   const { addDays, toDateKey, weekStart } = await import("@/lib/rules/week");
+  const { minutesToHoursX100, SHEET_SLOT_PRESET } = await import("@/lib/rules/worklog");
 
   // ----- 초기화 -----
   const tables = await db.execute<{ tablename: string }>(
@@ -316,17 +317,8 @@ async function main() {
   }
   if (mealRows.length) await db.insert(s.mealOrders).values(mealRows);
 
-  const slotRows = [
-    { key: "t1", label: "1타임", startTime: "09:00", endTime: "09:30", hours: 50, weekend: false, sort: 1 },
-    { key: "t2", label: "2타임", startTime: "09:30", endTime: "10:30", hours: 100, weekend: false, sort: 2 },
-    { key: "t3", label: "3타임", startTime: "10:30", endTime: "12:00", hours: 150, weekend: false, sort: 3 },
-    { key: "t4", label: "4타임", startTime: "13:00", endTime: "15:00", hours: 200, weekend: false, sort: 4 },
-    { key: "t5", label: "5타임", startTime: "15:00", endTime: "17:00", hours: 200, weekend: false, sort: 5 },
-    { key: "t6", label: "6타임", startTime: "17:00", endTime: "19:00", hours: 200, weekend: false, sort: 6 },
-    { key: "t7", label: "7타임", startTime: "19:00", endTime: "22:00", hours: 300, weekend: false, sort: 7 },
-    { key: "w1", label: "일1타임", startTime: "10:00", endTime: "14:00", hours: 400, weekend: true, sort: 8 },
-    { key: "w2", label: "일2타임", startTime: "14:00", endTime: "18:00", hours: 400, weekend: true, sort: 9 },
-  ];
+  // 동탄점 근무일지 시트의 타임표 그대로. 시각이 적혀 있는 것은 원장뿐이다
+  const slotRows = SHEET_SLOT_PRESET.map((p, i) => ({ key: p.key, label: p.label, startTime: p.startTime, endTime: p.endTime, minutes: p.minutes, hours: minutesToHoursX100(p.minutes), weekend: p.sunday, audience: p.audience, sort: i + 1 }));
   await db.insert(s.shiftSlots).values(slotRows.map((r) => ({ ...r, branchId: dt2.id })));
   await db.insert(s.staffProfiles).values([
     { userId: assistant.id, branchId: dt2.id, employmentType: "주간조교", hourlyRate: 10500, workDays: "월~수" },
@@ -334,13 +326,17 @@ async function main() {
     { userId: mentor.id, branchId: dt2.id, employmentType: "컨설팅", hourlyRate: 25000, workDays: "화·목·토" },
     { userId: manager.id, branchId: dt2.id, employmentType: "원장", hourlyRate: null, workDays: "월~금" },
   ]);
+  const hoursOf = (keys: string[]) => minutesToHoursX100(keys.reduce((a, k) => a + (slotRows.find((r) => r.key === k)?.minutes ?? 0), 0));
   const workRows: (typeof s.workLogs.$inferInsert)[] = [];
   for (let d = 0; d < 6; d++) {
     const dayKey = toDateKey(addDays(monday, d));
     if (dayKey >= today) break;
-    const keys = d < 3 ? ["t1", "t2", "t3"] : ["t4", "t5", "t6"];
-    workRows.push({ branchId: dt2.id, userId: assistant.id, date: dayKey, slotKeys: keys, hoursX100: keys.reduce((a, k) => a + (slotRows.find((r) => r.key === k)?.hours ?? 0), 0), overtimeX100: d === 1 ? 50 : 0, overtimeReason: d === 1 ? "외출 확인, 남자 화장실 정리" : null, hqConfirmedBy: d < 2 ? hq.id : null, hqConfirmedAt: d < 2 ? new Date() : null });
-    workRows.push({ branchId: dt2.id, userId: assistant2.id, date: dayKey, slotKeys: ["t7"], hoursX100: 300, overtimeX100: 0 });
+    // 주간조교는 평일 일곱 타임을 다 채우면 시트와 같은 2.5시간. 하루는 2타임을 비워 둔다
+    const dayKeys = d === 3 ? ["d1", "d3", "d4", "d5", "d6", "d7"] : ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
+    workRows.push({ branchId: dt2.id, userId: assistant.id, date: dayKey, slotKeys: dayKeys, hoursX100: hoursOf(dayKeys), overtimeX100: d === 1 ? 50 : 0, overtimeReason: d === 1 ? "외출 확인, 남자 화장실 정리" : null, hqConfirmedBy: d < 2 ? hq.id : null, hqConfirmedAt: d < 2 ? new Date() : null });
+    workRows.push({ branchId: dt2.id, userId: assistant2.id, date: dayKey, slotKeys: ["n1", "n2", "n3"], hoursX100: hoursOf(["n1", "n2", "n3"]), overtimeX100: d === 2 ? 17 : 0, overtimeReason: d === 2 ? "마감 정리" : null });
+    workRows.push({ branchId: dt2.id, userId: manager.id, date: dayKey, slotKeys: ["m1"], hoursX100: hoursOf(["m1"]), overtimeX100: 0 });
+    if (d === 1 || d === 3) workRows.push({ branchId: dt2.id, userId: mentor.id, date: dayKey, slotKeys: ["c1"], hoursX100: hoursOf(["c1"]), overtimeX100: 0 });
   }
   if (workRows.length) await db.insert(s.workLogs).values(workRows);
 

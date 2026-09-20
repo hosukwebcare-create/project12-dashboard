@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { computeHoursX100, elapsedToHoursX100, formatDuration, formatHours, GROUP_SLOT_PRESET, parseHoursToX100, slotsForGroup, spanToHoursX100, staffGroupOf } from "@/lib/rules/worklog";
+import { computeHoursX100, elapsedToHoursX100, formatDuration, formatHours, minutesToHoursX100, parseHoursToX100, parseMinutes, SHEET_SLOT_PRESET, slotsForAudience, staffGroupOf } from "@/lib/rules/worklog";
 
 const slots = [
-  { key: "t1", hoursX100: 50, weekend: false },
-  { key: "t2", hoursX100: 100, weekend: false },
-  { key: "w1", hoursX100: 150, weekend: true },
+  { key: "t1", hoursX100: 50, minutes: null, weekend: false },
+  { key: "t2", hoursX100: 100, minutes: null, weekend: false },
+  { key: "w1", hoursX100: 150, minutes: null, weekend: true },
 ];
+
+/** 시트의 주간조교 타임: 1타임 60분, 2~7타임 15분씩 */
+const sheetSlots = SHEET_SLOT_PRESET.filter((p) => p.audience === "주간조교").map((p) => ({ key: p.key, hoursX100: 0, minutes: p.minutes, weekend: p.sunday }));
 
 describe("computeHoursX100", () => {
   it("체크한 타임의 인정 시간을 합친다", () => {
@@ -16,6 +19,38 @@ describe("computeHoursX100", () => {
   });
   it("빈 선택은 0", () => {
     expect(computeHoursX100(slots, [])).toBe(0);
+  });
+
+  it("시트처럼 분을 먼저 다 더한 뒤 시간으로 바꾼다", () => {
+    // 평일을 다 체크한 주간조교: 60 + 15×6 = 150분 = 2.5시간
+    expect(computeHoursX100(sheetSlots, ["d1", "d2", "d3", "d4", "d5", "d6", "d7"])).toBe(250);
+    // 10분짜리 셋을 따로 반올림하면 0.51 이 된다. 시트는 30분을 한 번에 나눠 0.5 다
+    const night = SHEET_SLOT_PRESET.filter((p) => p.audience === "야간조교" && !p.sunday).map((p) => ({ key: p.key, hoursX100: 0, minutes: p.minutes, weekend: false }));
+    expect(computeHoursX100(night, ["n1", "n2", "n3"])).toBe(50);
+    expect(minutesToHoursX100(10) * 3).toBe(51);
+  });
+
+  it("분이 없는 예전 타임과 섞여 있어도 더해진다", () => {
+    expect(computeHoursX100([...slots, ...sheetSlots], ["t2", "d1"])).toBe(200);
+  });
+});
+
+describe("시트 타임표", () => {
+  it("근무 형태마다 하루를 다 채운 인정 시간이 시트와 같다", () => {
+    const full = (audience: string, sunday: boolean) => {
+      const list = SHEET_SLOT_PRESET.filter((p) => p.audience === audience && p.sunday === sunday);
+      return computeHoursX100(list.map((p) => ({ key: p.key, hoursX100: 0, minutes: p.minutes, weekend: p.sunday })), list.map((p) => p.key));
+    };
+    expect(full("주간조교", false)).toBe(250); // 2.5시간
+    expect(full("야간조교", false)).toBe(50); // 0.5시간
+    expect(full("컨설팅", false)).toBe(400); // 4시간
+    expect(full("원장", false)).toBe(600); // 6시간
+    expect(full("주간조교", true)).toBe(100); // 일1 + 일2 = 1시간
+    expect(full("야간조교", true)).toBe(100);
+  });
+
+  it("시각이 적힌 타임은 근무시간표에 있는 원장 하나뿐이다", () => {
+    expect(SHEET_SLOT_PRESET.filter((p) => p.startTime !== "").map((p) => [p.audience, p.startTime, p.endTime])).toEqual([["원장", "16:00", "23:00"]]);
   });
 });
 
@@ -31,6 +66,12 @@ describe("시간 표기", () => {
     expect(parseHoursToX100("")).toBe(0);
     expect(parseHoursToX100("abc")).toBeNull();
     expect(parseHoursToX100("-1")).toBeNull();
+  });
+  it("인정 시간은 분 단위 정수로 받는다", () => {
+    expect(parseMinutes("15")).toBe(15);
+    expect(parseMinutes("")).toBe(0);
+    expect(parseMinutes("1.5")).toBeNull();
+    expect(parseMinutes("-1")).toBeNull();
   });
 });
 
@@ -68,24 +109,18 @@ describe("직군별 타임", () => {
     expect(staffGroupOf("mentor", "기타")).toBe("mentor");
   });
 
-  it("내 직군 타임과 공통 타임만, 평일/주말에 맞춰 고른다", () => {
+  it("내 근무 형태 타임과 공통 타임만, 평일/일요일에 맞춰 고른다", () => {
     const slots = [
-      { key: "asst", weekend: false, audience: "assistant" as const },
-      { key: "mgr", weekend: false, audience: "manager" as const },
-      { key: "mentor", weekend: false, audience: "mentor" as const },
+      { key: "d1", weekend: false, audience: "주간조교" as const },
+      { key: "n1", weekend: false, audience: "야간조교" as const },
+      { key: "c1", weekend: false, audience: "컨설팅" as const },
       { key: "t1", weekend: false, audience: null },
-      { key: "w1", weekend: true, audience: null },
+      { key: "dsun1", weekend: true, audience: "주간조교" as const },
     ];
-    expect(slotsForGroup(slots, "assistant", false).map((s) => s.key)).toEqual(["asst", "t1"]);
-    expect(slotsForGroup(slots, "mentor", false).map((s) => s.key)).toEqual(["mentor", "t1"]);
-    expect(slotsForGroup(slots, "manager", true).map((s) => s.key)).toEqual(["w1"]);
-  });
-
-  it("기본 타임의 인정 시간은 시작~끝 길이다", () => {
-    expect(spanToHoursX100("07:50", "15:00")).toBe(717);
-    expect(spanToHoursX100("16:00", "23:00")).toBe(700);
-    expect(spanToHoursX100("19:00", "23:00")).toBe(400);
-    expect(spanToHoursX100("22:00", "01:00")).toBe(300);
-    expect(GROUP_SLOT_PRESET.map((p) => p.audience)).toEqual(["assistant", "manager", "mentor"]);
+    // 주간조교와 야간조교는 같은 '조교'지만 타임표가 다르다
+    expect(slotsForAudience(slots, "주간조교", false).map((s) => s.key)).toEqual(["d1", "t1"]);
+    expect(slotsForAudience(slots, "야간조교", false).map((s) => s.key)).toEqual(["n1", "t1"]);
+    expect(slotsForAudience(slots, "컨설팅", false).map((s) => s.key)).toEqual(["c1", "t1"]);
+    expect(slotsForAudience(slots, "주간조교", true).map((s) => s.key)).toEqual(["dsun1"]);
   });
 });

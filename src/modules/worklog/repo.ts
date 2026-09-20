@@ -1,15 +1,15 @@
 import { and, asc, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
-import { memberships, shiftSlots, staffProfiles, users, workLogs, type StaffGroup } from "@/db/schema";
+import { memberships, shiftSlots, staffProfiles, users, workLogs, type SlotAudience, type StaffGroup } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
 import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
-import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, GROUP_SLOT_PRESET, spanToHoursX100, STAFF_GROUPS, staffGroupOf } from "@/lib/rules/worklog";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
-export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; hoursX100: number; weekend: boolean; audience?: StaffGroup | null; sort: number; active: boolean };
+export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; minutes: number; weekend: boolean; audience?: SlotAudience | null; sort: number; active: boolean };
 export const EMPLOYMENT_TYPES = ["주간조교", "야간조교", "컨설팅", "원장", "기타"] as const;
 
 export async function listShiftSlots(ctx: Pick<Ctx, "branchId">, db: Db = defaultDb, includeInactive = false): Promise<ShiftSlot[]> {
@@ -23,14 +23,18 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
   const key = input.key.trim().toLowerCase();
   if (!/^[a-z0-9_]{1,20}$/.test(key)) throw new ValidationError("타임 키는 영문·숫자 1~20자");
   if (!input.label.trim()) throw new ValidationError("타임 이름을 입력하세요");
-  if (!/^\d{2}:\d{2}$/.test(input.startTime) || !/^\d{2}:\d{2}$/.test(input.endTime)) throw new ValidationError("시각은 HH:mm 형식");
-  if (!Number.isInteger(input.hoursX100) || input.hoursX100 < 0) throw new ValidationError("인정 시간이 올바르지 않습니다");
+  // 시트에 시각이 적힌 타임은 원장 하나뿐이다. 나머지는 이름과 인정 시간만 있으므로 비워 둘 수 있게 한다
+  const time = (t: string) => (t.trim() === "" ? "" : t.trim());
+  const startTime = time(input.startTime);
+  const endTime = time(input.endTime);
+  for (const t of [startTime, endTime]) if (t !== "" && !/^\d{2}:\d{2}$/.test(t)) throw new ValidationError("시각은 HH:mm 형식");
+  if (!Number.isInteger(input.minutes) || input.minutes < 0 || input.minutes > 1440) throw new ValidationError("인정 시간(분)은 0~1440");
   const conds = [eq(shiftSlots.branchId, ctx.branchId), eq(shiftSlots.key, key)];
   if (input.id) conds.push(ne(shiftSlots.id, input.id));
   const [dup] = await db.select({ id: shiftSlots.id }).from(shiftSlots).where(and(...conds)).limit(1);
   if (dup) throw new ValidationError(`타임 키 '${key}'가 이미 있습니다`);
-  if (input.audience && !STAFF_GROUPS.some((g) => g.key === input.audience)) throw new ValidationError("직군이 올바르지 않습니다");
-  const vals = { key, label: input.label.trim(), startTime: input.startTime, endTime: input.endTime, hours: input.hoursX100, weekend: input.weekend, audience: input.audience ?? null, sort: input.sort, active: input.active };
+  if (input.audience && !SLOT_AUDIENCES.includes(input.audience)) throw new ValidationError("근무 형태가 올바르지 않습니다");
+  const vals = { key, label: input.label.trim(), startTime, endTime, minutes: input.minutes, hours: minutesToHoursX100(input.minutes), weekend: input.weekend, audience: input.audience ?? null, sort: input.sort, active: input.active };
   if (input.id) {
     const [existing] = await db.select().from(shiftSlots).where(and(eq(shiftSlots.id, input.id), eq(shiftSlots.branchId, ctx.branchId))).limit(1);
     if (!existing) throw new NotFoundError("타임을 찾을 수 없습니다");
@@ -42,25 +46,50 @@ export async function upsertShiftSlot(ctx: Ctx, input: ShiftSlotInput, db: Db = 
 }
 
 /**
- * 직군별 기본 타임(조교·원장·멘토)을 이 지점에 넣는다. 이미 있는 키는 건드리지 않아 여러 번 눌러도 같다.
- * 직군 없이 쓰던 평일 타임은 지우지 않고 '사용 안 함'으로 돌린다 — 지난 근무 기록이 그 키를 가리키고 있다.
+ * 동탄점 시트의 타임표를 이 지점에 넣는다. 이미 있는 키는 건드리지 않아 여러 번 눌러도 같다.
+ * 처음 만든 직군 타임(asst·mgr·mentor)은 시작~끝 길이를 인정 시간으로 써서 시트보다 길게 잡혔다.
+ * 그 키를 가리키는 근무 기록이 있으므로 지우지 않고 시트 값으로 고친 뒤 쉬게 두고, 기록의 시간도 다시 계산한다.
  */
-export async function applyGroupSlotPreset(ctx: Ctx, db: Db = defaultDb): Promise<{ added: number; retired: number }> {
+export async function applySheetSlotPreset(ctx: Ctx, db: Db = defaultDb): Promise<{ added: number; retired: number; fixed: number; recomputed: number }> {
   requireRole(ctx, ...MANAGER_ROLES);
   return db.transaction(async (tx) => {
     const existing = await tx.select().from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId));
     const keys = new Set(existing.map((s) => s.key));
     const maxSort = existing.reduce((m, s) => Math.max(m, s.sort), 0);
-    const fresh = GROUP_SLOT_PRESET.filter((p) => !keys.has(p.key));
+    const fresh = SHEET_SLOT_PRESET.filter((p) => !keys.has(p.key));
     if (fresh.length) {
       await tx.insert(shiftSlots).values(
-        fresh.map((p, k) => ({ branchId: ctx.branchId, key: p.key, label: p.label, startTime: p.startTime, endTime: p.endTime, hours: spanToHoursX100(p.startTime, p.endTime), weekend: false, audience: p.audience, sort: maxSort + 1 + k, active: true })),
+        fresh.map((p, k) => ({ branchId: ctx.branchId, key: p.key, label: p.label, startTime: p.startTime, endTime: p.endTime, minutes: p.minutes, hours: minutesToHoursX100(p.minutes), weekend: p.sunday, audience: p.audience, sort: maxSort + 1 + k, active: true })),
       );
     }
-    const retire = existing.filter((s) => s.active && !s.weekend && s.audience === null);
+    const wrong = existing.filter((s) => LEGACY_SLOT_FIX[s.key] !== undefined && s.minutes === null);
+    for (const s of wrong) {
+      const fix = LEGACY_SLOT_FIX[s.key];
+      await tx.update(shiftSlots).set({ minutes: fix.minutes, hours: minutesToHoursX100(fix.minutes), audience: fix.audience, active: false }).where(eq(shiftSlots.id, s.id));
+    }
+    // 근무 형태 없이 쓰던 평일 타임은 지우지 않고 '사용 안 함'으로 돌린다 — 지난 근무 기록이 그 키를 가리키고 있다
+    const retire = existing.filter((s) => s.active && !s.weekend && s.audience === null && LEGACY_SLOT_FIX[s.key] === undefined);
     if (retire.length) await tx.update(shiftSlots).set({ active: false }).where(inArray(shiftSlots.id, retire.map((s) => s.id)));
-    await writeAudit(tx, ctx, "shift_slot", ctx.branchId, "update", { retired: retire.map((s) => s.key) }, { added: fresh.map((p) => p.key) });
-    return { added: fresh.length, retired: retire.length };
+
+    // 길게 잡힌 타임으로 저장된 근무 기록을 시트 값으로 다시 계산한다.
+    // 본사 확인이 끝난 날과 출퇴근을 찍은 날은 손대지 않는다 — 그 시간은 시계가 잰 사실이다.
+    let recomputed = 0;
+    if (wrong.length) {
+      const wrongKeys = new Set(wrong.map((s) => s.key));
+      const all = await tx.select().from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId));
+      const specs = all.map((s) => ({ key: s.key, hoursX100: s.hours, minutes: s.minutes, weekend: s.weekend }));
+      const logs = await tx.select().from(workLogs).where(eq(workLogs.branchId, ctx.branchId));
+      for (const log of logs) {
+        if (log.hqConfirmedAt || (log.clockInAt && log.clockOutAt)) continue;
+        if (!log.slotKeys.some((k) => wrongKeys.has(k))) continue;
+        const next = computeHoursX100(specs, log.slotKeys);
+        if (next === log.hoursX100) continue;
+        await tx.update(workLogs).set({ hoursX100: next, updatedAt: new Date() }).where(eq(workLogs.id, log.id));
+        recomputed += 1;
+      }
+    }
+    await writeAudit(tx, ctx, "shift_slot", ctx.branchId, "update", { retired: retire.map((s) => s.key), fixed: wrong.map((s) => s.key) }, { added: fresh.map((p) => p.key), recomputed });
+    return { added: fresh.length, retired: retire.length, fixed: wrong.length, recomputed };
   });
 }
 
@@ -113,7 +142,7 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     const slots = await listShiftSlots(ctx, db, true);
     // 출근·퇴근을 모두 누른 날은 시계가 잰 시간이 사실이다. 타임 체크를 고쳐도 시간을 되돌리지 않는다.
     const clocked = existing?.clockInAt && existing?.clockOutAt;
-    const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, weekend: s.weekend })), input.slotKeys);
+    const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, minutes: s.minutes, weekend: s.weekend })), input.slotKeys);
     const vals = { slotKeys: input.slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? input.overtimeReason?.trim() ?? null : null, note: input.note?.trim() || null };
     const [row] = await tx
       .insert(workLogs)
@@ -231,10 +260,11 @@ async function assertBranchMember(ctx: Ctx, userId: string, db: Db): Promise<voi
   if (!ms) throw new ForbiddenError("이 지점 소속 사용자만 출퇴근을 기록할 수 있습니다");
 }
 
-/** 내 직군. 근무 체크 화면이 이 직군의 타임만 보여준다 */
-export async function myStaffGroup(ctx: Ctx, db: Db = defaultDb): Promise<StaffGroup> {
+/** 내 근무 형태와 직군. 근무 체크 화면이 이 형태의 타임만 보여준다 */
+export async function myWorkProfile(ctx: Ctx, db: Db = defaultDb): Promise<{ employmentType: string; group: StaffGroup }> {
   const [p] = await db.select({ employmentType: staffProfiles.employmentType }).from(staffProfiles).where(and(eq(staffProfiles.userId, ctx.userId), eq(staffProfiles.branchId, ctx.branchId))).limit(1);
-  return staffGroupOf(ctx.role, p?.employmentType);
+  const employmentType = p?.employmentType ?? (ctx.role === "assistant" ? "주간조교" : ctx.role === "mentor" ? "컨설팅" : "원장");
+  return { employmentType, group: staffGroupOf(ctx.role, p?.employmentType) };
 }
 
 export async function myWorkLog(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkLogRow | null> {

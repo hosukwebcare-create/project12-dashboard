@@ -22,6 +22,8 @@ export type MemberStatus = "prospect" | "enrolled" | "paused" | "withdrawn";
 export type MemberKind = "student" | "adult";
 /** 근무일지의 직군. 타임표와 현황을 이 셋으로 나눈다 */
 export type StaffGroup = "assistant" | "manager" | "mentor";
+/** 근무 타임표를 쓰는 근무 형태. 같은 조교라도 주간·야간의 타임이 다르다 */
+export type SlotAudience = "주간조교" | "야간조교" | "컨설팅" | "원장";
 export type Grade = "a" | "b" | "p" | "na";
 export type IssueStatus = "open" | "in_progress" | "resolved";
 export type CounselLogType = "weekly" | "focus_daily";
@@ -525,11 +527,14 @@ export const shiftSlots = pgTable(
     label: text("label").notNull(),
     startTime: text("start_time").notNull(),
     endTime: text("end_time").notNull(),
-    /** 이 타임을 체크했을 때 인정 시간 (예: 0.5, 1.5) */
+    /** 이 타임을 체크했을 때 인정 시간 (예: 0.5, 1.5). minutes 가 있으면 그쪽이 기준이다 */
     hours: integer("hours_x100").notNull(),
+    /** 인정 시간을 분으로. 시트처럼 분을 다 더한 뒤 한 번만 시간으로 바꾸려고 둔다 */
+    minutes: integer("minutes"),
+    /** 일요일에만 쓰는 타임(시트의 일1·일2타임). 토요일은 평일과 같은 타임을 쓴다 */
     weekend: boolean("weekend").notNull().default(false),
-    /** 이 타임을 쓰는 직군. 비어 있으면 모든 직군 공통 */
-    audience: text("audience").$type<StaffGroup>(),
+    /** 이 타임을 쓰는 근무 형태. 비어 있으면 모두 공통 */
+    audience: text("audience").$type<SlotAudience>(),
     sort: integer("sort").notNull().default(0),
     active: boolean("active").notNull().default(true),
   },

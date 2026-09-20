@@ -92,6 +92,13 @@
       "when": 1789888756172,
       "tag": "0012_shift_slot_audience",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789925127987,
+      "tag": "0013_shift_slot_minutes",
+      "breakpoints": true
     }
   ]
 }

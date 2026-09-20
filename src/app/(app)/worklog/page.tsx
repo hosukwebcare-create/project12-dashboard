@@ -7,10 +7,10 @@ import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { formatHours, slotsForGroup, STAFF_GROUP_LABEL } from "@/lib/rules/worklog";
+import { formatHours, slotsForAudience } from "@/lib/rules/worklog";
 import { WorkClock } from "@/components/app/work-clock";
 import { clockInAction, clockOutAction, saveWorkLogAction } from "@/modules/worklog/actions";
-import { listShiftSlots, monthLogsForUser, myStaffGroup, myWorkClock, myWorkLog } from "@/modules/worklog/repo";
+import { listShiftSlots, monthLogsForUser, myWorkClock, myWorkLog, myWorkProfile } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무일지" };
 
@@ -18,20 +18,21 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
   const ctx = await getCtx();
   const sp = await searchParams;
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayKey();
-  const [allSlots, group, mine, monthLogs, clock] = await Promise.all([
+  const [allSlots, profile, mine, monthLogs, clock] = await Promise.all([
     listShiftSlots(ctx, undefined, true),
-    myStaffGroup(ctx),
+    myWorkProfile(ctx),
     myWorkLog(ctx, date),
     monthLogsForUser(ctx, ctx.userId, date.slice(0, 7)),
     myWorkClock(ctx, date),
   ]);
   const dates = [-2, -1, 0].map((d) => toDateKey(addDays(todayKey(), d)));
   const dow = new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))).getDay();
-  const isWeekend = dow === 0 || dow === 6;
+  // 시트는 토요일에도 평일 타임을 쓰고 일요일에만 일1·일2타임을 쓴다
+  const isSunday = dow === 0;
   const slots = allSlots.filter((s) => s.active);
-  // 내 직군 타임만 보인다. 지난 날짜에 이미 체크해 둔 타임은 지금 안 쓰는 것이어도 남겨서, 다시 저장할 때 시간이 사라지지 않게 한다
+  // 내 근무 형태의 타임만 보인다. 지난 날짜에 이미 체크해 둔 타임은 지금 안 쓰는 것이어도 남겨서, 다시 저장할 때 시간이 사라지지 않게 한다
   const checkedBefore = allSlots.filter((s) => mine?.slotKeys.includes(s.key));
-  const visibleSlots = [...new Set([...slotsForGroup(slots, group, isWeekend), ...checkedBefore])];
+  const visibleSlots = [...new Set([...slotsForAudience(slots, profile.employmentType, isSunday), ...checkedBefore])];
   const locked = Boolean(mine?.hqConfirmedAt);
   const totalX100 = monthLogs.reduce((a, l) => a + l.hoursX100 + l.overtimeX100, 0);
 
@@ -46,7 +47,7 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
       <Card>
         <CardHeader>
           <CardTitle>
-            {fmtShortDate(date)} 근무 체크 <span className="ml-1 text-xs font-normal text-muted-foreground">{STAFF_GROUP_LABEL[group]} 타임</span>
+            {fmtShortDate(date)} 근무 체크 <span className="ml-1 text-xs font-normal text-muted-foreground">{profile.employmentType} 타임</span>
           </CardTitle>
           <CardDescription>{slots.length === 0 ? "지점장이 아직 근무 타임을 설정하지 않았습니다." : locked ? "본사 확인이 완료되어 수정할 수 없습니다." : "근무한 타임을 체크하고 저장하세요. 초과근무는 시간과 사유를 함께 입력합니다."}</CardDescription>
           <div className="pill-nav mt-2">
@@ -69,12 +70,13 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
                       {s.label}
                       {!s.active ? <span className="ml-1 text-[11px] text-muted-foreground">(예전 타임)</span> : null}
                       <span className="block text-[11px] text-muted-foreground">
-                        {s.startTime}~{s.endTime} · {formatHours(s.hours)}h
+                        {s.startTime && s.endTime ? `${s.startTime}~${s.endTime} · ` : ""}
+                        {s.minutes !== null ? `${s.minutes}분` : `${formatHours(s.hours)}h`}
                       </span>
                     </span>
                   </label>
                 ))}
-                {visibleSlots.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">{STAFF_GROUP_LABEL[group]} {isWeekend ? "주말" : "평일"} 타임이 없습니다</p> : null}
+                {visibleSlots.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">{profile.employmentType} {isSunday ? "일요일" : "평일"} 타임이 없습니다</p> : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">

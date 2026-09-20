@@ -7,7 +7,7 @@ import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
 import { fmtDateTime, fmtShortDate, fmtTime } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { formatHours, STAFF_GROUP_LABEL, STAFF_GROUPS } from "@/lib/rules/worklog";
+import { formatHours, STAFF_GROUPS } from "@/lib/rules/worklog";
 import { confirmWorkLogAction, saveWorkLogAction } from "@/modules/worklog/actions";
 import { dailyWorkLogs, listShiftSlots, listStaff } from "@/modules/worklog/repo";
 
@@ -160,7 +160,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
             {slots.map((s) => (
               <label key={s.id} className="flex items-center gap-1 text-sm">
                 <input type="checkbox" name="slot" value={s.key} className="size-4" /> {s.label}
-                {s.audience ? <span className="text-[11px] text-muted-foreground">{STAFF_GROUP_LABEL[s.audience]}</span> : null}
+                {s.audience ? <span className="text-[11px] text-muted-foreground">{s.audience}</span> : null}
               </label>
             ))}
             <Input name="overtime" placeholder="초과(시간)" className="w-24" />

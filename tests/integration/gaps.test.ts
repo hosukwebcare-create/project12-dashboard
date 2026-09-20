@@ -52,8 +52,8 @@ describe("본사 근무 지점별 집계", () => {
 
   it("전 지점의 월 근무시간·초과·예상 급여를 지점별로 모은다", async () => {
     const t = await seedTwoBranches();
-    await upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "1타임", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 1, active: true });
-    await upsertShiftSlot(t.mgrCtx2, { key: "t1", label: "1타임", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 1, active: true });
+    await upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "1타임", startTime: "09:00", endTime: "10:00", minutes: 60, weekend: false, sort: 1, active: true });
+    await upsertShiftSlot(t.mgrCtx2, { key: "t1", label: "1타임", startTime: "09:00", endTime: "10:00", minutes: 60, weekend: false, sort: 1, active: true });
     await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1"], overtimeX100: 50, overtimeReason: "정리", note: null });
     await saveWorkLog(t.mgrCtx2, { date: "2026-09-03", slotKeys: ["t1"], overtimeX100: 0, overtimeReason: null, note: null });
     const rows = await hqWorklogSummary(t.hqCtx1, "2026-09");

@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { db } from "@/db/client";
+import { shiftSlots } from "@/db/schema";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
-import { applyGroupSlotPreset, clockIn, clockOut, confirmWorkLog, dailyWorkLogs, listShiftSlots, monthlySummary, myStaffGroup, myWorkClock, myWorkLog, saveWorkLog, upsertShiftSlot, upsertStaffProfile } from "@/modules/worklog/repo";
+import { applySheetSlotPreset, clockIn, clockOut, confirmWorkLog, dailyWorkLogs, listShiftSlots, monthlySummary, myWorkClock, myWorkLog, myWorkProfile, saveWorkLog, upsertShiftSlot, upsertStaffProfile } from "@/modules/worklog/repo";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
 async function seedSlots() {
   const t = await seedTwoBranches();
-  await upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "1타임", startTime: "09:00", endTime: "09:30", hoursX100: 50, weekend: false, sort: 1, active: true });
-  await upsertShiftSlot(t.mgrCtx1, { key: "t2", label: "2타임", startTime: "09:30", endTime: "10:30", hoursX100: 100, weekend: false, sort: 2, active: true });
-  await upsertShiftSlot(t.mgrCtx1, { key: "w1", label: "일1타임", startTime: "10:00", endTime: "13:00", hoursX100: 300, weekend: true, sort: 3, active: true });
+  await upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "1타임", startTime: "09:00", endTime: "09:30", minutes: 30, weekend: false, sort: 1, active: true });
+  await upsertShiftSlot(t.mgrCtx1, { key: "t2", label: "2타임", startTime: "09:30", endTime: "10:30", minutes: 60, weekend: false, sort: 2, active: true });
+  await upsertShiftSlot(t.mgrCtx1, { key: "w1", label: "일1타임", startTime: "10:00", endTime: "13:00", minutes: 180, weekend: true, sort: 3, active: true });
   await upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: 10000, workDays: "월~수", direct: true });
   return t;
 }
@@ -20,48 +22,77 @@ describe("근무 타임 설정", () => {
     const t = await seedSlots();
     expect((await listShiftSlots(t.asstCtx1)).map((s) => s.key)).toEqual(["t1", "t2", "w1"]);
     expect(await listShiftSlots(t.mgrCtx2)).toEqual([]);
-    await expect(upsertShiftSlot(t.asstCtx1, { key: "x", label: "x", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 9, active: true })).rejects.toThrow(ForbiddenError);
-    await expect(upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "중복", startTime: "09:00", endTime: "10:00", hoursX100: 100, weekend: false, sort: 9, active: true })).rejects.toThrow(ValidationError);
+    await expect(upsertShiftSlot(t.asstCtx1, { key: "x", label: "x", startTime: "09:00", endTime: "10:00", minutes: 60, weekend: false, sort: 9, active: true })).rejects.toThrow(ForbiddenError);
+    await expect(upsertShiftSlot(t.mgrCtx1, { key: "t1", label: "중복", startTime: "09:00", endTime: "10:00", minutes: 60, weekend: false, sort: 9, active: true })).rejects.toThrow(ValidationError);
   });
 });
 
-describe("직군별 타임", () => {
+describe("시트 타임표", () => {
   beforeEach(resetDb);
 
-  it("기본 타임을 넣으면 세 직군 타임이 생기고 평일 공통 타임은 쉬게 된다. 지난 기록의 시간은 그대로다", async () => {
+  it("시트 타임표를 넣으면 근무 형태별 타임이 생기고 평일 공통 타임은 쉬게 된다. 지난 기록의 시간은 그대로다", async () => {
     const t = await seedSlots();
     await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 0, overtimeReason: null, note: null });
-    await expect(applyGroupSlotPreset(t.asstCtx1)).rejects.toThrow(ForbiddenError);
+    await expect(applySheetSlotPreset(t.asstCtx1)).rejects.toThrow(ForbiddenError);
 
-    expect(await applyGroupSlotPreset(t.mgrCtx1)).toEqual({ added: 3, retired: 2 });
+    expect(await applySheetSlotPreset(t.mgrCtx1)).toEqual({ added: 16, retired: 2, fixed: 0, recomputed: 0 });
     const active = await listShiftSlots(t.mgrCtx1);
-    expect(active.map((s) => [s.key, s.audience, s.hours])).toEqual([
-      ["w1", null, 300],
-      ["asst", "assistant", 717],
-      ["mgr", "manager", 700],
-      ["mentor", "mentor", 400],
-    ]);
+    // 일요일 타임(w1)은 평일 타임이 아니므로 그대로 남는다
+    expect(active.map((s) => s.key)).toEqual(["w1", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "dsun1", "dsun2", "n1", "n2", "n3", "nsun1", "nsun2", "c1", "m1"]);
+    expect(active.filter((s) => s.audience === "주간조교" && !s.weekend).map((s) => s.minutes)).toEqual([60, 15, 15, 15, 15, 15, 15]);
+    expect(active.find((s) => s.key === "m1")).toMatchObject({ audience: "원장", minutes: 360, hours: 600, startTime: "16:00" });
     // 다시 눌러도 같다
-    expect(await applyGroupSlotPreset(t.mgrCtx1)).toEqual({ added: 0, retired: 0 });
+    expect(await applySheetSlotPreset(t.mgrCtx1)).toEqual({ added: 0, retired: 0, fixed: 0, recomputed: 0 });
     // 다른 지점은 건드리지 않는다
     expect(await listShiftSlots(t.mgrCtx2)).toEqual([]);
 
     // 쉬게 된 타임으로 적어 둔 지난 근무를 메모만 고쳐 다시 저장해도 시간이 사라지지 않는다
     await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 0, overtimeReason: null, note: "메모 추가" });
     expect(await myWorkLog(t.asstCtx1, "2026-09-03")).toMatchObject({ hoursX100: 150, note: "메모 추가" });
+  });
 
-    // 조교는 조교 타임으로 저장한다
-    await saveWorkLog(t.asstCtx1, { date: "2026-09-04", slotKeys: ["asst"], overtimeX100: 0, overtimeReason: null, note: null });
-    expect(await myWorkLog(t.asstCtx1, "2026-09-04")).toMatchObject({ hoursX100: 717 });
+  it("주간조교가 평일을 다 체크하면 시트와 같은 2.5시간, 야간조교는 0.5시간이 된다", async () => {
+    const t = await seedSlots();
+    await applySheetSlotPreset(t.mgrCtx1);
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-04", slotKeys: ["d1", "d2", "d3", "d4", "d5", "d6", "d7"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-04")).toMatchObject({ hoursX100: 250 });
+    // 10분짜리 셋을 따로 반올림하면 0.51 이 된다. 시트처럼 분을 먼저 더해 0.5 여야 한다
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-05", slotKeys: ["n1", "n2", "n3"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-05")).toMatchObject({ hoursX100: 50 });
+    // 일요일은 일1·일2타임으로 1시간
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-06", slotKeys: ["dsun1", "dsun2"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-06")).toMatchObject({ hoursX100: 100 });
+  });
+
+  it("먼저 넣었던 직군 타임은 시트 값으로 고치고, 그 타임으로 적은 근무 기록도 다시 계산한다", async () => {
+    const t = await seedSlots();
+    // 처음 만든 직군 타임: 시작~끝 길이를 그대로 인정 시간으로 써서 조교 7.17시간이었다
+    await db.insert(shiftSlots).values([
+      { branchId: t.b1.id, key: "asst", label: "조교 근무", startTime: "07:50", endTime: "15:00", hours: 717, minutes: null, weekend: false, audience: null, sort: 10, active: true },
+      { branchId: t.b1.id, key: "mgr", label: "원장 근무", startTime: "16:00", endTime: "23:00", hours: 700, minutes: null, weekend: false, audience: null, sort: 11, active: true },
+    ]);
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-08", slotKeys: ["asst"], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-08")).toMatchObject({ hoursX100: 717 });
+    // 본사가 확인한 날은 손대지 않는다
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-09", slotKeys: ["asst"], overtimeX100: 0, overtimeReason: null, note: null });
+    const confirmed = await myWorkLog(t.asstCtx1, "2026-09-09");
+    await confirmWorkLog(t.hqCtx1, confirmed!.id);
+
+    expect(await applySheetSlotPreset(t.mgrCtx1)).toEqual({ added: 16, retired: 2, fixed: 2, recomputed: 1 });
+    const all = await listShiftSlots(t.mgrCtx1, undefined, true);
+    expect(all.find((s) => s.key === "asst")).toMatchObject({ minutes: 150, hours: 250, audience: "주간조교", active: false });
+    expect(all.find((s) => s.key === "mgr")).toMatchObject({ minutes: 360, hours: 600, audience: "원장", active: false });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-08")).toMatchObject({ hoursX100: 250 });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-09")).toMatchObject({ hoursX100: 717 });
   });
 
   it("직군은 근무 형태가 있으면 그것으로, 없으면 계정 역할로 정한다", async () => {
     const t = await seedSlots();
-    expect(await myStaffGroup(t.asstCtx1)).toBe("assistant");
-    expect(await myStaffGroup(t.mentorCtx1)).toBe("mentor");
-    expect(await myStaffGroup(t.mgrCtx1)).toBe("manager");
+    expect(await myWorkProfile(t.asstCtx1)).toEqual({ employmentType: "주간조교", group: "assistant" });
+    expect(await myWorkProfile(t.mentorCtx1)).toEqual({ employmentType: "컨설팅", group: "mentor" });
+    expect(await myWorkProfile(t.mgrCtx1)).toEqual({ employmentType: "원장", group: "manager" });
     await upsertStaffProfile(t.mgrCtx1, { userId: t.users.mentor1.id, employmentType: "원장", hourlyRate: null, workDays: null, direct: true });
-    expect(await myStaffGroup(t.mentorCtx1)).toBe("manager");
+    expect(await myWorkProfile(t.mentorCtx1)).toEqual({ employmentType: "원장", group: "manager" });
     await saveWorkLog(t.mentorCtx1, { date: "2026-09-03", slotKeys: ["t1"], overtimeX100: 0, overtimeReason: null, note: null });
     expect((await dailyWorkLogs(t.mgrCtx1, "2026-09-03")).map((d) => [d.userName, d.group])).toEqual([["멘토1", "manager"]]);
   });

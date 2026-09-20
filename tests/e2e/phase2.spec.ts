@@ -63,7 +63,7 @@ test.describe("근무일지", () => {
     await form.getByPlaceholder("이름 (1타임)").fill("E2E타임");
     await form.getByLabel("시작").fill("09:00");
     await form.getByLabel("종료").fill("09:30");
-    await form.getByPlaceholder("시간 (0.5)").fill("0.5");
+    await form.getByPlaceholder("분 (15)").fill("30");
     await form.getByRole("button", { name: "추가" }).click();
     await expect(page.locator('input[name="key"][value="e2e1"]')).toBeVisible();
 
@@ -76,17 +76,18 @@ test.describe("근무일지", () => {
     const p2 = await ctx2.newPage();
     await login(p2, "assistant");
     await p2.goto("/worklog");
-    // 오늘이 주말이면 주말 타임만 보이므로, 보이는 첫 타임을 체크하고 라벨에서 시간을 읽는다
+    // 오늘이 일요일이면 일요일 타임만 보이므로, 보이는 첫 타임을 체크하고 라벨에서 분을 읽는다
     const firstSlot = p2.getByRole("checkbox", { name: /타임/ }).first();
     const slotLabel = (await firstSlot.locator("xpath=..").textContent()) ?? "";
-    const slotHours = Number(slotLabel.match(/· ([\d.]+)h/)?.[1] ?? "0");
+    const slotMinutes = Number(slotLabel.match(/(\d+)분/)?.[1] ?? "0");
     const slotName = slotLabel.match(/^(\S+타임)/)?.[1] ?? "";
     await firstSlot.check();
     await p2.getByLabel("초과근무 (시간)").fill("0.5");
     await p2.getByLabel("초과근무 사유").fill("마감 정리");
     await p2.getByRole("button", { name: "저장" }).click();
     await expect(p2.getByText("저장됨")).toBeVisible();
-    const total = slotHours + 0.5;
+    // 시트처럼 분을 먼저 시간으로 바꾼 뒤 초과근무를 더한다
+    const total = (Math.round((slotMinutes / 60) * 100) + 50) / 100;
     await expect(p2.getByText(new RegExp(`= ${total}h`))).toBeVisible();
     await ctx2.close();
 
@@ -113,28 +114,36 @@ test.describe("근무일지", () => {
     expect(await csv.text()).toContain("최조교");
   });
 
-  test("직군별 기본 타임을 넣으면 조교에게는 조교 타임만, 일별 현황은 직군별로 묶인다", async ({ page, browser }) => {
+  test("시트 타임표는 근무 형태별로 나뉘고, 조교가 평일을 다 채우면 시트와 같은 2.5시간이 된다", async ({ page, browser }) => {
     await login(page, "manager");
     await page.goto("/worklog/settings");
-    await page.getByRole("button", { name: "직군별 기본 타임 넣기" }).click();
-    await expect(page.locator('input[name="key"][value="asst"]')).toBeVisible();
-    // 한 번 넣으면 버튼은 사라진다
-    await expect(page.getByRole("button", { name: "직군별 기본 타임 넣기" })).toHaveCount(0);
-    const asstSlot = page.locator("form").filter({ has: page.locator('input[name="key"][value="asst"]') });
-    await expect(asstSlot.getByLabel("시작")).toHaveValue("07:50");
-    await expect(asstSlot.getByLabel("종료")).toHaveValue("15:00");
-    await expect(asstSlot.getByLabel("직군")).toHaveValue("assistant");
+    for (const label of ["주간조교 (조교)", "야간조교 (조교)", "컨설팅 (멘토)", "원장 (원장)"]) {
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+    }
+    // 시트 수식 그대로: 주간조교 1타임 60분, 야간조교 1타임 10분, 원장 1타임 360분(16:00~23:00)
+    const slotForm = (key: string) => page.locator("form").filter({ has: page.locator(`input[name="key"][value="${key}"]`) });
+    await expect(slotForm("d1").getByLabel("인정 시간(분)")).toHaveValue("60");
+    await expect(slotForm("d1").getByLabel("근무 형태")).toHaveValue("주간조교");
+    await expect(slotForm("n1").getByLabel("인정 시간(분)")).toHaveValue("10");
+    await expect(slotForm("m1").getByLabel("인정 시간(분)")).toHaveValue("360");
+    await expect(slotForm("m1").getByLabel("시작")).toHaveValue("16:00");
 
     const ctx2 = await browser.newContext({ timezoneId: "Asia/Seoul" });
     const p2 = await ctx2.newPage();
     await login(p2, "assistant");
-    await p2.goto("/worklog");
-    const weekend = [0, 6].includes(new Date().getDay());
-    if (!weekend) {
-      await expect(p2.getByRole("checkbox", { name: /조교 근무/ })).toBeVisible();
-      await expect(p2.getByRole("checkbox", { name: /원장 근무/ })).toHaveCount(0);
-      await expect(p2.getByRole("checkbox", { name: /멘토 근무/ })).toHaveCount(0);
-    }
+    // 오늘은 앞 테스트에서 본사 확인이 끝나 잠겨 있다. 일요일이 아닌 지난 평일을 골라 연다
+    const day = new Date();
+    day.setDate(day.getDate() - 14);
+    while (day.getDay() === 0) day.setDate(day.getDate() - 1);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    await p2.goto(`/worklog?date=${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`);
+    // 주간조교에게는 자기 타임만 보인다. 컨설팅·원장 타임은 같은 '1타임'이라도 보이지 않는다
+    await expect(p2.getByText("주간조교 타임")).toBeVisible();
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) await p2.getByRole("checkbox", { name: new RegExp(`^${n}타임`) }).check();
+    await p2.getByRole("button", { name: "저장" }).click();
+    await expect(p2.getByText("저장됨")).toBeVisible();
+    // 60 + 15×6 = 150분 → 시트와 같은 2.5시간
+    await expect(p2.getByText(/= 2\.5h/)).toBeVisible();
     await ctx2.close();
 
     await page.goto("/worklog/daily");
