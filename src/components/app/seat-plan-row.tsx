@@ -26,6 +26,12 @@ const won = (n: number) => n.toLocaleString("ko-KR");
 export function SeatPlanRow({ seatId, seatNo, zone, feePlanId, plans, action }: Props) {
   const router = useRouter();
   const [value, setValue] = useState(feePlanId ?? "");
+  // 일괄 지정처럼 밖에서 등급이 바뀌면 따라간다. key 로 다시 만들면 방금 띄운 "저장됨"까지 사라지므로 값만 맞춘다
+  const [synced, setSynced] = useState(feePlanId);
+  if (synced !== feePlanId) {
+    setSynced(feePlanId);
+    setValue(feePlanId ?? "");
+  }
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ saved?: boolean; error?: string }>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

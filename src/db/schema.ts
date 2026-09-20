@@ -31,6 +31,10 @@ export type BranchSettings = {
   maskNames: boolean;
   /** 회차별 시작 시각 "HH:mm" (선택) */
   roundSchedule?: string[];
+  /** 라운딩 돌 때 같은 화면에서 함께 기록할 일별 항목 키. 비어 있으면 기본값(출석·플래너·영단어) */
+  roundCompanions?: string[];
+  /** 그날 라운딩에서 자리에 있던 학생의 출석을 자동으로 채운다 */
+  autoAttendance?: boolean;
 };
 
 const DEFAULT_BRANCH_SETTINGS: BranchSettings = { roundsPerDay: 12, maskNames: false };

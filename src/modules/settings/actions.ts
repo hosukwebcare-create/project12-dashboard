@@ -23,7 +23,14 @@ export async function updateBranchSettingsAction(_p: ActionState, fd: FormData):
         .split(/[\n,]/)
         .map((s) => s.trim())
         .filter(Boolean);
-      await updateBranchSettings(ctx, { roundsPerDay: num(fd.get("roundsPerDay"), 12), maskNames: bool(fd.get("maskNames")), roundSchedule: schedule });
+      await updateBranchSettings(ctx, {
+        roundsPerDay: num(fd.get("roundsPerDay"), 12),
+        maskNames: bool(fd.get("maskNames")),
+        roundSchedule: schedule,
+        // 하나도 고르지 않으면 빈 목록 = 함께 기록하지 않음. (설정을 저장한 적 없는 지점만 기본값을 쓴다)
+        roundCompanions: fd.getAll("roundCompanions").map(String),
+        autoAttendance: bool(fd.get("autoAttendance")),
+      });
     } catch (e) {
       return { error: toMessage(e) };
     }

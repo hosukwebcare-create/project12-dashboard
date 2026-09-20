@@ -112,6 +112,35 @@ test.describe("근무일지", () => {
     expect(csv.status(), await csv.text()).toBe(200);
     expect(await csv.text()).toContain("최조교");
   });
+
+  test("직군별 기본 타임을 넣으면 조교에게는 조교 타임만, 일별 현황은 직군별로 묶인다", async ({ page, browser }) => {
+    await login(page, "manager");
+    await page.goto("/worklog/settings");
+    await page.getByRole("button", { name: "직군별 기본 타임 넣기" }).click();
+    await expect(page.locator('input[name="key"][value="asst"]')).toBeVisible();
+    // 한 번 넣으면 버튼은 사라진다
+    await expect(page.getByRole("button", { name: "직군별 기본 타임 넣기" })).toHaveCount(0);
+    const asstSlot = page.locator("form").filter({ has: page.locator('input[name="key"][value="asst"]') });
+    await expect(asstSlot.getByLabel("시작")).toHaveValue("07:50");
+    await expect(asstSlot.getByLabel("종료")).toHaveValue("15:00");
+    await expect(asstSlot.getByLabel("직군")).toHaveValue("assistant");
+
+    const ctx2 = await browser.newContext({ timezoneId: "Asia/Seoul" });
+    const p2 = await ctx2.newPage();
+    await login(p2, "assistant");
+    await p2.goto("/worklog");
+    const weekend = [0, 6].includes(new Date().getDay());
+    if (!weekend) {
+      await expect(p2.getByRole("checkbox", { name: /조교 근무/ })).toBeVisible();
+      await expect(p2.getByRole("checkbox", { name: /원장 근무/ })).toHaveCount(0);
+      await expect(p2.getByRole("checkbox", { name: /멘토 근무/ })).toHaveCount(0);
+    }
+    await ctx2.close();
+
+    await page.goto("/worklog/daily");
+    await expect(page.getByRole("rowheader", { name: /^조교/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /^원장/ })).toBeVisible();
+  });
 });
 
 test.describe("알림톡", () => {

@@ -5,9 +5,10 @@ import { requireRole, type Ctx, type Role } from "@/lib/auth/ctx";
 import { writeAudit } from "@/lib/audit";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { pointsFor } from "@/lib/rules/penalty";
-import { nextRoundNo } from "@/lib/rules/rounding";
+import { canFillRest, impliesPresent, nextRoundNo, roundCompanionKeys } from "@/lib/rules/rounding";
 import { createIssue } from "@/modules/issues/repo";
 import { enqueueEvent, HIGH_PENALTY_THRESHOLD } from "@/modules/outbox/repo";
+import { boardItemsFor } from "@/modules/settings/repo";
 
 const CHECK_ROLES: Role[] = ["hq_admin", "branch_manager", "assistant"];
 
@@ -141,10 +142,20 @@ export async function sheetRows(ctx: Ctx, date: string, itemKey: string, roundNo
   return rows.map((r) => ({ ...r, points: r.points ?? 0, isIssue: r.isIssue ?? false, priorPenalties: priorByMember.get(r.memberId) ?? [] }));
 }
 
+/** 라운딩과 같은 화면에서 함께 기록하는 일별 항목 하나 */
+export type Companion = { key: string; label: string; rows: SheetRow[] };
+
+/** 이 지점이 라운딩과 함께 기록하기로 한 일별 항목과, 그날의 체크 상태 */
+export async function roundCompanions(ctx: Ctx, date: string, db: Db = defaultDb): Promise<Companion[]> {
+  const daily = (await boardItemsFor(ctx, db)).filter((i) => i.kind === "daily");
+  const keys = roundCompanionKeys(ctx.settings.roundCompanions, daily.map((i) => i.key));
+  return Promise.all(keys.map(async (key) => ({ key, label: daily.find((i) => i.key === key)!.label, rows: await sheetRows(ctx, date, key, 0, db) })));
+}
+
 export async function sessionSheet(ctx: Ctx, sessionId: string, db: Db = defaultDb) {
   const session = await findSession(ctx, sessionId, db);
-  const [rows, rules] = await Promise.all([sheetRows(ctx, session.date, "round", session.roundNo, db), penaltyRulesFor(ctx, db)]);
-  return { session, rows, rules };
+  const [rows, rules, companions] = await Promise.all([sheetRows(ctx, session.date, "round", session.roundNo, db), penaltyRulesFor(ctx, db), roundCompanions(ctx, session.date, db)]);
+  return { session, rows, rules, companions };
 }
 
 export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultDb): Promise<void> {
@@ -204,6 +215,15 @@ export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultD
       await writeAudit(tx, ctx, "check", row.id, "update", { grade: prev.grade, points: prev.points, penaltyRuleId: prev.penaltyRuleId, note: prev.note }, { grade: values.grade, points: values.points, penaltyRuleId: values.penaltyRuleId, note: values.note });
     }
 
+    // 라운딩에서 자리에 있던 학생은 출석한 것이다. 지점이 켜 둔 경우에만, 아직 출석을 안 적은 학생만 채운다.
+    // 이미 적힌 출석(지각 시각·CALL 포함)은 건드리지 않는다.
+    if (input.itemKey === "round" && ctx.settings.autoAttendance && impliesPresent(values.grade)) {
+      await tx
+        .insert(checks)
+        .values({ branchId: ctx.branchId, memberId: m.id, seatNoSnapshot: m.seatNo, date: input.date, itemKey: "attendance", roundNo: 0, grade: "a", points: 0, note: `R${input.roundNo} 라운딩에서 확인`, createdBy: ctx.userId })
+        .onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] });
+    }
+
     if (values.grade === "p" && values.points >= HIGH_PENALTY_THRESHOLD) {
       const where = input.itemKey === "round" ? `R${input.roundNo}` : input.itemKey;
       await enqueueEvent(tx, ctx.branchId, "penalty.high", { memberId: m.id, member: m.name, seatNo: m.seatNo, points: values.points, rule: rule?.name ?? null, date: input.date, where }, `[고벌점] ${m.seatNo ?? "-"}번 ${m.name} · ${rule?.name ?? "벌점"} ${values.points}점 (${input.date} ${where})`);
@@ -226,6 +246,28 @@ export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultD
         );
       }
     }
+  });
+}
+
+/**
+ * 일별 항목에서 아직 표시하지 않은 등록 회원을 모두 a 로 채운다. 예외만 먼저 적고 나머지를 한 번에 끝내기 위한 것.
+ * 출석과 라운딩은 받지 않는다(출석은 canFillRest 설명 참고, 라운딩은 회차 완료가 같은 일을 한다).
+ */
+export async function fillRemaining(ctx: Ctx, date: string, itemKey: string, db: Db = defaultDb): Promise<number> {
+  requireRole(ctx, ...CHECK_ROLES);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  if (!canFillRest(itemKey)) throw new ValidationError("이 항목은 한꺼번에 채울 수 없습니다");
+  return db.transaction(async (tx) => {
+    const item = (await boardItemsFor(ctx, tx)).find((i) => i.kind === "daily" && i.key === itemKey);
+    if (!item) throw new NotFoundError("항목을 찾을 수 없습니다");
+    const missing = (await sheetRows(ctx, date, itemKey, 0, tx)).filter((r) => !r.checkId);
+    if (!missing.length) return 0;
+    await tx
+      .insert(checks)
+      .values(missing.map((r) => ({ branchId: ctx.branchId, memberId: r.memberId, seatNoSnapshot: r.seatNo, date, itemKey, roundNo: 0, grade: "a" as const, points: 0, createdBy: ctx.userId })))
+      .onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] });
+    await writeAudit(tx, ctx, "check", ctx.branchId, "create", null, { bulk: "fill_rest", date, itemKey, count: missing.length });
+    return missing.length;
   });
 }
 

@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
-import { completeSessionAction, saveCheckAction } from "@/modules/rounding/actions";
+import { completeSessionAction, fillRemainingAction, saveCheckAction } from "@/modules/rounding/actions";
 import { sessionSheet, type SheetRow } from "@/modules/rounding/repo";
 
 async function RoundSessionPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const ctx = await getCtx();
   const { sessionId } = await params;
-  const { session, rows, rules } = await sessionSheet(ctx, sessionId);
+  const { session, rows, rules, companions } = await sessionSheet(ctx, sessionId);
   const canEdit = ctx.role !== "mentor";
   const schedule = ctx.settings.roundSchedule ?? [];
   const startAt = schedule[session.roundNo - 1];
@@ -48,6 +48,9 @@ async function RoundSessionPage({ params }: { params: Promise<{ sessionId: strin
           saveAction={saveCheckAction}
           completeAction={completeSessionAction}
           completed={Boolean(session.completedAt)}
+          companions={companions}
+          autoAttendance={Boolean(ctx.settings.autoAttendance)}
+          fillRestAction={fillRemainingAction}
         />
       ) : (
         <ReadOnlySheet rows={rows} />

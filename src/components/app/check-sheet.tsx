@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CloudOff, Search } from "lucide-react";
+import { AlertTriangle, CloudOff, Keyboard, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import type { Grade } from "@/db/schema";
+import { canFillRest, impliesPresent } from "@/lib/rules/rounding";
 import { cn } from "@/lib/utils";
-import type { CheckInput, PenaltyRule, SessionSummary, SheetRow } from "@/modules/rounding/repo";
+import type { CheckInput, Companion, PenaltyRule, SessionSummary, SheetRow } from "@/modules/rounding/repo";
 import { GRADE_STYLE } from "./grade-chip";
 
 type Props = {
@@ -24,7 +25,17 @@ type Props = {
   saveAction: (input: CheckInput) => Promise<{ ok?: boolean; error?: string }>;
   completeAction?: (sessionId: string) => Promise<{ summary?: SessionSummary; error?: string }>;
   completed?: boolean;
+  /** 화면에 보이는 이 항목의 이름 (일별 체크의 "플래너" 등). 채우기 확인 창에 쓴다 */
+  itemLabel?: string;
+  /** 라운딩을 돌면서 같은 줄에서 함께 기록할 일별 항목. 한 번 돌 때 다 적어서 같은 명단을 두 번 돌지 않게 한다 */
+  companions?: Companion[];
+  /** 지점 설정: 라운딩에서 자리에 있던 학생은 출석으로 채운다. 서버가 같은 일을 하고, 화면은 그 결과를 미리 보여준다 */
+  autoAttendance?: boolean;
+  fillRestAction?: (input: { date: string; itemKey: string }) => Promise<{ filled?: number; error?: string }>;
 };
+
+/** 체크 한 건이 어느 항목의 것인지. 라운딩이면 회차와 세션이 붙고, 일별 항목이면 회차 0 */
+type Target = { itemKey: string; roundNo: number; sessionId: string | null; label: string };
 
 const QUICK: { grade: Grade; label: string }[] = [
   { grade: "a", label: "a" },
@@ -35,6 +46,17 @@ const QUICK: { grade: Grade; label: string }[] = [
 
 /** 편집 시트에서 선택된 등급의 테두리 색 */
 const GRADE_RING: Record<Grade, string> = { a: "ring-emerald-500", b: "ring-lime-400", p: "ring-rose-500", na: "ring-neutral-400" };
+
+/**
+ * 함께 기록하는 항목의 칩. 회차 등급 버튼이 이 줄의 주인공이므로 칩은 한 단 낮춘다:
+ * a 는 거의 안 보이게, 눈에 띄어야 하는 b·벌점만 색을 띤다.
+ */
+const CHIP_STYLE: Record<Grade, string> = {
+  a: "bg-muted text-muted-foreground",
+  b: "bg-lime-100 text-lime-900",
+  p: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+  na: "bg-muted text-muted-foreground ring-1 ring-border",
+};
 
 const QUEUE_KEY = "byeolha.checkQueue";
 
@@ -60,9 +82,16 @@ function SeatChip({ seatNo, className }: { seatNo: number | null; className?: st
   return <span className={cn("w-7 shrink-0 text-right text-sm font-medium text-muted-foreground", className)}>{seatNo ?? "-"}</span>;
 }
 
-export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, rules, saveAction, completeAction, completed }: Props) {
+export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, rules, saveAction, completeAction, completed, itemLabel, companions = [], autoAttendance = false, fillRestAction }: Props) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
+  const [extra, setExtra] = useState<Record<string, SheetRow[]>>(() => Object.fromEntries(companions.map((c) => [c.key, c.rows])));
+  const main: Target = { itemKey, roundNo, sessionId: sessionId ?? null, label: itemLabel ?? (itemKey === "round" ? `R${roundNo}` : itemKey) };
+  const rowsOf = (key: string) => (key === itemKey ? rows : (extra[key] ?? []));
+  function patchRows(key: string, fn: (list: SheetRow[]) => SheetRow[]) {
+    if (key === itemKey) setRows(fn);
+    else setExtra((prev) => ({ ...prev, [key]: fn(prev[key] ?? []) }));
+  }
   const [queued, setQueued] = useState(0);
   const flushing = useRef(false);
 
@@ -103,11 +132,19 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [q, setQ] = useState("");
-  const [editing, setEditing] = useState<SheetRow | null>(null);
+  const [editing, setEditingRow] = useState<SheetRow | null>(null);
+  const [editTarget, setEditTarget] = useState<Target>(main);
+  function setEditing(row: SheetRow | null, target: Target = main) {
+    setEditTarget(target);
+    setEditingRow(row);
+  }
+  const [fillAsk, setFillAsk] = useState<Target | null>(null);
+  const [keyMode, setKeyMode] = useState(false);
+  const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [pending, startTransition] = useTransition();
-  const isAttendance = itemKey === "attendance";
+  const isAttendance = editTarget.itemKey === "attendance";
 
   const visible = useMemo(() => {
     const t = q.trim();
@@ -128,24 +165,30 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
   const pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
   const ruleName = (id: string | null) => rules.find((x) => x.id === id)?.name ?? "벌점";
 
-  function apply(row: SheetRow, patch: Partial<SheetRow>) {
+  function apply(row: SheetRow, patch: Partial<SheetRow>, target: Target = main) {
     const next = { ...row, ...patch };
+    const setRows = (fn: (list: SheetRow[]) => SheetRow[]) => patchRows(target.itemKey, fn);
+    const forAttendance = target.itemKey === "attendance";
     setRows((prev) => prev.map((r) => (r.memberId === row.memberId ? next : r)));
+    // 서버가 출석을 채워 주는 지점이면 화면도 바로 따라간다. 이미 적힌 출석은 그대로 둔다
+    if (autoAttendance && target.itemKey === "round" && next.grade && impliesPresent(next.grade) && extra.attendance) {
+      patchRows("attendance", (prev) => prev.map((r) => (r.memberId === row.memberId && !r.grade ? { ...r, grade: "a", note: `R${roundNo} 라운딩에서 확인` } : r)));
+    }
     setError(null);
     const rule = next.grade === "p" ? rules.find((x) => x.id === next.penaltyRuleId) : null;
     startTransition(async () => {
       const input: CheckInput = {
         memberId: row.memberId,
         date,
-        itemKey,
-        roundNo,
-        sessionId: sessionId ?? null,
+        itemKey: target.itemKey,
+        roundNo: target.roundNo,
+        sessionId: target.sessionId,
         grade: next.grade ?? "a",
         penaltyRuleId: next.grade === "p" ? (rule?.id ?? null) : null,
         note: next.note,
         isIssue: next.isIssue,
-        arrivalTime: isAttendance ? next.arrivalTime : null,
-        called: isAttendance ? next.called : null,
+        arrivalTime: forAttendance ? next.arrivalTime : null,
+        called: forAttendance ? next.called : null,
       };
       let res: { ok?: boolean; error?: string };
       try {
@@ -186,6 +229,61 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
     apply(row, { grade, penaltyRuleId: null, points: 0 });
   }
 
+  /** 함께 기록하는 항목의 칩. 비어 있으면 한 번 눌러 a, 이미 적혀 있으면 눌러서 고친다 */
+  function tapCompanion(c: Companion, memberId: string) {
+    const target: Target = { itemKey: c.key, roundNo: 0, sessionId: null, label: c.label };
+    const row = rowsOf(c.key).find((r) => r.memberId === memberId);
+    if (!row) return;
+    if (row.grade) setEditing(row, target);
+    else apply(row, { grade: "a", penaltyRuleId: null, points: 0 }, target);
+  }
+
+  async function fillRest(target: Target) {
+    if (!fillRestAction) return;
+    setFillAsk(null);
+    const res = await fillRestAction({ date, itemKey: target.itemKey });
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    patchRows(target.itemKey, (prev) => prev.map((r) => (r.grade ? r : { ...r, grade: "a", points: 0 })));
+  }
+
+  // 수기로 적어 온 종이를 PC 에서 옮겨 적을 때: 줄을 따라 내려가며 글쇠 하나로 적는다.
+  // 한글 입력 상태에서도 되도록 글자가 아니라 글쇠 위치(code)를 본다.
+  useEffect(() => {
+    if (!keyMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (editing || fillAsk || summary) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const row = visible[Math.min(cursor, visible.length - 1)];
+      if (!row) return;
+      const move = (d: number) => setCursor((c) => Math.max(0, Math.min(visible.length - 1, c + d)));
+      const grade: Grade | null = e.code === "KeyA" ? "a" : e.code === "KeyB" ? "b" : e.code === "Digit0" || e.code === "Numpad0" || e.code === "KeyN" ? "na" : null;
+      if (grade) {
+        e.preventDefault();
+        quick(row, grade);
+        move(1);
+      } else if (e.code === "KeyP") {
+        e.preventDefault();
+        quick(row, "p");
+      } else if (e.code === "ArrowDown" || e.code === "Enter") {
+        e.preventDefault();
+        move(1);
+      } else if (e.code === "ArrowUp") {
+        e.preventDefault();
+        move(-1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  useEffect(() => {
+    if (keyMode) document.querySelector(`[data-cursor="true"]`)?.scrollIntoView({ block: "nearest" });
+  }, [keyMode, cursor]);
+
   async function complete() {
     if (!completeAction || !sessionId) return;
     const res = await completeAction(sessionId);
@@ -205,6 +303,15 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
           <span className="text-sm text-muted-foreground">
             <span className="font-medium text-foreground">{done}</span>/{rows.length}
           </span>
+          <button
+            type="button"
+            onClick={() => setKeyMode((v) => !v)}
+            aria-pressed={keyMode}
+            title="종이에 적어 온 것을 옮겨 적을 때: A · B · P(벌점) · 0(부재), ↑↓ 로 이동"
+            className={cn("hidden h-8 items-center gap-1 rounded-md px-2 text-xs font-medium md:inline-flex", keyMode ? "bg-primary text-primary-foreground" : "text-muted-foreground ring-1 ring-border hover:text-foreground")}
+          >
+            <Keyboard className="size-3.5" aria-hidden /> 글쇠 입력
+          </button>
           {pending ? <span className="text-xs text-muted-foreground">저장 중…</span> : null}
           {queued > 0 ? (
             <button type="button" onClick={flushQueue} className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
@@ -212,6 +319,32 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
             </button>
           ) : null}
         </div>
+        {keyMode ? (
+          <p className="hidden pb-2 text-xs text-muted-foreground md:block">
+            <kbd className="font-semibold text-foreground">A</kbd> · <kbd className="font-semibold text-foreground">B</kbd> · <kbd className="font-semibold text-foreground">P</kbd> 벌점 · <kbd className="font-semibold text-foreground">0</kbd> 부재 — 적으면 다음 줄로 넘어갑니다. <kbd className="font-semibold text-foreground">↑↓</kbd> 이동
+          </p>
+        ) : null}
+        {companions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-2 text-xs text-muted-foreground">
+            <span>함께 기록</span>
+            {companions.map((c) => {
+              const list = rowsOf(c.key);
+              const left = list.filter((r) => !r.grade).length;
+              return (
+                <span key={c.key} className="inline-flex items-center gap-1.5">
+                  <span>
+                    {c.label} <span className="font-medium text-foreground tabular-nums">{list.length - left}</span>/{list.length}
+                  </span>
+                  {fillRestAction && canFillRest(c.key) && left > 0 && left < list.length ? (
+                    <button type="button" onClick={() => setFillAsk({ itemKey: c.key, roundNo: 0, sessionId: null, label: c.label })} className="rounded-sm px-1 font-medium text-primary underline-offset-2 hover:underline">
+                      나머지 a
+                    </button>
+                  ) : null}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="h-0.5 w-full bg-muted" aria-hidden>
           <div className={cn("h-full transition-[width]", pct === 100 ? "bg-emerald-500" : "bg-primary")} style={{ width: `${pct}%` }} />
         </div>
@@ -232,7 +365,12 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
           </header>
           <ul className="divide-y divide-border">
             {list.map((r) => (
-              <li key={r.memberId} className={cn("flex items-center gap-2 px-3 py-2 transition-colors sm:gap-3 sm:px-4", r.grade === "p" && "bg-rose-50/60")}>
+              <li
+                key={r.memberId}
+                data-cursor={keyMode && visible[cursor]?.memberId === r.memberId ? "true" : undefined}
+                className={cn("px-3 py-2 transition-colors sm:px-4", r.grade === "p" && "bg-rose-50/60", keyMode && visible[cursor]?.memberId === r.memberId && "ring-2 ring-primary ring-inset")}
+              >
+               <div className="flex items-center gap-2 sm:gap-3">
                 <button type="button" onClick={() => setEditing(r)} className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3">
                   <SeatChip seatNo={r.seatNo} />
                   <span className="min-w-0">
@@ -270,11 +408,43 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     </button>
                   ))}
                 </div>
+               </div>
+                {companions.length > 0 ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9 sm:pl-10">
+                    {companions.map((c) => {
+                      const cr = rowsOf(c.key).find((x) => x.memberId === r.memberId);
+                      const g = cr?.grade ?? null;
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          onClick={() => tapCompanion(c, r.memberId)}
+                          aria-label={`${r.name} ${c.label} ${g === "p" ? `${cr?.points ?? 0}점` : g === "na" ? "부재" : (g ?? "미입력")}`}
+                          className={cn(
+                            "inline-flex h-10 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors",
+                            g ? CHIP_STYLE[g] : "border border-dashed border-input text-muted-foreground hover:border-solid hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {c.label}
+                          {g ? <span className="font-semibold">{g === "p" ? `${cr?.points ?? 0}점` : g === "na" ? "부재" : g}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
         </section>
       ))}
+
+      {!completeAction && fillRestAction && canFillRest(itemKey) && done > 0 && done < rows.length ? (
+        <div className="sticky bottom-16 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:-mx-8 md:bottom-0 md:px-8">
+          <Button size="lg" variant="outline" className="h-12 w-full text-[15px]" onClick={() => setFillAsk(main)} disabled={pending}>
+            미입력 {rows.length - done}명을 a로 채우기
+          </Button>
+        </div>
+      ) : null}
 
       {completeAction && sessionId ? (
         <div className="sticky bottom-16 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:-mx-8 md:bottom-0 md:px-8">
@@ -293,6 +463,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                   <SheetTitle className="text-lg">
                     <span className="mr-2 font-normal text-muted-foreground">{editing.seatNo ?? "-"}번</span>
                     {editing.name}
+                    {editTarget.itemKey !== itemKey ? <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 align-middle text-xs font-medium text-muted-foreground">{editTarget.label}</span> : null}
                   </SheetTitle>
                   <SheetDescription>{editing.fieldNote ?? "특이사항 없음"}</SheetDescription>
                 </div>
@@ -306,7 +477,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     <button
                       key={qk.grade}
                       type="button"
-                      onClick={() => setEditing({ ...editing, grade: qk.grade, penaltyRuleId: qk.grade === "p" ? suggestedRule(editing) : null })}
+                      onClick={() => setEditingRow({ ...editing, grade: qk.grade, penaltyRuleId: qk.grade === "p" ? suggestedRule(editing) : null })}
                       className={cn(
                         "h-12 rounded-md text-sm font-semibold transition-colors",
                         editing.grade === qk.grade ? cn(GRADE_STYLE[qk.grade], GRADE_RING[qk.grade], "ring-2 ring-offset-2 ring-offset-background") : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -326,7 +497,7 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                           <button
                             key={rule.id}
                             type="button"
-                            onClick={() => setEditing({ ...editing, penaltyRuleId: rule.id })}
+                            onClick={() => setEditingRow({ ...editing, penaltyRuleId: rule.id })}
                             className={cn(
                               "flex h-12 items-center justify-between rounded-md px-3 text-sm transition-colors",
                               on ? "bg-rose-50 font-medium text-rose-700 ring-1 ring-rose-500" : "bg-card ring-1 ring-border hover:bg-muted/60",
@@ -344,20 +515,20 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="arrival">등원 시각</Label>
-                      <Input id="arrival" type="time" className="h-11" value={editing.arrivalTime?.slice(0, 5) ?? ""} onChange={(e) => setEditing({ ...editing, arrivalTime: e.target.value || null })} />
+                      <Input id="arrival" type="time" className="h-11" value={editing.arrivalTime?.slice(0, 5) ?? ""} onChange={(e) => setEditingRow({ ...editing, arrivalTime: e.target.value || null })} />
                     </div>
                     <label className="flex items-center gap-2 self-end rounded-md bg-muted/60 px-3 py-2.5 text-sm">
-                      <input type="checkbox" className="size-4 accent-primary" checked={editing.called ?? false} onChange={(e) => setEditing({ ...editing, called: e.target.checked })} />
+                      <input type="checkbox" className="size-4 accent-primary" checked={editing.called ?? false} onChange={(e) => setEditingRow({ ...editing, called: e.target.checked })} />
                       전화 확인(CALL)
                     </label>
                   </div>
                 ) : null}
                 <div className="space-y-1.5">
                   <Label htmlFor="note">메모</Label>
-                  <Textarea id="note" rows={2} value={editing.note ?? ""} onChange={(e) => setEditing({ ...editing, note: e.target.value })} placeholder="예: 학원 일정으로 조퇴" />
+                  <Textarea id="note" rows={2} value={editing.note ?? ""} onChange={(e) => setEditingRow({ ...editing, note: e.target.value })} placeholder="예: 학원 일정으로 조퇴" />
                 </div>
                 <label className="flex items-center gap-2.5 rounded-md bg-muted/60 px-3 py-2.5 text-sm">
-                  <input type="checkbox" className="size-4 accent-primary" checked={editing.isIssue} onChange={(e) => setEditing({ ...editing, isIssue: e.target.checked })} />
+                  <input type="checkbox" className="size-4 accent-primary" checked={editing.isIssue} onChange={(e) => setEditingRow({ ...editing, isIssue: e.target.checked })} />
                   <span className="flex-1">지점장에게 이슈로 보고</span>
                 </label>
                 <div className="flex gap-2">
@@ -368,8 +539,8 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
                     size="lg"
                     className="h-11 flex-1"
                     onClick={() => {
-                      const row = rows.find((r) => r.memberId === editing.memberId)!;
-                      apply(row, { grade: editing.grade ?? "a", penaltyRuleId: editing.penaltyRuleId, note: editing.note, isIssue: editing.isIssue, arrivalTime: editing.arrivalTime, called: editing.called });
+                      const row = rowsOf(editTarget.itemKey).find((r) => r.memberId === editing.memberId)!;
+                      apply(row, { grade: editing.grade ?? "a", penaltyRuleId: editing.penaltyRuleId, note: editing.note, isIssue: editing.isIssue, arrivalTime: editing.arrivalTime, called: editing.called }, editTarget);
                       setEditing(null);
                     }}
                   >
@@ -381,6 +552,21 @@ export function CheckSheet({ date, itemKey, roundNo, sessionId, rows: initial, r
           ) : null}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={Boolean(fillAsk)} onOpenChange={(o) => !o && setFillAsk(null)}>
+        <DialogContent>
+          <DialogTitle>{fillAsk?.label} — 나머지를 a로 채울까요?</DialogTitle>
+          <DialogDescription>
+            아직 표시하지 않은 {fillAsk ? rowsOf(fillAsk.itemKey).filter((r) => !r.grade).length : 0}명이 모두 a가 됩니다. 이미 적은 b·벌점·부재는 그대로입니다. 잘못 채운 학생은 그 줄을 눌러 고치면 됩니다.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFillAsk(null)}>
+              취소
+            </Button>
+            <Button onClick={() => fillAsk && fillRest(fillAsk)}>a로 채우기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(summary)} onOpenChange={(o) => !o && router.push("/rounding")}>
         <DialogContent>

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { getCtx, requireRole } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { saveCheckAction } from "@/modules/rounding/actions";
+import { fillRemainingAction, saveCheckAction } from "@/modules/rounding/actions";
 import { penaltyRulesFor, sheetRows } from "@/modules/rounding/repo";
 import { boardItemsFor } from "@/modules/settings/repo";
 import { guarded } from "@/lib/page-guard";
@@ -38,7 +38,7 @@ async function DailyChecksPage({ searchParams }: { searchParams: Promise<{ item?
           </Link>
         ))}
       </div>
-      <CheckSheet key={`${item.key}-${date}`} date={date} itemKey={item.key} roundNo={0} rows={rows} rules={rules} saveAction={saveCheckAction} />
+      <CheckSheet key={`${item.key}-${date}`} date={date} itemKey={item.key} roundNo={0} rows={rows} rules={rules} saveAction={saveCheckAction} itemLabel={item.label} fillRestAction={fillRemainingAction} />
     </div>
   );
 }

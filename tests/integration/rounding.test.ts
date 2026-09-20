@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/db/client";
-import { checks, issues, roundingSessions } from "@/db/schema";
+import { boardItems, checks, issues, roundingSessions } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createMember } from "@/modules/members/repo";
 import { listNotifications } from "@/modules/notifications/repo";
-import { completeSession, sessionSheet, startSession, todaySessions, upsertCheck } from "@/modules/rounding/repo";
+import { completeSession, fillRemaining, roundCompanions, sessionSheet, startSession, todaySessions, upsertCheck } from "@/modules/rounding/repo";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
@@ -146,5 +146,73 @@ describe("회원별 주간 체크", () => {
     expect(w.cells["2026-09-03|vocab|0"]).toMatchObject({ grade: "b" });
     expect(w.totalPoints).toBe(3);
     await expect(memberWeek(t.mgrCtx2, t.a, "2026-08-31")).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("라운딩과 일별 체크를 한 번에", () => {
+  beforeEach(resetDb);
+
+  async function seedItems() {
+    const t = await seedMembers();
+    await db.insert(boardItems).values([
+      { key: "attendance", label: "출석", kind: "daily", sort: 1 },
+      { key: "planner", label: "플래너", kind: "daily", sort: 2 },
+      { key: "vocab", label: "영단어", kind: "daily", sort: 3 },
+      { key: "checkout", label: "점검완료", kind: "daily", sort: 4 },
+      { key: "round", label: "라운딩", kind: "round", sort: 5 },
+    ]);
+    return t;
+  }
+
+  it("회차 시트에 함께 기록할 일별 항목이 같이 온다. 기본은 출석·플래너·영단어, 설정하면 그대로", async () => {
+    const t = await seedItems();
+    const sid = await startSession(t.asstCtx1, DAY);
+    await upsertCheck(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "planner", roundNo: 0, grade: "b" });
+    const sheet = await sessionSheet(t.asstCtx1, sid);
+    expect(sheet.companions.map((c) => [c.key, c.label])).toEqual([["attendance", "출석"], ["planner", "플래너"], ["vocab", "영단어"]]);
+    expect(sheet.companions[1].rows.map((r) => [r.name, r.grade])).toEqual([["라마바", null], ["가나다", "b"]]);
+
+    const only = { ...t.asstCtx1, settings: { ...t.asstCtx1.settings, roundCompanions: ["checkout", "없는항목"] } };
+    expect((await roundCompanions(only, DAY)).map((c) => c.key)).toEqual(["checkout"]);
+    const none = { ...t.asstCtx1, settings: { ...t.asstCtx1.settings, roundCompanions: [] } };
+    expect(await roundCompanions(none, DAY)).toEqual([]);
+  });
+
+  it("출석 자동 처리: 켠 지점에서만, 자리에 있던 학생만, 이미 적힌 출석은 건드리지 않는다", async () => {
+    const t = await seedItems();
+    const sid = await startSession(t.asstCtx1, DAY);
+    const attendance = async () => (await db.select().from(checks).where(eq(checks.itemKey, "attendance"))).map((c) => [c.memberId === t.a ? "가나다" : "라마바", c.grade, c.arrivalTime?.slice(0, 5) ?? null]);
+
+    // 꺼져 있으면 아무 일도 없다
+    await upsertCheck(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, sessionId: sid, grade: "a" });
+    expect(await attendance()).toEqual([]);
+
+    const on = { ...t.asstCtx1, settings: { ...t.asstCtx1.settings, autoAttendance: true } };
+    // 부재는 출석이 아니다
+    await upsertCheck(on, { memberId: t.b, date: DAY, itemKey: "round", roundNo: 1, sessionId: sid, grade: "na" });
+    expect(await attendance()).toEqual([]);
+    await upsertCheck(on, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, sessionId: sid, grade: "b" });
+    expect(await attendance()).toEqual([["가나다", "a", null]]);
+
+    // 지각으로 고쳐 둔 출석은 다음 회차가 덮어쓰지 않는다
+    await upsertCheck(on, { memberId: t.a, date: DAY, itemKey: "attendance", roundNo: 0, grade: "b", arrivalTime: "10:40" });
+    const sid2 = await startSession(t.asstCtx1, DAY);
+    await upsertCheck(on, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 2, sessionId: sid2, grade: "a" });
+    expect(await attendance()).toEqual([["가나다", "b", "10:40"]]);
+  });
+
+  it("나머지 a 채우기: 미입력만 채우고, 출석·라운딩·없는 항목은 거부한다", async () => {
+    const t = await seedItems();
+    await upsertCheck(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "planner", roundNo: 0, grade: "b" });
+    expect(await fillRemaining(t.asstCtx1, DAY, "planner")).toBe(1);
+    const planner = await db.select().from(checks).where(eq(checks.itemKey, "planner"));
+    expect(planner.map((c) => c.grade).sort()).toEqual(["a", "b"]);
+    expect(planner.every((c) => c.branchId === t.asstCtx1.branchId)).toBe(true);
+    expect(await fillRemaining(t.asstCtx1, DAY, "planner")).toBe(0);
+
+    await expect(fillRemaining(t.asstCtx1, DAY, "attendance")).rejects.toThrow(/한꺼번에/);
+    await expect(fillRemaining(t.asstCtx1, DAY, "round")).rejects.toThrow(/한꺼번에/);
+    await expect(fillRemaining(t.asstCtx1, DAY, "nope")).rejects.toThrow(NotFoundError);
+    await expect(fillRemaining(t.mentorCtx1, DAY, "vocab")).rejects.toThrow(ForbiddenError);
   });
 });

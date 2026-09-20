@@ -101,7 +101,7 @@ async function FeesSettingsPage() {
                   </thead>
                   <tbody>
                     {half.map((s) => (
-                      <SeatPlanRow key={`${s.id}:${s.feePlanId ?? ""}`} seatId={s.id} seatNo={s.seatNo} zone={s.zone} feePlanId={s.feePlanId} plans={planOptions} action={setSeatFeePlanAction} />
+                      <SeatPlanRow key={s.id} seatId={s.id} seatNo={s.seatNo} zone={s.zone} feePlanId={s.feePlanId} plans={planOptions} action={setSeatFeePlanAction} />
                     ))}
                   </tbody>
                 </table>

@@ -209,6 +209,9 @@ async function main() {
         const r = rnd();
         const grade = r < 0.88 ? "a" : r < 0.96 ? "b" : "p";
         const rule = grade === "p" && key === "attendance" ? ruleByName.get("지각")! : grade === "p" ? ruleByName.get("휴대폰 전원 미차단")! : null;
+        // 오늘은 아직 하루가 안 끝났다: 뒤쪽 몇 명은 플래너·영단어를 아직 안 적었고, 점검완료는 아무도 안 했다.
+        // (난수는 위에서 이미 뽑았으므로 다른 날의 데이터는 그대로다)
+        if (isToday && (key === "checkout" || ((key === "planner" || key === "vocab") && enrolled.indexOf(m) >= enrolled.length - 4))) continue;
         checkRows.push({ branchId: dt2.id, memberId: m.id, seatNoSnapshot: seatNo, date: dayKey, itemKey: key, roundNo: 0, grade, points: rule?.points ?? 0, penaltyRuleId: rule?.id ?? null, createdBy: assistant.id });
       }
       for (const sess of sessions) {

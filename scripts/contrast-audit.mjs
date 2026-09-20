@@ -250,6 +250,21 @@ async function main() {
     console.log(`\n### 회원 상세  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
   }
 
+  // 라운딩 회차 화면. 학생 줄마다 등급 버튼과 함께 기록하는 칩(출석·플래너·영단어)이 색을 바꿔 가며 붙는다.
+  try {
+    await login(page, "assistant");
+    await page.goto(base + "/rounding", { waitUntil: "networkidle" });
+    // 오늘 회차가 있으면 그것을, 없으면 새로 시작한다 (개발 DB 에만 회차가 하나 생긴다)
+    const open = page.locator('a[href^="/rounding/"]:not([href="/rounding/history"])').first();
+    if (await open.count()) await open.click();
+    else await page.getByRole("button", { name: /R\d+ 시작/ }).click();
+    await page.waitForURL(/\/rounding\/[0-9a-f-]{36}/);
+    await page.waitForLoadState("networkidle");
+    await auditOne("/rounding/[sessionId] (회차 입력)");
+  } catch (e) {
+    console.log(`\n### 회차 입력  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
+  }
+
   // 현황판(매장 모니터)은 로그인 없이 열리는 화면이고 멀리서 읽어야 해서 대비가 더 중요하다.
   // 링크는 한 번만 표시되므로 설정 화면에서 새로 발급받아 검사한다.
   try {

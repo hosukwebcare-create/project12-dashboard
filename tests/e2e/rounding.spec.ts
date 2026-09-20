@@ -84,6 +84,47 @@ test("일별 체크: 출석에 등원 시각·CALL 기록", async ({ page }) => 
   await expect(page.getByRole("dialog").getByLabel("등원 시각")).toHaveValue("09:40");
 });
 
+test("라운딩을 돌면서 일별 항목도 같은 줄에서 적고, 나머지는 한 번에 a로 채운다", async ({ page }) => {
+  await login(page, "assistant");
+  const resume = page.getByRole("link", { name: /진행 중 · 이어서 입력/ });
+  if (await resume.count()) await resume.click();
+  else await page.getByRole("button", { name: /R\d+ 시작/ }).click();
+  await expect(page.getByRole("heading", { name: /R\d+ 라운딩/ })).toBeVisible();
+
+  // 같은 줄의 '플래너' 칩을 한 번 누르면 a. 시드에 이미 적힌 학생이 있으므로 비어 있는 첫 학생을 고른다
+  const emptyChip = page.getByRole("button", { name: /플래너 미입력$/ }).first();
+  const who = (await emptyChip.getAttribute("aria-label"))!.replace(/ 플래너 미입력$/, "");
+  const row = page.getByRole("listitem").filter({ hasText: who });
+  await emptyChip.click();
+  await expect(row.getByRole("button", { name: `${who} 플래너 a` })).toBeVisible();
+  // 이미 적힌 칩을 누르면 그 항목의 편집 시트가 열린다
+  await row.getByRole("button", { name: `${who} 플래너 a` }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("플래너");
+  await sheet.getByRole("button", { name: "b", exact: true }).click();
+  await sheet.getByRole("button", { name: "저장" }).click();
+  await expect(row.getByRole("button", { name: `${who} 플래너 b` })).toBeVisible();
+
+  // 일별 체크에 그대로 들어가 있다 — 다시 돌 필요가 없다
+  await page.goto("/daily-checks?item=planner");
+  const drow = page.getByRole("listitem").filter({ hasText: who });
+  await expect(drow.getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // 예외만 적고 나머지는 한 번에
+  await page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "a로 채우기" }).click();
+  await expect(page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ })).toHaveCount(0);
+  await page.reload();
+  // 다시 읽어도 채울 사람이 남아 있지 않다 (버튼은 일부만 적혔을 때만 나온다)
+  await expect(page.getByRole("heading", { name: "일별 체크" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ })).toHaveCount(0);
+  await expect(page.getByRole("listitem").filter({ hasText: who }).getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // 출석은 한꺼번에 채울 수 없다 (결석이 출석으로 바뀌면 안 된다)
+  await page.goto("/daily-checks?item=attendance");
+  await expect(page.getByRole("button", { name: /a로 채우기/ })).toHaveCount(0);
+});
+
 test("멘토는 라운딩 시트를 읽기만 한다", async ({ page }) => {
   await login(page, "mentor");
   await page.goto("/rounding");
