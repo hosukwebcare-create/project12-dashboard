@@ -1,9 +1,9 @@
 import { InlineForm } from "@/components/app/inline-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SeatPlanRow } from "@/components/app/seat-plan-row";
 import { Input } from "@/components/ui/input";
 import { getCtx } from "@/lib/auth/ctx";
 import { guarded } from "@/lib/page-guard";
-import { cn } from "@/lib/utils";
 import { bulkSetSeatFeePlanAction, setSeatFeePlanAction, upsertFeePlanAction } from "@/modules/payments/actions";
 import { listFeePlans } from "@/modules/payments/repo";
 import { listSeats } from "@/modules/settings/repo";
@@ -11,13 +11,16 @@ import { listSeats } from "@/modules/settings/repo";
 export const metadata = { title: "요금표" };
 
 const SELECT = "h-8 rounded-md border border-input bg-card px-2 text-sm";
-const won = (n: number) => n.toLocaleString("ko-KR");
 
 async function FeesSettingsPage() {
   const ctx = await getCtx();
   const [plans, seats] = await Promise.all([listFeePlans(ctx), listSeats(ctx)]);
-  const planById = new Map(plans.map((p) => [p.id, p]));
   const unassigned = seats.filter((s) => !s.feePlanId).length;
+  const planOptions = plans.map((p) => ({ id: p.id, name: p.name, studentPrice: p.studentPrice, adultPrice: p.adultPrice }));
+  // 성인 요금을 비워 두면 0원으로 저장되고, 성인 회원의 청구액이 0원으로 계산된다
+  const noAdultPrice = plans.filter((p) => p.active && p.adultPrice === 0);
+  const mid = Math.ceil(seats.length / 2);
+  const seatHalves = seats.length > 12 ? [seats.slice(0, mid), seats.slice(mid)] : [seats];
 
   return (
     <div className="space-y-4">
@@ -26,6 +29,11 @@ async function FeesSettingsPage() {
           <CardTitle>좌석 등급별 요금 ({plans.length})</CardTitle>
           <CardDescription>
             등록기간이 생기면 이 표로 결제 금액이 자동 계산됩니다. 회원 구분이 성인이면 성인 요금을 씁니다. 요금을 바꿔도 이미 저장한 결제 건의 금액은 그대로입니다.
+            {noAdultPrice.length > 0 ? (
+              <b className="mt-1 block font-medium text-warning">
+                성인 요금이 0원인 등급이 있습니다: {noAdultPrice.map((p) => p.name).join(", ")}. 그대로 두면 성인 회원의 청구액이 0원으로 나옵니다.
+              </b>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border">
@@ -55,7 +63,7 @@ async function FeesSettingsPage() {
         <CardHeader>
           <CardTitle>좌석 등급 지정</CardTitle>
           <CardDescription>
-            좌석마다 등급을 붙여야 금액이 계산됩니다.
+            좌석마다 등급을 붙여야 금액이 계산됩니다. 등급을 고르면 바로 저장되고, 학생·성인 요금이 함께 보입니다.
             {unassigned > 0 ? <b className="text-warning"> 아직 {unassigned}개 좌석에 등급이 없습니다.</b> : " 모든 좌석에 등급이 있습니다."}
           </CardDescription>
         </CardHeader>
@@ -77,27 +85,28 @@ async function FeesSettingsPage() {
             </InlineForm>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {seats.map((s) => {
-              const plan = s.feePlanId ? planById.get(s.feePlanId) : undefined;
-              return (
-                <InlineForm key={s.id} action={setSeatFeePlanAction} submitLabel="저장" className="items-center gap-1.5">
-                  <input type="hidden" name="seatId" value={s.id} />
-                  <span className="w-14 text-sm tabular-nums">
-                    {s.seatNo}번<span className="ml-1 text-xs text-muted-foreground">{s.zone}</span>
-                  </span>
-                  <select name="feePlanId" defaultValue={s.feePlanId ?? ""} className={cn(SELECT, "flex-1")} aria-label={`${s.seatNo}번 좌석 등급`}>
-                    <option value="">등급 없음</option>
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
+          {/* 좌석이 많아 넓은 화면에서는 표를 둘로 나눠 나란히 놓는다. 번호는 왼쪽 표에서 오른쪽 표로 이어진다 */}
+          <div className="grid gap-4 xl:grid-cols-2">
+            {seatHalves.map((half, k) => (
+              <div key={k} className="overflow-x-auto rounded-md border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-[11px] font-medium text-muted-foreground">
+                      <th className="px-4 py-1.5 text-left">좌석</th>
+                      <th className="px-2 py-1.5 text-left">등급</th>
+                      <th className="px-2 py-1.5 text-right">학생</th>
+                      <th className="px-2 py-1.5 text-right">성인</th>
+                      <th className="px-2 py-1.5" aria-label="저장 상태" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {half.map((s) => (
+                      <SeatPlanRow key={`${s.id}:${s.feePlanId ?? ""}`} seatId={s.id} seatNo={s.seatNo} zone={s.zone} feePlanId={s.feePlanId} plans={planOptions} action={setSeatFeePlanAction} />
                     ))}
-                  </select>
-                  <span className="w-20 text-right text-xs text-muted-foreground tabular-nums">{plan ? `${won(plan.studentPrice)}원` : ""}</span>
-                </InlineForm>
-              );
-            })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

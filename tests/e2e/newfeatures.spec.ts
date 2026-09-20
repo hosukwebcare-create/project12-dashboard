@@ -70,6 +70,15 @@ test("결제 대상: 요금표를 만들고 좌석 등급을 지정하면 금액
   await bulk.getByRole("button", { name: "일괄 지정" }).click();
   await expect(bulk.getByText("저장됨")).toBeVisible();
 
+  // 좌석 줄에는 학생·성인 요금이 함께 보이고, 등급을 고르면 버튼 없이 바로 저장된다
+  const seat1 = page.locator("tbody tr").filter({ has: page.getByLabel("1번 좌석 등급", { exact: true }) });
+  await expect(seat1).toContainText("333,000");
+  await expect(seat1).toContainText("444,000");
+  const seat4 = page.locator("tbody tr").filter({ has: page.getByLabel("4번 좌석 등급", { exact: true }) });
+  await seat4.getByLabel("4번 좌석 등급", { exact: true }).selectOption({ label: "이투이실" });
+  await expect(seat4.getByText("저장됨")).toBeVisible();
+  await expect(seat4).toContainText("444,000");
+
   await page.goto("/payments");
   await expect(page.getByRole("heading", { name: "결제 대상" })).toBeVisible();
   await expect(page.getByText("이투이실").first()).toBeVisible();
