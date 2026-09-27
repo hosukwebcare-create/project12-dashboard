@@ -25,7 +25,6 @@ const ROUTES = [
   ["/counsel/schedule", "manager"],
   ["/mock-exams", "manager"],
   ["/rounding", "assistant"],
-  ["/daily-checks", "assistant"],
   ["/meals", "manager"],
   ["/meals/settlement", "manager"],
   ["/worklog", "manager"],
@@ -53,7 +52,6 @@ const ROUTES = [
   ["/worklog/monthly", "manager"],
   ["/counsel/focus", "manager"],
   ["/counsel/entry", "manager"],
-  ["/rounding/history", "assistant"],
   ["/issues?status=all", "manager"],
 ];
 
@@ -250,19 +248,31 @@ async function main() {
     console.log(`\n### 회원 상세  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
   }
 
-  // 라운딩 회차 화면. 학생 줄마다 등급 버튼과 함께 기록하는 칩(출석·플래너·영단어)이 색을 바꿔 가며 붙는다.
+  // 라운딩 하루 표: 펜마다 칸 색이 달라진다. 몇 칸을 칠해 b·벌점·부재 색까지 잰다 (개발 DB 에만 칸이 생긴다)
   try {
     await login(page, "assistant");
     await page.goto(base + "/rounding", { waitUntil: "networkidle" });
-    // 오늘 회차가 있으면 그것을, 없으면 새로 시작한다 (개발 DB 에만 회차가 하나 생긴다)
-    const open = page.locator('a[href^="/rounding/"]:not([href="/rounding/history"])').first();
-    if (await open.count()) await open.click();
-    else await page.getByRole("button", { name: /R\d+ 시작/ }).click();
-    await page.waitForURL(/\/rounding\/[0-9a-f-]{36}/);
+    const pens = page.getByRole("toolbar", { name: "펜" });
+    const empties = page.getByRole("button", { name: / R\d+ 빈 칸$/ });
+    for (const label of ["b", "부재"]) {
+      if (!(await empties.count())) break;
+      await pens.getByRole("button", { name: label, exact: true }).click();
+      await empties.first().click();
+    }
+    const rule = pens.getByRole("button", { name: /\d$/ }).first();
+    if ((await rule.count()) && (await empties.count())) {
+      await rule.click();
+      await empties.first().click();
+    }
     await page.waitForLoadState("networkidle");
-    await auditOne("/rounding/[sessionId] (회차 입력)");
+    await auditOne("/rounding (하루 표 · 칠한 칸)");
+    // 메모·자세히 창
+    await pens.getByRole("button", { name: "메모·자세히" }).click();
+    await page.getByRole("button", { name: / R\d+ / }).first().click();
+    await page.getByRole("dialog").waitFor();
+    await auditOne("/rounding (메모·자세히 창)");
   } catch (e) {
-    console.log(`\n### 회차 입력  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
+    console.log(`\n### 라운딩 하루 표  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
   }
 
   // 현황판(매장 모니터)은 로그인 없이 열리는 화면이고 멀리서 읽어야 해서 대비가 더 중요하다.

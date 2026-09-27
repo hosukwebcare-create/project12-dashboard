@@ -13,7 +13,7 @@ import { resetDb } from "./setup";
 describe("설정 · 현황판 항목과 벌점 규칙", () => {
   beforeEach(resetDb);
 
-  it("지점 항목이 없으면 본사 기본, 있으면 지점 항목만", async () => {
+  it("지점 항목이 없으면 본사 기본, 첫 지점 항목을 만들면 기본 항목을 지점으로 옮겨 함께 쓴다", async () => {
     const t = await seedTwoBranches();
     await db.insert(boardItems).values([
       { key: "attendance", label: "출석", kind: "daily", sort: 1 },
@@ -21,7 +21,10 @@ describe("설정 · 현황판 항목과 벌점 규칙", () => {
     ]);
     expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.key)).toEqual(["attendance", "round"]);
     await upsertBoardItem(t.mgrCtx1, { key: "planner", label: "플래너", kind: "daily", sort: 1, active: true });
-    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.key)).toEqual(["planner"]);
+    // 기본 항목이 사라지면 라운딩 표의 출석·R1~Rn 열이 없어진다
+    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.key)).toEqual(["attendance", "planner", "round"]);
+    await upsertBoardItem(t.mgrCtx1, { key: "homework", label: "과제", kind: "daily", sort: 3, active: true });
+    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.key)).toEqual(["attendance", "planner", "round", "homework"]);
     expect((await boardItemsFor(t.mgrCtx2)).map((i) => i.key)).toEqual(["attendance", "round"]);
   });
 

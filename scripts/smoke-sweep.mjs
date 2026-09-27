@@ -13,7 +13,7 @@ const base = process.argv.includes("--base") ? process.argv[process.argv.indexOf
 const ROUTES = [
   "/", "/members", "/members/new", "/members/import",
   "/counsel/weekly", "/counsel/schedule", "/counsel/focus", "/counsel/entry",
-  "/mock-exams", "/rounding", "/rounding/history", "/daily-checks",
+  "/mock-exams", "/rounding",
   "/meals", "/meals/daily", "/meals/settlement", "/meals/settings",
   "/worklog", "/worklog/daily", "/worklog/monthly", "/worklog/settings",
   "/payments", "/handover", "/issues", "/alimtalk", "/notifications",

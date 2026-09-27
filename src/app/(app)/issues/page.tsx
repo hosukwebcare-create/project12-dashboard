@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { IssueStatus } from "@/db/schema";
 import { getCtx } from "@/lib/auth/ctx";
 import { fmtRelative } from "@/lib/format";
+import { openRequestCount } from "@/modules/handover/repo";
 import { listIssues } from "@/modules/issues/repo";
 import { guarded } from "@/lib/page-guard";
 
@@ -22,7 +23,7 @@ async function IssuesPage({ searchParams }: { searchParams: Promise<{ status?: s
   const ctx = await getCtx();
   const sp = await searchParams;
   const filter = FILTERS.find((f) => f.key === sp.status) ?? FILTERS[0];
-  const rows = await listIssues(ctx, filter.status);
+  const [rows, requests] = await Promise.all([listIssues(ctx, filter.status), openRequestCount(ctx)]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -30,13 +31,19 @@ async function IssuesPage({ searchParams }: { searchParams: Promise<{ status?: s
         title="이슈함"
         description={`${ctx.branchName} · ${rows.length}건`}
         actions={
-          <Button asChild>
-            <Link href="/issues/new">
-              <Plus /> 이슈 등록
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/handover#requests">해 주세요 {requests}건</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/issues/new">
+                <Plus /> 이슈 등록
+              </Link>
+            </Button>
+          </>
         }
       />
+      <p className="mb-3 text-sm text-muted-foreground">학생·시설 문제는 여기에 올려 처리 상태를 따라갑니다. 다음 사람에게 맡길 일(&lsquo;~해 주세요&rsquo;)은 인수인계의 <Link href="/handover#requests" className="font-medium text-foreground underline underline-offset-2">해 주세요</Link> 칸에 적습니다.</p>
       <div className="pill-nav mb-4">
         {FILTERS.map((f) => (
           <Link key={f.key} href={`/issues?status=${f.key}`} className="pill" data-active={f.key === filter.key}>

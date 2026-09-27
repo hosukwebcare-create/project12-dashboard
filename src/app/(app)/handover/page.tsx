@@ -10,8 +10,8 @@ import { fmtDateTime, fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { todayKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
-import { addCommentAction, markAllReadAction, markReadAction, upsertNoteAction, deleteNoteAction } from "@/modules/handover/actions";
-import { HANDOVER_KINDS, listComments, listNotes, slotOptions } from "@/modules/handover/repo";
+import { addCommentAction, markAllReadAction, markReadAction, setRequestDoneAction, upsertNoteAction, deleteNoteAction } from "@/modules/handover/actions";
+import { HANDOVER_KINDS, listComments, listNotes, listRequests, slotOptions } from "@/modules/handover/repo";
 
 export const metadata = { title: "인수인계" };
 
@@ -19,7 +19,7 @@ const SELECT = "h-9 rounded-lg border border-input bg-card px-2.5 text-sm";
 
 async function HandoverPage() {
   const ctx = await getCtx();
-  const [notes, slots] = await Promise.all([listNotes(ctx), slotOptions(ctx)]);
+  const [notes, slots, requests] = await Promise.all([listNotes(ctx), slotOptions(ctx), listRequests(ctx)]);
   const unread = notes.filter((n) => n.unread);
   const canNotice = MANAGER_ROLES.includes(ctx.role);
   // 댓글은 글마다 몇 개 안 되므로 한 번에 읽어 온다
@@ -41,6 +41,84 @@ async function HandoverPage() {
           ) : null
         }
       />
+
+      <Card id="requests">
+        <CardHeader>
+          <CardTitle>
+            해 주세요 <span className="ml-1 text-sm font-normal text-muted-foreground">남은 일 {requests.open.length}건</span>
+          </CardTitle>
+          <CardDescription>다음 사람에게 맡길 일을 적습니다. 누가 해 놓고 &lsquo;했어요&rsquo;를 누르면 부탁한 사람에게 알림이 가고, 아래로 내려갑니다.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <InlineForm action={upsertNoteAction} submitLabel="맡기기" className="flex-wrap items-end gap-2">
+            <input type="hidden" name="kind" value="request" />
+            <input type="hidden" name="date" value={todayKey()} />
+            <div className="min-w-56 flex-1 space-y-1">
+              <Label htmlFor="request-body">무엇을 해 주면 되나요?</Label>
+              <Input id="request-body" name="body" required placeholder="예: 3층 정수기 필터 교체 업체에 전화해 주세요" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="request-slot">누구에게 (근무 타임)</Label>
+              <select id="request-slot" name="slotKey" className={cn(SELECT, "w-40")} defaultValue="">
+                <option value="">다음 사람 누구나</option>
+                {slots.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </InlineForm>
+          {requests.open.length === 0 ? (
+            <p className="text-sm text-muted-foreground">남은 일이 없습니다</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {requests.open.map((r) => (
+                <li key={r.id} className="flex items-start gap-3 px-3 py-2.5">
+                  <form action={setRequestDoneAction}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <input type="hidden" name="done" value="1" />
+                    <Button type="submit" size="sm" variant="outline" aria-label={`했어요: ${r.body.slice(0, 30)}`}>
+                      했어요
+                    </Button>
+                  </form>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm whitespace-pre-wrap">{r.body}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {r.authorName ?? "(알 수 없음)"} · {fmtShortDate(r.date)}
+                      {r.slotName ? ` · ${r.slotName}에게` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {requests.done.length ? (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-muted-foreground">최근 해 놓은 일 {requests.done.length}건</summary>
+              <ul className="mt-2 divide-y divide-border rounded-md border border-border">
+                {requests.done.map((r) => (
+                  <li key={r.id} className="flex items-start gap-3 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-muted-foreground line-through">{r.body}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.doneByName ?? "누군가"} · {r.doneAt ? fmtDateTime(r.doneAt) : ""}에 해 놓음 (부탁: {r.authorName ?? "-"})
+                      </p>
+                    </div>
+                    <form action={setRequestDoneAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <input type="hidden" name="done" value="0" />
+                      <Button type="submit" size="xs" variant="ghost">
+                        되돌리기
+                      </Button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -71,7 +149,7 @@ async function HandoverPage() {
               <div className="space-y-1">
                 <Label htmlFor="kind">종류</Label>
                 <select id="kind" name="kind" className={cn(SELECT, "w-28")} defaultValue="handover">
-                  {HANDOVER_KINDS.filter((k) => k.key !== "notice" || canNotice).map((k) => (
+                  {HANDOVER_KINDS.filter((k) => k.key !== "request" && (k.key !== "notice" || canNotice)).map((k) => (
                     <option key={k.key} value={k.key}>
                       {k.label}
                     </option>

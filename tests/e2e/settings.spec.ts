@@ -10,7 +10,9 @@ test.describe("설정", () => {
     await page.getByRole("button", { name: "저장" }).click();
     await expect(page.getByText("저장됨")).toBeVisible();
     await page.goto("/rounding");
-    await expect(page.getByText(/\/11 회차 완료/)).toBeVisible();
+    await expect(page.getByText(/\/11회차/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "R11 열 메뉴" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "R12 열 메뉴" })).toHaveCount(0);
 
     await page.goto("/settings/branch");
     await page.getByRole("button", { name: /링크 (재)?발급/ }).click();
@@ -40,15 +42,11 @@ test.describe("설정", () => {
     await expect(page.locator('input[name="name"][value="음식물 반입"]')).toBeVisible();
     await expect(page.getByText("지점 규칙 없음")).toHaveCount(0);
 
-    // 라운딩 시트의 규칙 목록은 지점 규칙만
+    // 라운딩 표의 벌점 펜은 지점 규칙만
     await page.goto("/rounding");
-    const link = page.getByRole("link", { name: /R1/ }).first();
-    await link.click();
-    await page.getByRole("listitem").filter({ hasText: "강하늘" }).getByRole("button", { name: "벌점" }).click();
-    const sheet = page.getByRole("dialog");
-    await expect(sheet.getByRole("button", { name: /음식물 반입/ })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /졸음/ })).toHaveCount(0);
-    await sheet.getByRole("button", { name: "취소" }).click();
+    const pens = page.getByRole("toolbar", { name: "펜" });
+    await expect(pens.getByRole("button", { name: /음식물 반입/ })).toBeVisible();
+    await expect(pens.getByRole("button", { name: /졸음/ })).toHaveCount(0);
 
     // 비활성화하면 다시 본사 기본 규칙
     await page.goto("/settings/penalty-rules");
@@ -77,13 +75,13 @@ test.describe("설정", () => {
   test("사용자 추가 후 그 계정으로 로그인", async ({ page, browser }) => {
     await login(page, "manager");
     await page.goto("/settings/users");
-    await expect(page.getByText("사용자 목록 (4)")).toBeVisible();
+    await expect(page.getByText("사용자 목록 (5)")).toBeVisible();
     const form = page.locator("form").filter({ has: page.getByPlaceholder("아이디") });
     await form.getByPlaceholder("아이디").fill("e2easst");
     await form.getByPlaceholder("이름").fill("이투이조교");
     await form.getByPlaceholder("비밀번호 (영문+숫자 10자)").fill("secret1234");
     await form.getByRole("button", { name: "추가" }).click();
-    await expect(page.getByText("사용자 목록 (5)")).toBeVisible();
+    await expect(page.getByText("사용자 목록 (6)")).toBeVisible();
     // 지점장은 지점장 역할을 만들 수 없다
     await expect(form.locator('select[name="role"] option', { hasText: "지점장" })).toHaveCount(0);
 
@@ -155,9 +153,11 @@ test.describe("설정", () => {
     await form.getByPlaceholder("표시 이름").fill("과제");
     await form.getByRole("button", { name: "추가" }).click();
     await expect(page.locator('input[name="key"][value="homework"]')).toBeVisible();
-    // 일별 체크 탭에 나타난다 (지점 항목만 사용되므로 과제 하나)
-    await page.goto("/daily-checks");
-    await expect(page.getByRole("link", { name: "과제" })).toBeVisible();
+    // 라운딩 표에 열이 생긴다. 기본 항목(출석·라운딩)은 그대로 남는다
+    await page.goto("/rounding");
+    await expect(page.getByRole("button", { name: "과제 열 메뉴" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "R1 열 메뉴" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "출석 열 메뉴" })).toBeVisible();
     // 원복: 비활성
     await page.goto("/settings/board-items");
     const row = page.locator("form").filter({ has: page.locator('input[name="key"][value="homework"]') });

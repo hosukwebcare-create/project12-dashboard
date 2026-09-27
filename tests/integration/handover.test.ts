@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
-import { addComment, deleteNote, listComments, listNotes, markAllRead, markRead, unreadNoteCount, upsertNote } from "@/modules/handover/repo";
+import { addComment, deleteNote, listComments, listNotes, listRequests, markAllRead, markRead, openRequestCount, setRequestDone, slotOptions, unreadNoteCount, upsertNote } from "@/modules/handover/repo";
+import { upsertShiftSlot } from "@/modules/worklog/repo";
 import { listNotifications } from "@/modules/notifications/repo";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
@@ -104,5 +105,48 @@ describe("인수인계 노트", () => {
     await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "지점1 인수인계" });
     expect(await listNotes(t.mgrCtx2, 14, TODAY)).toHaveLength(0);
     expect(await unreadNoteCount(t.mgrCtx2, 14, TODAY)).toBe(0);
+  });
+});
+
+describe("해 주세요", () => {
+  beforeEach(resetDb);
+
+  it("맡긴 일은 인수인계 목록이 아니라 '해 주세요' 칸에 모이고, 누가 해 놓으면 부탁한 사람에게 알린다", async () => {
+    const t = await seedTwoBranches();
+    const id = await upsertNote(t.mgrCtx1, { date: TODAY, kind: "request", body: "12번 스탠드 업체에 전화해 주세요" });
+    await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "정수기 필터 교체함" });
+
+    expect((await listNotes(t.asstCtx1, 14, TODAY)).map((n) => n.kind)).toEqual(["handover"]);
+    let r = await listRequests(t.asstCtx1, TODAY);
+    expect(r.open.map((n) => n.body)).toEqual(["12번 스탠드 업체에 전화해 주세요"]);
+    expect(await openRequestCount(t.asstCtx1)).toBe(1);
+    // 다른 지점에는 보이지 않는다
+    expect(await openRequestCount(t.mgrCtx2)).toBe(0);
+
+    await setRequestDone(t.asstCtx1, id, true);
+    r = await listRequests(t.asstCtx1, TODAY);
+    expect(r.open).toEqual([]);
+    expect(r.done.map((n) => [n.body, n.doneByName])).toEqual([["12번 스탠드 업체에 전화해 주세요", "조교1"]]);
+    expect(await openRequestCount(t.asstCtx1)).toBe(0);
+    const noti = await listNotifications(t.mgrCtx1);
+    expect(noti.some((n) => String((n.payload as { title?: string }).title ?? "").includes("해 놓았어요"))).toBe(true);
+
+    // 되돌리면 다시 남은 일
+    await setRequestDone(t.mentorCtx1, id, false);
+    expect(await openRequestCount(t.asstCtx1)).toBe(1);
+  });
+
+  it("인수인계 글은 완료로 표시하지 않는다", async () => {
+    const t = await seedTwoBranches();
+    const id = await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "가" });
+    await expect(setRequestDone(t.mgrCtx1, id, true)).rejects.toThrow(ValidationError);
+  });
+
+  it("근무 타임 고르기에는 근무 형태가 붙고 쉬는 타임은 빠진다 (1타임이 여럿이라)", async () => {
+    const t = await seedTwoBranches();
+    await upsertShiftSlot(t.mgrCtx1, { key: "d1", label: "1타임", startTime: "", endTime: "", minutes: 60, weekend: false, audience: "주간조교", sort: 1, active: true });
+    await upsertShiftSlot(t.mgrCtx1, { key: "m1", label: "1타임", startTime: "16:00", endTime: "23:00", minutes: 360, weekend: false, audience: "원장", sort: 2, active: true });
+    await upsertShiftSlot(t.mgrCtx1, { key: "c1", label: "1타임", startTime: "", endTime: "", minutes: 240, weekend: false, audience: "컨설팅", sort: 3, active: false });
+    expect((await slotOptions(t.mgrCtx1)).map((o) => o.name)).toEqual(["주간조교 1타임", "원장 1타임"]);
   });
 });

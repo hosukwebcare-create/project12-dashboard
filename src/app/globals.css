@@ -293,3 +293,51 @@
     }
   }
 }
+
+/*
+ * 라운딩 하루 표 인쇄. 종이로 들고 도는 지점도 있어서 화면의 표를 그대로 뽑는다:
+ * 펜·검색 같은 도구는 숨기고, 붙어 있던 머리글·좌석 열은 풀고, 칸은 검은 선으로.
+ * '빈 표로 인쇄'를 켜면 값을 지우고 칸만 남긴다.
+ */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+  .day-sheet .day-sheet-tools {
+    display: none !important;
+  }
+  .day-sheet .print-only {
+    display: block !important;
+    margin-bottom: 4mm;
+  }
+  .day-sheet .day-sheet-wrap {
+    overflow: visible !important;
+    max-height: none !important;
+    border: 0 !important;
+  }
+  .day-sheet table {
+    font-size: 8pt;
+    width: 100%;
+  }
+  .day-sheet th,
+  .day-sheet td,
+  .day-sheet td > button {
+    position: static !important;
+    height: 6mm !important;
+    min-width: 0 !important;
+    border-color: #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+  .day-sheet thead {
+    display: table-header-group;
+  }
+  .day-sheet tr {
+    break-inside: avoid;
+  }
+  .day-sheet.print-blank .cell-value {
+    visibility: hidden;
+  }
+}

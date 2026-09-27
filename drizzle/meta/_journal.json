@@ -99,6 +99,13 @@
       "when": 1789925127987,
       "tag": "0013_shift_slot_minutes",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790527299088,
+      "tag": "0014_handover_requests_no_night_shift",
+      "breakpoints": true
     }
   ]
 }

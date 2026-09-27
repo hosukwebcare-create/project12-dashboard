@@ -20,10 +20,13 @@ import {
 export type BranchRole = "branch_manager" | "mentor" | "assistant";
 export type MemberStatus = "prospect" | "enrolled" | "paused" | "withdrawn";
 export type MemberKind = "student" | "adult";
-/** 근무일지의 직군. 타임표와 현황을 이 셋으로 나눈다 */
-export type StaffGroup = "assistant" | "manager" | "mentor";
-/** 근무 타임표를 쓰는 근무 형태. 같은 조교라도 주간·야간의 타임이 다르다 */
-export type SlotAudience = "주간조교" | "야간조교" | "컨설팅" | "원장";
+/** 근무일지의 직군. 현장에서 나누는 대로 청소조교 · 조교 · 원장 · 학습멘토 */
+export type StaffGroup = "cleaner" | "assistant" | "manager" | "mentor";
+/**
+ * 근무 타임표를 쓰는 근무 형태. 시트의 '근무형태' 칸 값 그대로다(학습멘토는 시트에서 '컨설팅').
+ * 야간조교는 2026-09 부터 없다 — 예전 기록을 읽으려고 값만 남겨 둔다.
+ */
+export type SlotAudience = "청소조교" | "주간조교" | "원장" | "컨설팅" | "야간조교";
 export type Grade = "a" | "b" | "p" | "na";
 export type IssueStatus = "open" | "in_progress" | "resolved";
 export type CounselLogType = "weekly" | "focus_daily";
@@ -33,10 +36,6 @@ export type BranchSettings = {
   maskNames: boolean;
   /** 회차별 시작 시각 "HH:mm" (선택) */
   roundSchedule?: string[];
-  /** 라운딩 돌 때 같은 화면에서 함께 기록할 일별 항목 키. 비어 있으면 기본값(출석·플래너·영단어) */
-  roundCompanions?: string[];
-  /** 그날 라운딩에서 자리에 있던 학생의 출석을 자동으로 채운다 */
-  autoAttendance?: boolean;
 };
 
 const DEFAULT_BRANCH_SETTINGS: BranchSettings = { roundsPerDay: 12, maskNames: false };
@@ -723,8 +722,8 @@ export const counselAppointments = pgTable(
 ).enableRLS();
 
 // ---------- 인수인계 노트 ----------
-/** 공지는 목록 위에 고정된다 */
-export type HandoverKind = "handover" | "notice";
+/** 공지는 목록 위에 고정된다. '해 주세요'는 다음 사람에게 맡기는 일로, 한 사람이 해 놓으면 끝난다 */
+export type HandoverKind = "handover" | "notice" | "request";
 
 export const handoverNotes = pgTable(
   "handover_notes",
@@ -739,6 +738,9 @@ export const handoverNotes = pgTable(
     kind: text("kind").$type<HandoverKind>().notNull().default("handover"),
     body: text("body").notNull(),
     authorId: uuid("author_id").references(() => users.id),
+    /** '해 주세요'를 누가 언제 해 놓았는지. 비어 있으면 아직 남은 일 */
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneBy: uuid("done_by").references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -1,94 +1,87 @@
-import { Check, History, Play, UserRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, UserRound } from "lucide-react";
 import Link from "next/link";
+import { DaySheet } from "@/components/app/day-sheet";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
-import { nextRoundNo } from "@/lib/rules/rounding";
-import { todayKey } from "@/lib/rules/week";
-import { cn } from "@/lib/utils";
-import { startSessionAction } from "@/modules/rounding/actions";
-import { todaySessions } from "@/modules/rounding/repo";
 import { guarded } from "@/lib/page-guard";
+import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
+import { clearCellAction, completeRoundAction, copyPreviousRoundAction, fillRemainingAction, saveCellAction } from "@/modules/rounding/actions";
+import { daySheet } from "@/modules/rounding/repo";
 
 export const metadata = { title: "라운딩" };
 
-async function RoundingHome({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+/**
+ * 라운딩 하루 표. 시트의 하루 블록(출석·플래너·R1…Rn·영단어·점검완료)을 그대로 한 화면에 둔다.
+ * 태블릿으로 돌면서 누르기만 하고, 메모는 PC 에서 같은 표에 적는다. 인쇄도 이 표 그대로 나온다.
+ * 여기 적은 것이 곧 매장 모니터(현황판)라서 시트에 다시 옮기지 않는다.
+ */
+async function RoundingPage({ searchParams }: { searchParams: Promise<{ date?: string; round?: string }> }) {
   const ctx = await getCtx();
-  const { error } = await searchParams;
+  const sp = await searchParams;
   const today = todayKey();
-  const sessions = await todaySessions(ctx, today);
-  const total = ctx.settings.roundsPerDay;
-  const next = nextRoundNo(sessions.map((s) => s.roundNo), total);
-  const schedule = ctx.settings.roundSchedule ?? [];
-  const inProgress = sessions.find((s) => !s.completedAt);
+  const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;
+  const sheet = await daySheet(ctx, date);
+  const done = sheet.sessions.filter((s) => s.completedAt).length;
+  const focusRound = sp.round && /^\d+$/.test(sp.round) ? Number(sp.round) : null;
+  const prev = toDateKey(addDays(date, -1));
+  const next = toDateKey(addDays(date, 1));
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div>
       <PageHeader
         title="라운딩"
-        description={`${ctx.branchName} · ${fmtShortDate(today)} · ${sessions.filter((s) => s.completedAt).length}/${total} 회차 완료`}
+        description={`${ctx.branchName} · ${fmtShortDate(date)} · 완료 ${done}/${ctx.settings.roundsPerDay}회차 · 여기 적은 것이 매장 모니터에 1분 안에 그대로 보입니다`}
         actions={
           <>
+            <div className="flex items-center gap-1">
+              <Button asChild variant="outline" size="icon" className="size-9">
+                <Link href={`/rounding?date=${prev}`} aria-label="전날">
+                  <ChevronLeft />
+                </Link>
+              </Button>
+              {date !== today ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/rounding">오늘</Link>
+                </Button>
+              ) : null}
+              <Button asChild variant="outline" size="icon" className="size-9">
+                <Link href={`/rounding?date=${next}`} aria-label="다음 날">
+                  <ChevronRight />
+                </Link>
+              </Button>
+            </div>
             {ctx.role === "assistant" ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" size="sm">
                 <Link href="/switch">
                   <UserRound /> 전환
                 </Link>
               </Button>
             ) : null}
-            <Button asChild variant="outline">
-              <Link href="/rounding/history">
-                <History /> 조회
-              </Link>
-            </Button>
           </>
         }
       />
-      {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
-
-      {inProgress ? (
-        <Button asChild size="lg" className="mb-5 h-14 w-full text-base">
-          <Link href={`/rounding/${inProgress.id}`}>
-            <Play /> R{inProgress.roundNo} 진행 중 · 이어서 입력 ({inProgress.checkedCount}명 완료)
-          </Link>
-        </Button>
-      ) : next ? (
-        <form action={startSessionAction} className="mb-5">
-          <input type="hidden" name="date" value={today} />
-          <Button type="submit" size="lg" className="h-14 w-full text-base">
-            <Play /> R{next} 시작{schedule[next - 1] ? ` (${schedule[next - 1]})` : ""}
-          </Button>
-        </form>
-      ) : (
-        <p className="mb-5 border-y border-border py-3 text-center text-sm text-muted-foreground">오늘 회차를 모두 진행했습니다</p>
-      )}
-
-      <ul className="grid grid-cols-3 gap-px overflow-hidden rounded-lg bg-border ring-1 ring-border sm:grid-cols-4">
-        {Array.from({ length: total }, (_, i) => i + 1).map((n) => {
-          const s = sessions.find((x) => x.roundNo === n);
-          const state = !s ? "todo" : s.completedAt ? "done" : "active";
-          const inner = (
-            <div
-              className={cn(
-                "flex h-[76px] flex-col items-center justify-center gap-0.5 text-sm transition-colors",
-                state === "done" && "bg-card text-foreground hover:bg-muted/60",
-                state === "active" && "bg-primary text-primary-foreground",
-                state === "todo" && "bg-card text-muted-foreground",
-              )}
-            >
-              <span className="flex items-center gap-1 text-[15px] font-semibold">
-                R{n}
-                {state === "done" ? <Check className="size-3.5 text-emerald-600" aria-hidden /> : null}
-              </span>
-              <span className={cn("text-[11px]", state === "active" ? "text-primary-foreground/70" : "text-muted-foreground")}>{s ? (s.startedByName ?? "") : (schedule[n - 1] ?? "")}</span>
-            </div>
-          );
-          return <li key={n}>{s ? <Link href={`/rounding/${s.id}`}>{inner}</Link> : inner}</li>;
-        })}
-      </ul>
+      <DaySheet
+        key={date}
+        date={date}
+        isToday={date === today}
+        branchName={ctx.branchName}
+        columns={sheet.columns}
+        members={sheet.members}
+        cells={sheet.cells}
+        rules={sheet.rules}
+        sessions={sheet.sessions}
+        canEdit={ctx.role !== "mentor"}
+        focusRound={focusRound}
+        saveAction={saveCellAction}
+        clearAction={clearCellAction}
+        copyPrevAction={copyPreviousRoundAction}
+        completeAction={completeRoundAction}
+        fillRestAction={fillRemainingAction}
+      />
     </div>
   );
 }
 
-export default guarded(RoundingHome);
+export default guarded(RoundingPage);

@@ -4,22 +4,34 @@ export type { SlotAudience, StaffGroup };
 /** 인정 시간은 분으로 적어 둔다. minutes 가 비어 있는 것은 분 단위가 생기기 전에 만든 타임이다 */
 export type SlotSpec = { key: string; hoursX100: number; minutes: number | null; weekend: boolean };
 
-/** 근무일지 화면을 나누는 직군. 조교·원장·멘토 세 묶음이다 */
+/** 근무일지 화면을 나누는 직군. 현장에서 부르는 순서 그대로: 청소조교 · 조교 · 원장 · 학습멘토 */
 export const STAFF_GROUPS: { key: StaffGroup; label: string }[] = [
+  { key: "cleaner", label: "청소조교" },
   { key: "assistant", label: "조교" },
   { key: "manager", label: "원장" },
-  { key: "mentor", label: "멘토" },
+  { key: "mentor", label: "학습멘토" },
 ];
-export const STAFF_GROUP_LABEL: Record<StaffGroup, string> = { assistant: "조교", manager: "원장", mentor: "멘토" };
+export const STAFF_GROUP_LABEL: Record<StaffGroup, string> = { cleaner: "청소조교", assistant: "조교", manager: "원장", mentor: "학습멘토" };
 
-/** 타임표는 직군보다 한 단 더 잘게 나뉜다. 같은 조교라도 주간과 야간의 타임이 다르다 */
-export const SLOT_AUDIENCES: SlotAudience[] = ["주간조교", "야간조교", "컨설팅", "원장"];
+/** 타임을 고를 수 있는 근무 형태. 야간조교는 없어졌다(2026-09 현장 확인) */
+export const SLOT_AUDIENCES: SlotAudience[] = ["청소조교", "주간조교", "원장", "컨설팅"];
+
+/** 직원에게 고를 수 있는 근무 형태. 시트의 근무형태 칸 값이고, 학습멘토는 시트에서 '컨설팅'이다 */
+export const EMPLOYMENT_TYPES = ["청소조교", "주간조교", "원장", "컨설팅", "기타"] as const;
+
+/** 화면에 보이는 근무 형태 이름. 시트 값은 그대로 두고 현장 말로 풀어 쓴다 */
+export function employmentLabel(t: string): string {
+  if (t === "컨설팅") return "컨설팅(학습멘토)";
+  if (t === "야간조교") return "야간조교(예전)";
+  return t;
+}
 
 /**
  * 직군을 정한다. 근무 형태를 적어 둔 직원은 그것이 우선이고(계정은 조교인데 원장 일을 하는 경우),
  * 없거나 '기타'면 계정 역할로 본다.
  */
 export function staffGroupOf(role: string, employmentType?: string | null): StaffGroup {
+  if (employmentType === "청소조교") return "cleaner";
   if (employmentType === "주간조교" || employmentType === "야간조교") return "assistant";
   if (employmentType === "컨설팅") return "mentor";
   if (employmentType === "원장") return "manager";
@@ -32,21 +44,20 @@ export function staffGroupOf(role: string, employmentType?: string | null): Staf
  * 그날 이 근무 형태가 체크할 수 있는 타임: 요일이 맞고, 자기 형태 것이거나 공통인 것.
  * 시트는 토요일에도 1~7타임을 쓰고 일요일에만 일1·일2타임을 쓴다 — 그래서 기준은 주말이 아니라 일요일이다.
  */
-export function slotsForAudience<T extends { weekend: boolean; audience: SlotAudience | null }>(slots: T[], employmentType: string, sunday: boolean): T[] {
+export function slotsForAudience<T extends { weekend: boolean; audience: string | null }>(slots: T[], employmentType: string, sunday: boolean): T[] {
   return slots.filter((s) => s.weekend === sunday && (s.audience === null || s.audience === employmentType));
 }
 
 /**
  * 동탄점 근무일지 시트의 타임표를 그대로 옮긴 값. 2026년 1~9월 급여 기초가 이 수식으로 계산됐다.
- * 시트 N열: 주간조교 (1타임×60 + 2~7타임×15 + 일1·일2×30)/60, 야간조교 (1~3타임×10 + 일1·일2×30)/60,
- * 컨설팅 1타임×240/60, 원장 1타임×6. 평일을 다 체크하면 주간조교 2.5시간, 야간조교 0.5시간이 된다.
+ * 시트 N열: 주간조교 (1타임×60 + 2~7타임×15 + 일1·일2×30)/60, 컨설팅 1타임×240/60, 원장 1타임×6.
+ * 평일을 다 체크하면 주간조교 2.5시간이 된다. 야간조교는 없어져서 넣지 않는다.
+ * 청소조교는 시트에 수식이 없다 — 지점마다 시간이 달라서 지점이 직접 만든다(인정 시간을 지어내지 않는다).
  * 시각이 적혀 있는 것은 근무시간표 탭의 원장 16:00~23:00 하나뿐이라 나머지는 비워 둔다.
  */
 export const SHEET_SLOT_PRESET: { key: string; label: string; audience: SlotAudience; minutes: number; sunday: boolean; startTime: string; endTime: string }[] = [
   ...[60, 15, 15, 15, 15, 15, 15].map((minutes, i) => ({ key: `d${i + 1}`, label: `${i + 1}타임`, audience: "주간조교" as const, minutes, sunday: false, startTime: "", endTime: "" })),
   ...[1, 2].map((n) => ({ key: `dsun${n}`, label: `일${n}타임`, audience: "주간조교" as const, minutes: 30, sunday: true, startTime: "", endTime: "" })),
-  ...[10, 10, 10].map((minutes, i) => ({ key: `n${i + 1}`, label: `${i + 1}타임`, audience: "야간조교" as const, minutes, sunday: false, startTime: "", endTime: "" })),
-  ...[1, 2].map((n) => ({ key: `nsun${n}`, label: `일${n}타임`, audience: "야간조교" as const, minutes: 30, sunday: true, startTime: "", endTime: "" })),
   { key: "c1", label: "1타임", audience: "컨설팅", minutes: 240, sunday: false, startTime: "", endTime: "" },
   { key: "m1", label: "1타임", audience: "원장", minutes: 360, sunday: false, startTime: "16:00", endTime: "23:00" },
 ];

@@ -118,6 +118,16 @@ export async function upsertBoardItem(ctx: Ctx, input: BoardItemInput, db: Db = 
     await db.update(boardItems).set(vals).where(eq(boardItems.id, input.id));
     return input.id;
   }
+  // 지점 항목이 하나라도 생기면 그 지점은 본사 기본 항목 대신 자기 항목만 쓴다.
+  // 첫 항목을 만들 때 기본 항목을 먼저 지점으로 옮겨 두지 않으면 출석·라운딩 열이 한꺼번에 사라진다.
+  if (!input.global) {
+    const own = await db.select({ id: boardItems.id }).from(boardItems).where(eq(boardItems.branchId, ctx.branchId)).limit(1);
+    if (!own.length) {
+      const defaults = await db.select().from(boardItems).where(isNull(boardItems.branchId));
+      const carry = defaults.filter((d) => d.key !== key);
+      if (carry.length) await db.insert(boardItems).values(carry.map((d) => ({ branchId: ctx.branchId, key: d.key, label: d.label, kind: d.kind, sort: d.sort, active: d.active })));
+    }
+  }
   const [row] = await db.insert(boardItems).values({ ...vals, branchId: input.global ? null : ctx.branchId }).returning({ id: boardItems.id });
   return row.id;
 }

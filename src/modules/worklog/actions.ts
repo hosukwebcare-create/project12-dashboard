@@ -6,7 +6,7 @@ import { toMessage, type ActionState } from "@/lib/action-utils";
 import type { SlotAudience } from "@/db/schema";
 import { getCtx } from "@/lib/auth/ctx";
 import { parseHoursToX100, parseMinutes } from "@/lib/rules/worklog";
-import { applySheetSlotPreset, clockIn, clockOut, confirmWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
+import { applySheetSlotPreset, clockIn, clockOut, confirmWorkLog, patchStaffProfile, patchWorkLog, saveWorkLog, unconfirmWorkLog, upsertShiftSlot, upsertStaffProfile } from "./repo";
 
 export async function saveWorkLogAction(_p: ActionState, fd: FormData): Promise<ActionState> {
   return withRequestRls(async () => {
@@ -134,6 +134,49 @@ export async function applySheetSlotPresetAction(): Promise<ActionState> {
       return { error: toMessage(e) };
     }
     revalidatePath("/worklog", "layout");
+    return { ok: true };
+  });
+}
+
+/** 일별 현황 표에서 그 줄의 타임 체크·초과근무를 바로 고친다. 고친 뒤의 근무 시간을 돌려준다 */
+export async function patchWorkLogAction(input: { userId: string; date: string; slotKeys?: string[]; overtime?: string; overtimeReason?: string | null }): Promise<{ log?: { id: string; slotKeys: string[]; hoursX100: number; overtimeX100: number; overtimeReason: string | null; locked: boolean }; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    let overtimeX100: number | undefined;
+    if (input.overtime !== undefined) {
+      const v = parseHoursToX100(input.overtime);
+      if (v === null) return { error: "초과근무는 0.5 같은 시간으로 적어 주세요" };
+      overtimeX100 = v;
+    }
+    try {
+      // 표가 돌려받은 값으로 그 줄을 고친다. 화면 전체를 다시 그리면 다른 줄에 입력 중인 글자가 날아간다
+      const log = await patchWorkLog(ctx, { userId: input.userId, date: input.date, slotKeys: input.slotKeys, overtimeX100, overtimeReason: input.overtimeReason === undefined ? undefined : input.overtimeReason?.trim() || null });
+      return { log: { id: log.id, slotKeys: log.slotKeys, hoursX100: log.hoursX100, overtimeX100: log.overtimeX100, overtimeReason: log.overtimeReason, locked: Boolean(log.hqConfirmedAt) } };
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+  });
+}
+
+/** 직원 근무 정보 한 칸(근무 형태·근무 요일·시급)을 그 자리에서 고친다 */
+export async function patchStaffProfileAction(input: { userId: string; employmentType?: string; workDays?: string; hourlyRate?: string }): Promise<{ ok?: boolean; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    let hourlyRate: number | null | undefined;
+    if (input.hourlyRate !== undefined) {
+      const raw = input.hourlyRate.replace(/[,\s원]/g, "");
+      if (raw && !/^\d+$/.test(raw)) return { error: "시급은 숫자로 적어 주세요" };
+      hourlyRate = raw ? Number(raw) : null;
+    }
+    try {
+      await patchStaffProfile(ctx, input.userId, {
+        employmentType: input.employmentType,
+        workDays: input.workDays === undefined ? undefined : input.workDays.trim() || null,
+        hourlyRate,
+      });
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
     return { ok: true };
   });
 }

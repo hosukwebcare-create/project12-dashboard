@@ -2,59 +2,68 @@
 
 import { withRequestRls } from "@/lib/rls";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { toMessage } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
-import { todayKey } from "@/lib/rules/week";
-import { completeSession, fillRemaining, startSession, upsertCheck, type CheckInput, type SessionSummary } from "./repo";
+import { clearCheck, completeRound, copyPreviousRound, fillRemaining, saveCell, type CellPatch, type CheckInput, type SessionSummary } from "./repo";
 
-export async function startSessionAction(fd: FormData): Promise<void> {
-  return withRequestRls(async () => {
-    const ctx = await getCtx();
-    const date = String(fd.get("date") ?? "") || todayKey();
-    let id: string;
-    try {
-      id = await startSession(ctx, date);
-    } catch (e) {
-      redirect(`/rounding?error=${encodeURIComponent(toMessage(e))}`);
-    }
-    revalidatePath("/rounding");
-    redirect(`/rounding/${id}`);
-  });
-}
+type CellKeyInput = { memberId: string; date: string; itemKey: string; roundNo: number };
 
-export async function saveCheckAction(input: CheckInput): Promise<{ ok?: boolean; error?: string }> {
+/** 칸 하나 적기. 적은 칸과 그 때문에 바뀐 출석 칸을 돌려준다 */
+export async function saveCellAction(input: CheckInput): Promise<{ patch?: CellPatch; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      await upsertCheck(ctx, input);
-    } catch (e) {
-      return { error: toMessage(e) };
-    }
-    return { ok: true };
-  });
-}
-
-export async function completeSessionAction(sessionId: string): Promise<{ summary?: SessionSummary; error?: string }> {
-  return withRequestRls(async () => {
-    const ctx = await getCtx();
-    try {
-      const summary = await completeSession(ctx, sessionId);
-      revalidatePath("/rounding");
-      return { summary };
+      return { patch: await saveCell(ctx, input) };
     } catch (e) {
       return { error: toMessage(e) };
     }
   });
 }
 
+/** 지우개 */
+export async function clearCellAction(input: CellKeyInput): Promise<{ patch?: CellPatch; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      return { patch: await clearCheck(ctx, input) };
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+  });
+}
+
+/** 직전 회차 값 가져오기 */
+export async function copyPreviousRoundAction(input: { date: string; roundNo: number }): Promise<{ patch?: CellPatch; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      return { patch: await copyPreviousRound(ctx, input.date, input.roundNo) };
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+  });
+}
+
+/** 회차 완료: 빈 칸 a 로 채우고 완료 표시 */
+export async function completeRoundAction(input: { date: string; roundNo: number }): Promise<{ patch?: CellPatch; summary?: SessionSummary; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      const r = await completeRound(ctx, input.date, input.roundNo);
+      revalidatePath("/");
+      return r;
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+  });
+}
+
+/** 일별 항목의 빈 칸을 a 로 채우기 */
 export async function fillRemainingAction(input: { date: string; itemKey: string }): Promise<{ filled?: number; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      const filled = await fillRemaining(ctx, input.date, input.itemKey);
-      revalidatePath("/daily-checks");
-      return { filled };
+      return { filled: await fillRemaining(ctx, input.date, input.itemKey) };
     } catch (e) {
       return { error: toMessage(e) };
     }

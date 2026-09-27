@@ -7,7 +7,7 @@ import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { formatHours, slotsForAudience } from "@/lib/rules/worklog";
+import { employmentLabel, formatHours, slotsForAudience } from "@/lib/rules/worklog";
 import { WorkClock } from "@/components/app/work-clock";
 import { clockInAction, clockOutAction, saveWorkLogAction } from "@/modules/worklog/actions";
 import { listShiftSlots, monthLogsForUser, myWorkClock, myWorkLog, myWorkProfile } from "@/modules/worklog/repo";
@@ -47,7 +47,7 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
       <Card>
         <CardHeader>
           <CardTitle>
-            {fmtShortDate(date)} 근무 체크 <span className="ml-1 text-xs font-normal text-muted-foreground">{profile.employmentType} 타임</span>
+            {fmtShortDate(date)} 근무 체크 <span className="ml-1 text-xs font-normal text-muted-foreground">{employmentLabel(profile.employmentType)} 타임</span>
           </CardTitle>
           <CardDescription>{slots.length === 0 ? "지점장이 아직 근무 타임을 설정하지 않았습니다." : locked ? "본사 확인이 완료되어 수정할 수 없습니다." : "근무한 타임을 체크하고 저장하세요. 초과근무는 시간과 사유를 함께 입력합니다."}</CardDescription>
           <div className="pill-nav mt-2">
@@ -76,7 +76,7 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
                     </span>
                   </label>
                 ))}
-                {visibleSlots.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">{profile.employmentType} {isSunday ? "일요일" : "평일"} 타임이 없습니다</p> : null}
+                {visibleSlots.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">{employmentLabel(profile.employmentType)} {isSunday ? "일요일" : "평일"} 타임이 없습니다. 지점장에게 타임을 만들어 달라고 하세요.</p> : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">

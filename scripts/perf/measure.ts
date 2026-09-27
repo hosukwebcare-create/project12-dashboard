@@ -39,7 +39,7 @@ async function main() {
   const { weeklyGrid } = await import("../../src/modules/counsel/repo");
   const { boardData } = await import("../../src/modules/board/repo");
   const { dashboard, hqOverview } = await import("../../src/modules/dashboard/repo");
-  const { dayHistory, sessionSheet, todaySessions, memberWeek } = await import("../../src/modules/rounding/repo");
+  const { daySheet, memberWeek } = await import("../../src/modules/rounding/repo");
   const { listIssues } = await import("../../src/modules/issues/repo");
   const { monthGrid, monthlySettlement } = await import("../../src/modules/meals/repo");
 
@@ -52,7 +52,6 @@ async function main() {
   const weeks = [-3, -2, -1, 0].map((i) => toDateKey(addDays(ws, i * 7)));
   const [{ n: checkCount }] = await db.execute<{ n: string }>((await import("drizzle-orm")).sql`select count(*)::text as n from checks`);
   const members = await listMembers(ctx);
-  const sessions = await todaySessions(ctx, today);
   console.log(`지점 ${ctx.branchName} · 회원 ${members.length} · 전체 체크 ${Number(checkCount).toLocaleString()}건 · 반복 ${N}회\n`);
 
   const results: Record<string, { p50: number; p95: number; max: number }> = {};
@@ -64,8 +63,8 @@ async function main() {
   results["회원 주간 memberWeek"] = await bench("회원 주간 memberWeek", () => memberWeek(ctx, members[0].id, ws));
   results["대시보드 dashboard"] = await bench("대시보드 dashboard", () => dashboard(ctx, today));
   results["본사 전 지점 hqOverview"] = await bench("본사 전 지점 hqOverview", () => hqOverview(hqCtx, today));
-  results["라운딩 회차 시트 sessionSheet"] = await bench("라운딩 회차 시트 sessionSheet", () => sessionSheet(ctx, sessions[0].id));
-  results["라운딩 일별 조회 dayHistory"] = await bench("라운딩 일별 조회 dayHistory", () => dayHistory(ctx, toDateKey(addDays(today, -1))));
+  results["라운딩 하루 표 daySheet(오늘)"] = await bench("라운딩 하루 표 daySheet(오늘)", () => daySheet(ctx, today));
+  results["라운딩 하루 표 daySheet(어제)"] = await bench("라운딩 하루 표 daySheet(어제)", () => daySheet(ctx, toDateKey(addDays(today, -1))));
   results["이슈 목록 listIssues"] = await bench("이슈 목록 listIssues", () => listIssues(ctx));
   results["식사 월 그리드 monthGrid"] = await bench("식사 월 그리드 monthGrid", () => monthGrid(ctx, today.slice(0, 7)));
   results["식사 월 정산 monthlySettlement"] = await bench("식사 월 정산 monthlySettlement", () => monthlySettlement(ctx, today.slice(0, 7)));

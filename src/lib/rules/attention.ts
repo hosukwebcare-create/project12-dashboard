@@ -27,6 +27,8 @@ export type AttentionInput = {
   openIssues: { severity: string }[];
   money: { pending: number; amount: number; unpriced: number } | null;
   unreadNotes: number;
+  /** 아직 아무도 안 한 '해 주세요' */
+  openRequests?: number;
   todayAppointments: { startTime: string; displayName: string }[];
 };
 
@@ -75,6 +77,10 @@ export function buildAttention(i: AttentionInput): AttentionItem[] {
   if (i.todayAppointments.length > 0) {
     const first = [...i.todayAppointments].sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
     out.push({ key: "appointments", level: "info", title: `오늘 상담 ${i.todayAppointments.length}건`, detail: `${first.startTime} ${first.displayName}부터`, href: "/counsel/schedule", target: "일정표" });
+  }
+
+  if (i.openRequests && i.openRequests > 0) {
+    out.push({ key: "requests", level: "warning", title: `해 주세요 ${i.openRequests}건이 남아 있습니다`, detail: "다음 사람에게 맡긴 일", href: "/handover#requests", target: "인수인계" });
   }
 
   if (i.unreadNotes > 0) {

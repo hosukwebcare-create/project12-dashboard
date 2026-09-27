@@ -92,10 +92,9 @@ test.describe("근무일지", () => {
     await ctx2.close();
 
     await page.goto("/worklog/daily");
-    const row = page.getByRole("row").filter({ hasText: "최조교" });
-    await expect(row).toContainText(slotName);
-    await expect(row).toContainText("0.5h");
-    await expect(row).toContainText("마감 정리");
+    await expect(page.getByRole("checkbox", { name: `최조교 ${slotName}` }).first()).toBeChecked();
+    await expect(page.getByLabel("최조교 초과근무 시간")).toHaveValue("0.5");
+    await expect(page.getByLabel("최조교 초과근무 사유")).toHaveValue("마감 정리");
 
     const ctx3 = await browser.newContext();
     const p3 = await ctx3.newPage();
@@ -107,7 +106,7 @@ test.describe("근무일지", () => {
 
     await page.goto("/worklog/monthly");
     const mrow = page.getByRole("row").filter({ hasText: "최조교" });
-    await expect(mrow).toContainText("10,500");
+    await expect(page.getByLabel("최조교 시급")).toHaveValue("10500");
     await expect(mrow).toContainText("본사운영".length ? /\d/ : /\d/);
     const csv = await page.request.get(`/api/worklog/export?month=${todayKey().slice(0, 7)}`);
     expect(csv.status(), await csv.text()).toBe(200);
@@ -117,14 +116,15 @@ test.describe("근무일지", () => {
   test("시트 타임표는 근무 형태별로 나뉘고, 조교가 평일을 다 채우면 시트와 같은 2.5시간이 된다", async ({ page, browser }) => {
     await login(page, "manager");
     await page.goto("/worklog/settings");
-    for (const label of ["주간조교 (조교)", "야간조교 (조교)", "컨설팅 (멘토)", "원장 (원장)"]) {
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
+    for (const label of ["주간조교 (조교)", "원장", "컨설팅 (학습멘토)"]) {
+      await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
     }
-    // 시트 수식 그대로: 주간조교 1타임 60분, 야간조교 1타임 10분, 원장 1타임 360분(16:00~23:00)
+    // 야간조교는 없어졌다
+    await expect(page.getByRole("heading", { name: /야간조교/ })).toHaveCount(0);
+    // 시트 수식 그대로: 주간조교 1타임 60분, 원장 1타임 360분(16:00~23:00)
     const slotForm = (key: string) => page.locator("form").filter({ has: page.locator(`input[name="key"][value="${key}"]`) });
     await expect(slotForm("d1").getByLabel("인정 시간(분)")).toHaveValue("60");
     await expect(slotForm("d1").getByLabel("근무 형태")).toHaveValue("주간조교");
-    await expect(slotForm("n1").getByLabel("인정 시간(분)")).toHaveValue("10");
     await expect(slotForm("m1").getByLabel("인정 시간(분)")).toHaveValue("360");
     await expect(slotForm("m1").getByLabel("시작")).toHaveValue("16:00");
 
@@ -146,9 +146,52 @@ test.describe("근무일지", () => {
     await expect(p2.getByText(/= 2\.5h/)).toBeVisible();
     await ctx2.close();
 
-    await page.goto("/worklog/daily");
-    await expect(page.getByRole("rowheader", { name: /^조교/ })).toBeVisible();
-    await expect(page.getByRole("rowheader", { name: /^원장/ })).toBeVisible();
+    // 일별 현황은 현장에서 부르는 대로 청소조교 · 조교 · 원장 · 학습멘토로 묶인다 (평일 타임이 보이도록 일요일은 피한다)
+    const wd = new Date();
+    while (wd.getDay() === 0) wd.setDate(wd.getDate() - 1);
+    const p2d = (n: number) => String(n).padStart(2, "0");
+    await page.goto(`/worklog/daily?date=${wd.getFullYear()}-${p2d(wd.getMonth() + 1)}-${p2d(wd.getDate())}`);
+    for (const g of ["청소조교", "조교", "원장", "학습멘토"]) await expect(page.locator("caption").filter({ hasText: new RegExp(`^${g}\\d`) })).toBeVisible();
+    // 청소조교 줄에는 주간조교 타임(2~7타임)이 나오지 않는다 — 지점이 청소조교 타임을 따로 만든다
+    await expect(page.getByLabel("한청소 근무 형태")).toHaveValue("청소조교");
+    await expect(page.getByRole("checkbox", { name: "한청소 2타임" })).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: "정조교 2타임" })).toHaveCount(1);
+  });
+
+  test("일별 현황 표에서 설정 화면에 가지 않고 바로 체크하고 근무 형태·요일을 고친다", async ({ page }) => {
+    await login(page, "manager");
+    const day = new Date();
+    day.setDate(day.getDate() - 7);
+    while (day.getDay() === 0) day.setDate(day.getDate() - 1);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    await page.goto(`/worklog/daily?date=${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`);
+
+    // 정조교(주간조교) 줄에서 1~7타임을 바로 체크 → 2.5시간
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) {
+      await page.getByRole("checkbox", { name: `정조교 ${n}타임` }).check();
+      await expect(page.getByText(/정조교 타임 저장됨/)).toBeVisible();
+    }
+    const row = page.locator("tbody tr").filter({ has: page.getByRole("checkbox", { name: "정조교 1타임" }) });
+    await expect(row).toContainText("2.5");
+
+    // 초과근무는 사유와 함께
+    await page.getByLabel("정조교 초과근무 시간").fill("0.5");
+    await page.getByLabel("정조교 초과근무 사유").fill("커피머신 청소");
+    await page.getByLabel("정조교 초과근무 사유").press("Enter");
+    await expect(page.getByText(/정조교 초과근무 저장됨/)).toBeVisible();
+    await expect(row.locator("td").last()).toHaveText("3");
+
+    // 근무 요일·근무 형태도 이 줄에서
+    await page.getByLabel("정조교 근무 요일").fill("월화수일");
+    await page.getByLabel("정조교 근무 요일").press("Enter");
+    await expect(page.getByText(/정조교 근무 요일 저장됨/)).toBeVisible();
+    await page.getByLabel("한청소 근무 형태").selectOption("청소조교");
+    await expect(page.getByText(/한청소 근무 형태 저장됨/)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel("정조교 근무 요일")).toHaveValue("월화수일");
+    await expect(page.getByRole("checkbox", { name: "정조교 7타임" })).toBeChecked();
+    await expect(page.getByLabel("정조교 초과근무 사유")).toHaveValue("커피머신 청소");
   });
 });
 

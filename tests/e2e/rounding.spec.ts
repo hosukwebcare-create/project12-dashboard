@@ -1,59 +1,105 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { login } from "./helpers";
 
-test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+/** 라운딩 하루 표의 칸. 이름·열·값이 접근성 이름에 다 들어 있다 */
+const cell = (page: Page, name: string, col: string) => page.getByRole("button", { name: new RegExp(`^${name} ${col} `) });
+const pen = (page: Page, label: string | RegExp) => page.getByRole("toolbar", { name: "펜" }).getByRole("button", { name: label });
 
-test("조교: 회차 입력(빠른 탭·벌점 시트·이슈) → 완료 → 다음 회차", async ({ page }) => {
-  await login(page, "assistant");
-  await expect(page).toHaveURL("/rounding");
+test.describe("태블릿", () => {
+  test.use({ viewport: { width: 1180, height: 820 }, hasTouch: true });
 
-  // 진행 중 회차가 있으면 이어서, 없으면 새로 시작
-  const resume = page.getByRole("link", { name: /진행 중 · 이어서 입력/ });
-  if (await resume.count()) await resume.click();
-  else await page.getByRole("button", { name: /R\d+ 시작/ }).click();
-  await expect(page).toHaveURL(/\/rounding\/[0-9a-f-]+$/);
-  await expect(page.getByRole("heading", { name: /R\d+ 라운딩/ })).toBeVisible();
-  const roundNo = Number((await page.getByRole("heading", { name: /R\d+ 라운딩/ }).textContent())!.match(/R(\d+)/)![1]);
+  test("조교: 펜을 고르고 칸을 누르기만 해서 적는다 — 벌점도 규칙 펜 하나로, 되돌리기까지", async ({ page }) => {
+    await login(page, "assistant");
+    await expect(page).toHaveURL("/rounding");
+    await expect(page.getByRole("heading", { name: "라운딩" })).toBeVisible();
+    // 시드: 오늘 R1·R2 완료, R3 진행 중(아직 빈 칸)
+    await expect(page.getByRole("button", { name: "R3 열 메뉴" })).toBeVisible();
 
-  // 빠른 탭: 고은별 → b
-  const row = page.getByRole("listitem").filter({ hasText: "고은별" });
-  await row.getByRole("button", { name: "b", exact: true }).click();
-  await expect(row.getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.reload();
-  await expect(page.getByRole("listitem").filter({ hasText: "고은별" }).getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // b 펜 → 고은별 R3
+    await pen(page, "b").click();
+    await cell(page, "고은별", "R3").click();
+    await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 b");
+    await page.reload();
+    await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 b");
 
-  // 벌점 시트: 구민재 → 지각 + 메모 + 이슈
-  const row2 = page.getByRole("listitem").filter({ hasText: "구민재" });
-  // exact: 오늘 이미 벌점이 있으면 행 버튼 본문에도 '벌점' 이 들어가 두 개가 잡힌다
-  await row2.getByRole("button", { name: "벌점", exact: true }).click();
-  const sheet = page.getByRole("dialog");
-  await expect(sheet).toContainText("구민재");
-  await sheet.getByRole("button", { name: /지각/ }).click();
-  await sheet.getByLabel("메모").fill("10분 지각");
-  await sheet.getByLabel("지점장에게 이슈로 보고").check();
-  await sheet.getByRole("button", { name: "저장" }).click();
-  await expect(row2.getByText(/지각 4점 · 이슈/)).toBeVisible();
-  await expect(row2.getByRole("button", { name: "4", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // 지각 펜 → 구민재 R3 : 사유 고르는 창 없이 4점
+    await pen(page, /^지각/).click();
+    await cell(page, "구민재", "R3").click();
+    await expect(cell(page, "구민재", "R3")).toHaveAccessibleName("구민재 R3 지각 4점");
 
-  // 검색
-  await page.getByPlaceholder("이름 또는 좌석번호").fill("나윤서");
-  await expect(page.getByRole("listitem").filter({ hasText: "나윤서" })).toBeVisible();
-  await expect(page.getByRole("listitem").filter({ hasText: "고은별" })).toHaveCount(0);
-  await page.getByPlaceholder("이름 또는 좌석번호").fill("");
+    // 메모는 '메모·자세히' 펜으로 (PC 에서 적는 것)
+    await pen(page, "메모·자세히").click();
+    await cell(page, "구민재", "R3").click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toContainText("구민재");
+    await sheet.getByLabel("메모").fill("10분 지각");
+    await sheet.getByLabel("지점장에게 이슈로 보고").check();
+    await sheet.getByRole("button", { name: "저장" }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(cell(page, "구민재", "R3")).toHaveAccessibleName("구민재 R3 지각 4점");
 
-  // 완료
-  await page.getByRole("button", { name: /회차 완료/ }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText(`R${roundNo} 회차 완료`);
-  await expect(dialog).toContainText("이슈 보고");
-  await dialog.getByRole("button", { name: "조교 홈으로" }).click();
-  await expect(page).toHaveURL("/rounding");
-  await expect(page.getByRole("button", { name: new RegExp(`R${roundNo + 1} 시작`) })).toBeVisible();
+    // 잘못 눌렀으면 되돌리기
+    await pen(page, "a").click();
+    await cell(page, "나윤서", "R3").click();
+    await expect(cell(page, "나윤서", "R3")).toHaveAccessibleName("나윤서 R3 a");
+    await page.getByRole("button", { name: "되돌리기" }).click();
+    await expect(cell(page, "나윤서", "R3")).toHaveAccessibleName("나윤서 R3 빈 칸");
 
-  // 조회 화면에 반영
-  await page.goto("/rounding/history");
-  const hrow = page.getByRole("row").filter({ hasText: "구민재" });
-  await expect(hrow).toContainText("4");
+    // 지우개
+    await pen(page, "지우개").click();
+    await cell(page, "고은별", "R3").click();
+    await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 빈 칸");
+  });
+
+  test("직전 회차 값을 가져와 달라진 학생만 고치고, 회차를 완료한다", async ({ page }) => {
+    await login(page, "assistant");
+    // R3 에 몇 칸 적어 둔다
+    await pen(page, "b").click();
+    await cell(page, "강하늘", "R3").click();
+    await expect(cell(page, "강하늘", "R3")).toHaveAccessibleName("강하늘 R3 b");
+
+    // R4 ← R3 가져오기: 적어 둔 b 가 넘어온다
+    await page.getByRole("button", { name: "R4 열 메뉴" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /R3 값 가져오기/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "가져오기" }).click();
+    await expect(page.getByRole("status")).toContainText("R3 값을 R4에");
+    await expect(cell(page, "강하늘", "R4")).toHaveAccessibleName("강하늘 R4 b");
+    // 벌점은 옮기지 않는다: 앞 테스트에서 R3 지각을 받은 구민재는 R4 에서 a
+    await expect(cell(page, "구민재", "R4")).toHaveAccessibleName("구민재 R4 a");
+
+    // 완료: 빈 칸은 a
+    await page.getByRole("button", { name: "R4 열 메뉴" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /R4 완료/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "완료" }).click();
+    await expect(page.getByRole("status")).toContainText("R4 완료");
+    await expect(page.getByRole("button", { name: "R4 열 메뉴" })).toContainText("완료");
+  });
+
+  test("일별 항목도 같은 표에서 적고, 빈 칸은 한 번에 a — 출석은 적지 않는다", async ({ page }) => {
+    await login(page, "assistant");
+    // 시드: 오늘 뒤쪽 학생 몇 명은 플래너가 비어 있다
+    const empty = page.getByRole("button", { name: /^\S+ 플래너 빈 칸$/ }).first();
+    const who = (await empty.getAttribute("aria-label"))!.replace(/ 플래너 빈 칸$/, "");
+    await page.getByRole("button", { name: "플래너 열 메뉴" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /빈 칸 \d+칸을 a로 채우기/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "a로 채우기" }).click();
+    await expect(cell(page, who, "플래너")).toHaveAccessibleName(`${who} 플래너 a`);
+    await expect(page.getByRole("button", { name: /플래너 빈 칸$/ })).toHaveCount(0);
+
+    // 출석 열은 누를 칸이 없다 (라운딩에서 저절로)
+    await expect(page.getByRole("button", { name: /^\S+ 출석 / })).toHaveCount(0);
+    await page.getByRole("button", { name: "출석 열 메뉴" }).click();
+    await expect(page.getByRole("dialog")).toContainText("저절로 채워집니다");
+  });
+
+  test("인쇄하면 도구는 숨고 표와 머리글만 나온다", async ({ page }) => {
+    await login(page, "assistant");
+    await page.emulateMedia({ media: "print" });
+    await expect(page.getByRole("toolbar", { name: "펜" })).toBeHidden();
+    await expect(page.getByText(/라운딩 표 · \d{4}-\d{2}-\d{2}/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "R1 열 메뉴" })).toBeVisible();
+    await page.emulateMedia({ media: "screen" });
+  });
 });
 
 test("이슈 보고는 지점장 이슈함·알림에 도달한다", async ({ page }) => {
@@ -64,72 +110,40 @@ test("이슈 보고는 지점장 이슈함·알림에 도달한다", async ({ pa
   await expect(page.getByText(/구민재 · 지각/)).toBeVisible();
 });
 
-test("일별 체크: 출석에 등원 시각·CALL 기록", async ({ page }) => {
+test("PC: 시트처럼 화살표와 글쇠 하나로 적고 아래 칸으로 내려간다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "manager");
+  await page.goto("/rounding");
+  await pen(page, "a").click();
+  await cell(page, "강하늘", "R5").click();
+  await expect(cell(page, "강하늘", "R5")).toHaveAccessibleName("강하늘 R5 a");
+  // 커서가 강하늘 R5 에 있다: B 는 그 칸을 b 로 고치고 다음 줄로
+  await page.keyboard.press("KeyB");
+  await expect(cell(page, "강하늘", "R5")).toHaveAccessibleName("강하늘 R5 b");
+  await page.keyboard.press("Digit0");
+  const next = page.locator("tbody tr").filter({ has: page.getByRole("button", { name: /R5 부재$/ }) });
+  await expect(next).toHaveCount(1);
+  // 잘못 적은 칸은 Delete
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("button", { name: /R5 부재$/ })).toHaveCount(0);
+});
+
+test("예전 주소(일별 체크·라운딩 조회)는 하루 표로 넘어간다", async ({ page }) => {
   await login(page, "assistant");
   await page.goto("/daily-checks");
-  await expect(page.getByRole("heading", { name: "일별 체크" })).toBeVisible();
-  const row = page.getByRole("listitem").filter({ hasText: "도현우" });
-  await row.getByRole("button", { name: "부재" }).click();
-  await expect(row.getByRole("button", { name: "부재" })).toHaveAttribute("aria-pressed", "true");
-  // 시트에서 등원 시각
-  await row.getByText("도현우").click();
-  const sheet = page.getByRole("dialog");
-  await sheet.getByRole("button", { name: "b", exact: true }).click();
-  await sheet.getByLabel("등원 시각").fill("09:40");
-  await sheet.getByLabel("전화 확인(CALL)").check();
-  await sheet.getByRole("button", { name: "저장" }).click();
-  await expect(row.getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.reload();
-  await page.getByRole("listitem").filter({ hasText: "도현우" }).getByText("도현우").click();
-  await expect(page.getByRole("dialog").getByLabel("등원 시각")).toHaveValue("09:40");
+  await expect(page).toHaveURL("/rounding");
+  await page.goto("/rounding/history");
+  await expect(page).toHaveURL("/rounding");
+  // 메뉴에 '일별 체크'가 따로 없다
+  await expect(page.getByRole("link", { name: "일별 체크" })).toHaveCount(0);
 });
 
-test("라운딩을 돌면서 일별 항목도 같은 줄에서 적고, 나머지는 한 번에 a로 채운다", async ({ page }) => {
-  await login(page, "assistant");
-  const resume = page.getByRole("link", { name: /진행 중 · 이어서 입력/ });
-  if (await resume.count()) await resume.click();
-  else await page.getByRole("button", { name: /R\d+ 시작/ }).click();
-  await expect(page.getByRole("heading", { name: /R\d+ 라운딩/ })).toBeVisible();
-
-  // 같은 줄의 '플래너' 칩을 한 번 누르면 a. 시드에 이미 적힌 학생이 있으므로 비어 있는 첫 학생을 고른다
-  const emptyChip = page.getByRole("button", { name: /플래너 미입력$/ }).first();
-  const who = (await emptyChip.getAttribute("aria-label"))!.replace(/ 플래너 미입력$/, "");
-  const row = page.getByRole("listitem").filter({ hasText: who });
-  await emptyChip.click();
-  await expect(row.getByRole("button", { name: `${who} 플래너 a` })).toBeVisible();
-  // 이미 적힌 칩을 누르면 그 항목의 편집 시트가 열린다
-  await row.getByRole("button", { name: `${who} 플래너 a` }).click();
-  const sheet = page.getByRole("dialog");
-  await expect(sheet).toContainText("플래너");
-  await sheet.getByRole("button", { name: "b", exact: true }).click();
-  await sheet.getByRole("button", { name: "저장" }).click();
-  await expect(row.getByRole("button", { name: `${who} 플래너 b` })).toBeVisible();
-
-  // 일별 체크에 그대로 들어가 있다 — 다시 돌 필요가 없다
-  await page.goto("/daily-checks?item=planner");
-  const drow = page.getByRole("listitem").filter({ hasText: who });
-  await expect(drow.getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
-
-  // 예외만 적고 나머지는 한 번에
-  await page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "a로 채우기" }).click();
-  await expect(page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ })).toHaveCount(0);
-  await page.reload();
-  // 다시 읽어도 채울 사람이 남아 있지 않다 (버튼은 일부만 적혔을 때만 나온다)
-  await expect(page.getByRole("heading", { name: "일별 체크" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /미입력 \d+명을 a로 채우기/ })).toHaveCount(0);
-  await expect(page.getByRole("listitem").filter({ hasText: who }).getByRole("button", { name: "b", exact: true })).toHaveAttribute("aria-pressed", "true");
-
-  // 출석은 한꺼번에 채울 수 없다 (결석이 출석으로 바뀌면 안 된다)
-  await page.goto("/daily-checks?item=attendance");
-  await expect(page.getByRole("button", { name: /a로 채우기/ })).toHaveCount(0);
-});
-
-test("멘토는 라운딩 시트를 읽기만 한다", async ({ page }) => {
+test("멘토는 라운딩 표를 읽기만 한다", async ({ page }) => {
   await login(page, "mentor");
   await page.goto("/rounding");
-  const link = page.getByRole("link", { name: /R1/ }).first();
-  await link.click();
-  await expect(page.getByRole("heading", { name: /R1 라운딩/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "벌점" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "라운딩" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "펜" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^\S+ R1 / })).toHaveCount(0);
+  await expect(page.getByText("읽기 전용")).toBeVisible();
 });

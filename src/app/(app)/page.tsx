@@ -13,7 +13,7 @@ import { buildAttention } from "@/lib/rules/attention";
 import { todayKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
 import { dashboard, hqOverview } from "@/modules/dashboard/repo";
-import { unreadNoteCount } from "@/modules/handover/repo";
+import { openRequestCount, unreadNoteCount } from "@/modules/handover/repo";
 import { paymentSummary } from "@/modules/payments/repo";
 import { upcomingAppointments } from "@/modules/schedule/repo";
 import { clockInAction, clockOutAction } from "@/modules/worklog/actions";
@@ -49,13 +49,14 @@ async function DashboardPage() {
   if (ctx.role === "assistant") redirect("/rounding");
   const today = todayKey();
   const canSeeMoney = ctx.role === "hq_admin" || ctx.role === "branch_manager";
-  const [d, overview, money, appointments, unreadNotes, clock] = await Promise.all([
+  const [d, overview, money, appointments, unreadNotes, clock, openRequests] = await Promise.all([
     dashboard(ctx, today),
     ctx.isHqAdmin ? hqOverview(ctx, today) : Promise.resolve(null),
     canSeeMoney ? paymentSummary(ctx, today) : Promise.resolve(null),
     upcomingAppointments(ctx, 7, today),
     unreadNoteCount(ctx, 14, today),
     myWorkClock(ctx, today), // 지점 소속이 아니면 null 이라 카드가 뜨지 않는다
+    openRequestCount(ctx),
   ]);
   const won = (n: number) => n.toLocaleString("ko-KR");
   const nowTime = new Date().toTimeString().slice(0, 5);
@@ -70,6 +71,7 @@ async function DashboardPage() {
     openIssues: d.openIssues,
     money: money ? { pending: money.seat.pending + money.meal.pending, amount: money.total, unpriced: money.unpriced } : null,
     unreadNotes,
+    openRequests,
     todayAppointments: appointments.filter((a) => a.date === today),
   });
 
@@ -116,7 +118,7 @@ async function DashboardPage() {
           <AttentionList items={attention} />
 
           <div className="grid divide-y divide-border rounded-md bg-card ring-1 ring-border md:grid-cols-3 md:divide-x md:divide-y-0">
-            <StatCard label="오늘 라운딩" value={d.sessionsDone} unit={`/ ${d.roundsPerDay} 회차`} href="/rounding/history" hint="회차별 결과 보기">
+            <StatCard label="오늘 라운딩" value={d.sessionsDone} unit={`/ ${d.roundsPerDay} 회차`} href="/rounding" hint="오늘 라운딩 표 보기">
               <RoundsStrip days={d.recentRounds} perDay={d.roundsPerDay} />
             </StatCard>
             <StatCard label="이번 주 상담일지 미작성" value={d.missingWeekly} unit="명" tone={d.missingWeekly > 0 ? "warning" : "default"} href={`/counsel/weekly?week=${d.weekStart}`} hint={`${fmtShortDate(d.weekStart)} 주 상담일지 열기`} />

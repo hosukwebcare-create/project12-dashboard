@@ -52,6 +52,37 @@ test("인수인계: 남긴 글이 다른 근무자에게 안 읽음으로 보이
   await ctx2.close();
 });
 
+test("해 주세요: 맡긴 일을 다음 사람이 해 놓으면 내려가고, 이슈함·대시보드에서도 보인다", async ({ page, browser }) => {
+  await login(page, "manager");
+  await page.goto("/handover");
+  const box = page.locator("#requests");
+  await box.getByLabel("무엇을 해 주면 되나요?").fill("이투이 복사기 토너 주문해 주세요");
+  await box.getByRole("button", { name: "맡기기" }).click();
+  await expect(box.getByText("이투이 복사기 토너 주문해 주세요")).toBeVisible();
+  // 인수인계 글 목록에는 섞이지 않는다
+  await expect(page.locator('[data-slot="card"]').filter({ hasText: "이투이 복사기 토너" })).toHaveCount(1);
+  // 대시보드 '오늘 챙길 것'과 이슈함에서 찾아갈 수 있다
+  await page.goto("/");
+  await expect(page.getByText(/해 주세요 \d+건이 남아 있습니다/)).toBeVisible();
+  await page.goto("/issues");
+  await expect(page.getByRole("link", { name: /해 주세요 \d+건/ })).toBeVisible();
+
+  const ctx2 = await browser.newContext();
+  const p2 = await ctx2.newPage();
+  await login(p2, "assistant");
+  await p2.goto("/handover");
+  const item = p2.locator("#requests li").filter({ hasText: "이투이 복사기 토너 주문해 주세요" });
+  await item.getByRole("button", { name: /했어요/ }).click();
+  await expect(p2.locator("#requests li").filter({ hasText: "이투이 복사기 토너 주문해 주세요" }).getByRole("button", { name: /했어요/ })).toHaveCount(0);
+  await p2.getByText(/최근 해 놓은 일/).click();
+  await expect(p2.getByText(/최조교 · .*에 해 놓음/).first()).toBeVisible();
+  await ctx2.close();
+
+  // 부탁한 사람에게 알림이 간다
+  await page.goto("/notifications");
+  await expect(page.getByText(/해 놓았어요 · 이투이 복사기 토너/)).toBeVisible();
+});
+
 test("결제 대상: 요금표를 만들고 좌석 등급을 지정하면 금액이 계산된다", async ({ page }) => {
   await login(page, "manager");
   await page.goto("/settings/fees");

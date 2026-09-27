@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
 import { handoverComments, handoverNotes, handoverReads, shiftSlots, users, type HandoverKind } from "@/db/schema";
 import { ALL_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
@@ -15,12 +15,14 @@ import { notify } from "@/modules/notifications/repo";
  */
 export const HANDOVER_KINDS: { key: HandoverKind; label: string }[] = [
   { key: "handover", label: "인수인계" },
+  { key: "request", label: "해 주세요" },
   { key: "notice", label: "공지" },
 ];
-export const KIND_LABEL: Record<HandoverKind, string> = { handover: "인수인계", notice: "공지" };
+export const KIND_LABEL: Record<HandoverKind, string> = { handover: "인수인계", notice: "공지", request: "해 주세요" };
 
 export type HandoverRow = typeof handoverNotes.$inferSelect & {
   authorName: string | null;
+  doneByName: string | null;
   slotName: string | null;
   commentCount: number;
   readCount: number;
@@ -29,27 +31,33 @@ export type HandoverRow = typeof handoverNotes.$inferSelect & {
 
 export type HandoverComment = typeof handoverComments.$inferSelect & { authorName: string | null };
 
+/** 근무 타임 이름. 근무 형태마다 '1타임'이 따로 있어서 형태를 앞에 붙인다 (주간조교 1타임, 원장 1타임) */
+function slotName(s: { name: string; audience: string | null }): string {
+  return s.audience ? `${s.audience === "컨설팅" ? "학습멘토" : s.audience} ${s.name}` : s.name;
+}
+
 export type NoteInput = { id?: string; date: string; slotKey?: string | null; kind: HandoverKind; body: string };
 
 async function decorate(rows: (typeof handoverNotes.$inferSelect)[], ctx: Ctx, db: Db): Promise<HandoverRow[]> {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
-  const authorIds = [...new Set(rows.map((r) => r.authorId).filter((v): v is string => Boolean(v)))];
+  const authorIds = [...new Set(rows.flatMap((r) => [r.authorId, r.doneBy]).filter((v): v is string => Boolean(v)))];
   const [authors, slots, comments, reads, mine] = await Promise.all([
     authorIds.length ? db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, authorIds)) : Promise.resolve([]),
-    db.select({ key: shiftSlots.key, name: shiftSlots.label }).from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId)),
+    db.select({ key: shiftSlots.key, name: shiftSlots.label, audience: shiftSlots.audience }).from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId)),
     db.select({ noteId: handoverComments.noteId, n: sql<string>`count(*)` }).from(handoverComments).where(inArray(handoverComments.noteId, ids)).groupBy(handoverComments.noteId),
     db.select({ noteId: handoverReads.noteId, n: sql<string>`count(*)` }).from(handoverReads).where(inArray(handoverReads.noteId, ids)).groupBy(handoverReads.noteId),
     db.select({ noteId: handoverReads.noteId }).from(handoverReads).where(and(inArray(handoverReads.noteId, ids), eq(handoverReads.userId, ctx.userId))),
   ]);
   const aById = new Map(authors.map((a) => [a.id, a.name]));
-  const sByKey = new Map(slots.map((s) => [s.key, s.name]));
+  const sByKey = new Map(slots.map((s) => [s.key, slotName(s)]));
   const cById = new Map(comments.map((c) => [c.noteId, Number(c.n)]));
   const rById = new Map(reads.map((r) => [r.noteId, Number(r.n)]));
   const readByMe = new Set(mine.map((m) => m.noteId));
   return rows.map((r) => ({
     ...r,
     authorName: r.authorId ? (aById.get(r.authorId) ?? null) : null,
+    doneByName: r.doneBy ? (aById.get(r.doneBy) ?? null) : null,
     slotName: r.slotKey ? (sByKey.get(r.slotKey) ?? r.slotKey) : null,
     commentCount: cById.get(r.id) ?? 0,
     readCount: rById.get(r.id) ?? 0,
@@ -69,7 +77,48 @@ export async function listNotes(ctx: Ctx, days = 14, today = toDateKey(new Date(
     .orderBy(desc(handoverNotes.date), desc(handoverNotes.createdAt))
     .limit(200);
   const list = await decorate(rows, ctx, db);
-  return [...list.filter((r) => r.kind === "notice"), ...list.filter((r) => r.kind !== "notice")];
+  // '해 주세요'는 위쪽 칸에 따로 모은다
+  return [...list.filter((r) => r.kind === "notice"), ...list.filter((r) => r.kind === "handover")];
+}
+
+/**
+ * '해 주세요' 칸: 아직 안 한 일은 날짜와 상관없이 전부, 해 놓은 일은 최근 3일 것만.
+ * 인수인계 글은 읽으면 끝이지만 이건 누군가 해야 끝난다 — 그래서 목록이 따로다.
+ */
+export async function listRequests(ctx: Ctx, today = toDateKey(new Date()), db: Db = defaultDb): Promise<{ open: HandoverRow[]; done: HandoverRow[] }> {
+  requireRole(ctx, ...ALL_ROLES);
+  const since = addDays(today, -3);
+  const rows = await db
+    .select()
+    .from(handoverNotes)
+    .where(and(eq(handoverNotes.branchId, ctx.branchId), eq(handoverNotes.kind, "request"), or(isNull(handoverNotes.doneAt), gte(handoverNotes.doneAt, since))))
+    .orderBy(asc(handoverNotes.date), asc(handoverNotes.createdAt))
+    .limit(200);
+  const list = await decorate(rows, ctx, db);
+  return { open: list.filter((r) => !r.doneAt), done: list.filter((r) => r.doneAt).sort((a, b) => (b.doneAt?.getTime() ?? 0) - (a.doneAt?.getTime() ?? 0)) };
+}
+
+/** 대시보드·이슈함에 보이는 남은 '해 주세요' 수 */
+export async function openRequestCount(ctx: Ctx, db: Db = defaultDb): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<string>`count(*)` })
+    .from(handoverNotes)
+    .where(and(eq(handoverNotes.branchId, ctx.branchId), eq(handoverNotes.kind, "request"), isNull(handoverNotes.doneAt)));
+  return Number(row?.n ?? 0);
+}
+
+/** '해 주세요'를 했다고 표시하거나 되돌린다. 누구나 할 수 있고, 한 사람이 표시하면 부탁한 사람에게 알린다 */
+export async function setRequestDone(ctx: Ctx, id: string, done: boolean, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, ...ALL_ROLES);
+  const note = await getNote(ctx, id, db);
+  if (note.kind !== "request") throw new ValidationError("'해 주세요' 글만 완료로 표시할 수 있습니다");
+  await db
+    .update(handoverNotes)
+    .set(done ? { doneAt: new Date(), doneBy: ctx.userId } : { doneAt: null, doneBy: null })
+    .where(and(eq(handoverNotes.id, id), eq(handoverNotes.branchId, ctx.branchId)));
+  if (done && note.authorId && note.authorId !== ctx.userId) {
+    await notify(db, [note.authorId], "handover", { title: `해 놓았어요 · ${note.body.slice(0, 40)} (${ctx.userName})`, noteId: id }, ctx.branchId);
+  }
 }
 
 /** 상단바·대시보드에 쓰는 안 읽은 건수 */
@@ -187,5 +236,10 @@ export async function addComment(ctx: Ctx, noteId: string, body: string, db: Db 
 
 /** 근무 타임 선택지 (글을 어느 타임 이야기인지 붙일 때) */
 export async function slotOptions(ctx: Ctx, db: Db = defaultDb): Promise<{ key: string; name: string }[]> {
-  return db.select({ key: shiftSlots.key, name: shiftSlots.label }).from(shiftSlots).where(eq(shiftSlots.branchId, ctx.branchId)).orderBy(asc(shiftSlots.sort));
+  const rows = await db
+    .select({ key: shiftSlots.key, name: shiftSlots.label, audience: shiftSlots.audience })
+    .from(shiftSlots)
+    .where(and(eq(shiftSlots.branchId, ctx.branchId), eq(shiftSlots.active, true)))
+    .orderBy(asc(shiftSlots.sort));
+  return rows.map((r) => ({ key: r.key, name: slotName(r) }));
 }

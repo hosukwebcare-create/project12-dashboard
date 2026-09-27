@@ -12,7 +12,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/counsel/weekly", label: "상담일지", roles: STAFF, icon: "book" },
   { href: "/mock-exams", label: "모의고사", roles: STAFF, icon: "exam" },
   { href: "/rounding", label: "라운딩", roles: ALL, icon: "walk" },
-  { href: "/daily-checks", label: "일별 체크", roles: ["hq_admin", "branch_manager", "assistant"], icon: "check" },
   { href: "/meals", label: "식사주문", roles: ["hq_admin", "branch_manager", "assistant"], icon: "meal" },
   { href: "/worklog", label: "근무", roles: ALL, icon: "clock" },
   { href: "/payments", label: "결제 대상", roles: MANAGERS, icon: "won" },
@@ -30,6 +29,6 @@ export function navFor(role: Role): NavItem[] {
 /** 모바일 하단 탭은 최대 5개 */
 export function mobileNavFor(role: Role): NavItem[] {
   const items = navFor(role);
-  const preferred = role === "assistant" ? ["/rounding", "/daily-checks", "/handover", "/issues", "/notifications"] : ["/", "/members", "/counsel/weekly", "/handover", "/issues"];
+  const preferred = role === "assistant" ? ["/rounding", "/worklog", "/handover", "/issues", "/notifications"] : ["/", "/members", "/counsel/weekly", "/handover", "/issues"];
   return preferred.map((h) => items.find((i) => i.href === h)).filter((x): x is NavItem => Boolean(x)).slice(0, 5);
 }

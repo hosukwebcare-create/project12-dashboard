@@ -25,6 +25,13 @@ describe("오늘 챙길 것", () => {
     expect(buildAttention({ ...base, sessionsDone: 0 })[0]).toMatchObject({ key: "rounds", level: "urgent", title: "라운딩이 2회차 밀려 있습니다" });
   });
 
+  it("아무도 안 한 '해 주세요'가 있으면 인수인계로 안내한다", () => {
+    expect(buildAttention({ ...base, openRequests: 2 })).toEqual([
+      expect.objectContaining({ key: "requests", level: "warning", title: "해 주세요 2건이 남아 있습니다", href: "/handover#requests", target: "인수인계" }),
+    ]);
+    expect(buildAttention({ ...base, openRequests: 0 })).toEqual([]);
+  });
+
   it("시간표가 없으면 라운딩 지연을 판단하지 않는다", () => {
     expect(buildAttention({ ...base, roundSchedule: [], sessionsDone: 0 })).toEqual([]);
   });

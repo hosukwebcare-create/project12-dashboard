@@ -18,6 +18,7 @@ async function main() {
   const { hashPassword } = await import("@/lib/auth/password");
   const { addDays, toDateKey, weekStart } = await import("@/lib/rules/week");
   const { minutesToHoursX100, SHEET_SLOT_PRESET } = await import("@/lib/rules/worklog");
+  const { AUTO_ATTENDANCE_NOTE, deriveAttendance } = await import("@/lib/rules/rounding");
 
   // ----- 초기화 -----
   const tables = await db.execute<{ tablename: string }>(
@@ -60,11 +61,14 @@ async function main() {
   const [assistant] = await db.insert(s.users).values({ loginId: "assistant", name: "최조교", passwordHash: pw, pinHash: await hashPassword("1111") }).returning();
   const [assistant2] = await db.insert(s.users).values({ loginId: "assistant2", name: "정조교", passwordHash: pw, pinHash: await hashPassword("2222") }).returning();
   const [manager2] = await db.insert(s.users).values({ loginId: "manager2", name: "김원장", passwordHash: pw }).returning();
+  // 청소조교. 지점마다 시간이 달라 타임은 만들어 두지 않는다 — 지점이 직접 만든다
+  const [cleaner] = await db.insert(s.users).values({ loginId: "cleaner", name: "한청소", passwordHash: pw }).returning();
   await db.insert(s.memberships).values([
     { userId: manager.id, branchId: dt2.id, role: "branch_manager" },
     { userId: mentor.id, branchId: dt2.id, role: "mentor" },
     { userId: assistant.id, branchId: dt2.id, role: "assistant" },
     { userId: assistant2.id, branchId: dt2.id, role: "assistant" },
+    { userId: cleaner.id, branchId: dt2.id, role: "assistant" },
     { userId: manager2.id, branchId: sw1.id, role: "branch_manager" },
     { userId: mentor.id, branchId: sw1.id, role: "mentor" },
   ]);
@@ -181,7 +185,8 @@ async function main() {
   // ----- 이번 주 라운딩 세션 · 체크 (동탄2) -----
   const enrolled = members.filter((m) => m.status === "enrolled");
   const seatNoOf = (m: (typeof members)[number]) => dt2Seats.find((x) => x.id === m.seatId)?.seatNo ?? null;
-  const dailyKeys = ["attendance", "planner", "vocab", "checkout"];
+  // 출석은 적지 않는다: 그날 라운딩에서 채운다(한 번이라도 자리에 있으면 a, 온종일 사유면 b)
+  const dailyKeys = ["planner", "vocab", "checkout"];
   const penaltyRuleNames = ["졸음", "휴대폰 전원 미차단", "지각", "이동금지 위반"];
   const issueCandidates: { checkId: string; memberId: string; name: string; rule: string }[] = [];
 
@@ -209,19 +214,23 @@ async function main() {
       for (const key of dailyKeys) {
         const r = rnd();
         const grade = r < 0.88 ? "a" : r < 0.96 ? "b" : "p";
-        const rule = grade === "p" && key === "attendance" ? ruleByName.get("지각")! : grade === "p" ? ruleByName.get("휴대폰 전원 미차단")! : null;
+        const rule = grade === "p" ? ruleByName.get("휴대폰 전원 미차단")! : null;
         // 오늘은 아직 하루가 안 끝났다: 뒤쪽 몇 명은 플래너·영단어를 아직 안 적었고, 점검완료는 아무도 안 했다.
         // (난수는 위에서 이미 뽑았으므로 다른 날의 데이터는 그대로다)
         if (isToday && (key === "checkout" || ((key === "planner" || key === "vocab") && enrolled.indexOf(m) >= enrolled.length - 4))) continue;
         checkRows.push({ branchId: dt2.id, memberId: m.id, seatNoSnapshot: seatNo, date: dayKey, itemKey: key, roundNo: 0, grade, points: rule?.points ?? 0, penaltyRuleId: rule?.id ?? null, createdBy: assistant.id });
       }
+      const roundGrades: ("a" | "b" | "p" | "na")[] = [];
       for (const sess of sessions) {
         if (sess.completedAt === null) continue; // 진행 중 회차는 미입력
         const r = rnd();
         const grade = r < 0.86 ? "a" : r < 0.95 ? "b" : "p";
         const rule = grade === "p" ? ruleByName.get(pick(penaltyRuleNames))! : null;
+        roundGrades.push(grade);
         checkRows.push({ branchId: dt2.id, memberId: m.id, seatNoSnapshot: seatNo, date: dayKey, itemKey: "round", roundNo: sess.roundNo, sessionId: sess.id, grade, points: rule?.points ?? 0, penaltyRuleId: rule?.id ?? null, note: grade === "b" ? "학원 일정" : null, isIssue: grade === "p" && rule?.name === "이동금지 위반", createdBy: sess.startedBy });
       }
+      const att = deriveAttendance(roundGrades);
+      if (att) checkRows.push({ branchId: dt2.id, memberId: m.id, seatNoSnapshot: seatNo, date: dayKey, itemKey: "attendance", roundNo: 0, grade: att, points: 0, note: AUTO_ATTENDANCE_NOTE, createdBy: assistant.id });
     }
     const inserted = await db.insert(s.checks).values(checkRows).returning({ id: s.checks.id, memberId: s.checks.memberId, isIssue: s.checks.isIssue, penaltyRuleId: s.checks.penaltyRuleId });
     for (const c of inserted) {
@@ -322,7 +331,8 @@ async function main() {
   await db.insert(s.shiftSlots).values(slotRows.map((r) => ({ ...r, branchId: dt2.id })));
   await db.insert(s.staffProfiles).values([
     { userId: assistant.id, branchId: dt2.id, employmentType: "주간조교", hourlyRate: 10500, workDays: "월~수" },
-    { userId: assistant2.id, branchId: dt2.id, employmentType: "야간조교", hourlyRate: 10500, workDays: "목~일" },
+    { userId: assistant2.id, branchId: dt2.id, employmentType: "주간조교", hourlyRate: 10500, workDays: "목~일" },
+    { userId: cleaner.id, branchId: dt2.id, employmentType: "청소조교", hourlyRate: null, workDays: "월~금" },
     { userId: mentor.id, branchId: dt2.id, employmentType: "컨설팅", hourlyRate: 25000, workDays: "화·목·토" },
     { userId: manager.id, branchId: dt2.id, employmentType: "원장", hourlyRate: null, workDays: "월~금" },
   ]);
@@ -334,11 +344,20 @@ async function main() {
     // 주간조교는 평일 일곱 타임을 다 채우면 시트와 같은 2.5시간. 하루는 2타임을 비워 둔다
     const dayKeys = d === 3 ? ["d1", "d3", "d4", "d5", "d6", "d7"] : ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
     workRows.push({ branchId: dt2.id, userId: assistant.id, date: dayKey, slotKeys: dayKeys, hoursX100: hoursOf(dayKeys), overtimeX100: d === 1 ? 50 : 0, overtimeReason: d === 1 ? "외출 확인, 남자 화장실 정리" : null, hqConfirmedBy: d < 2 ? hq.id : null, hqConfirmedAt: d < 2 ? new Date() : null });
-    workRows.push({ branchId: dt2.id, userId: assistant2.id, date: dayKey, slotKeys: ["n1", "n2", "n3"], hoursX100: hoursOf(["n1", "n2", "n3"]), overtimeX100: d === 2 ? 17 : 0, overtimeReason: d === 2 ? "마감 정리" : null });
+    // 두 번째 주간조교는 목~일 근무(시트의 두 줄과 같다)
+    const full = ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
+    if (d >= 3) workRows.push({ branchId: dt2.id, userId: assistant2.id, date: dayKey, slotKeys: full, hoursX100: hoursOf(full), overtimeX100: d === 4 ? 30 : 0, overtimeReason: d === 4 ? "커피머신 청소" : null });
     workRows.push({ branchId: dt2.id, userId: manager.id, date: dayKey, slotKeys: ["m1"], hoursX100: hoursOf(["m1"]), overtimeX100: 0 });
     if (d === 1 || d === 3) workRows.push({ branchId: dt2.id, userId: mentor.id, date: dayKey, slotKeys: ["c1"], hoursX100: hoursOf(["c1"]), overtimeX100: 0 });
   }
   if (workRows.length) await db.insert(s.workLogs).values(workRows);
+
+  // 인수인계 '해 주세요': 남은 일 하나, 해 놓은 일 하나
+  await db.insert(s.handoverNotes).values([
+    { branchId: dt2.id, date: toDateKey(addDays(today, -1)), kind: "request", body: "12번 자리 스탠드 깜빡임 — 관리업체에 전화해 주세요", authorId: manager.id },
+    { branchId: dt2.id, date: toDateKey(addDays(today, -1)), kind: "request", body: "정수기 컵 채워 주세요", authorId: assistant.id, doneAt: new Date(), doneBy: assistant2.id },
+    { branchId: dt2.id, date: today, kind: "handover", body: "오늘 오후 3시 모의고사 신청 마감. 미신청 학생 명단은 모의고사 화면에 있습니다.", authorId: manager.id },
+  ]);
 
   await db.insert(s.alimtalkTemplates).values([
     { code: "WEEKLY_REPORT", name: "주간리포트 안내", body: "#{이름} 학생의 #{지점} 주간리포트가 도착했습니다.\n#{링크}", variables: ["이름", "지점", "링크"] },
@@ -349,7 +368,7 @@ async function main() {
   console.log("시드 완료");
   console.log("  계정: hq/hq1234 (본사), manager/1234 (지점장 동탄2), mentor/1234 (멘토), assistant/1234 (조교), manager2/1234 (지점장 수원1)");
   console.log(`  현황판(동탄2): /board/${dt2.id}?t=${boardTokenPlain}`);
-  console.log(`  회원 ${members.length}명, 좌석 ${dt2Seats.length}석, 사용자 ${[hq, manager, mentor, assistant, assistant2, manager2].length}명`);
+  console.log(`  회원 ${members.length}명, 좌석 ${dt2Seats.length}석, 사용자 ${[hq, manager, mentor, assistant, assistant2, manager2, cleaner].length}명`);
   await getSql().end();
 }
 

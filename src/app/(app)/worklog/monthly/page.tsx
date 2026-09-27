@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { InlineRate } from "@/components/app/inline-rate";
 import { Button } from "@/components/ui/button";
 import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
 import { guarded } from "@/lib/page-guard";
 import { todayKey } from "@/lib/rules/week";
-import { formatHours, STAFF_GROUPS } from "@/lib/rules/worklog";
+import { employmentLabel, formatHours, STAFF_GROUPS } from "@/lib/rules/worklog";
+import { patchStaffProfileAction } from "@/modules/worklog/actions";
 import { hqWorklogSummary, monthlySummary } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무 월 집계" };
@@ -95,12 +97,14 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
               {g.rows.map((r) => (
                 <tr key={r.userId} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.userName}</td>
-                  <td className="px-3 py-2">{r.employmentType}</td>
+                  <td className="px-3 py-2">{employmentLabel(r.employmentType)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.days}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatHours(r.hoursX100)}h</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatHours(r.overtimeX100)}h</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatHours(r.confirmedX100)}h</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.hourlyRate?.toLocaleString() ?? "-"}</td>
+                  <td className="px-3 py-1 text-right">
+                    <InlineRate userId={r.userId} name={r.userName} value={r.hourlyRate} save={patchStaffProfileAction} />
+                  </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums">{r.estimatedPay?.toLocaleString() ?? "-"}</td>
                 </tr>
               ))}
@@ -117,7 +121,7 @@ async function MonthlyWorklogPage({ searchParams }: { searchParams: Promise<{ mo
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-muted-foreground">예상 급여 = (근무시간 + 초과) × 시급. 실제 지급은 본사 확인 시간을 기준으로 급여 담당자가 확정합니다.</p>
+      <p className="mt-2 text-xs text-muted-foreground">예상 급여 = (근무시간 + 초과) × 시급. 시급은 이 표에서 바로 고칩니다. 실제 지급은 본사 확인 시간을 기준으로 급여 담당자가 확정합니다.</p>
     </div>
   );
 }

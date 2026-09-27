@@ -6,11 +6,11 @@ import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
 import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
-import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, EMPLOYMENT_TYPES, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
 export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; minutes: number; weekend: boolean; audience?: SlotAudience | null; sort: number; active: boolean };
-export const EMPLOYMENT_TYPES = ["주간조교", "야간조교", "컨설팅", "원장", "기타"] as const;
+export { EMPLOYMENT_TYPES };
 
 export async function listShiftSlots(ctx: Pick<Ctx, "branchId">, db: Db = defaultDb, includeInactive = false): Promise<ShiftSlot[]> {
   const conds = [eq(shiftSlots.branchId, ctx.branchId)];
@@ -67,8 +67,8 @@ export async function applySheetSlotPreset(ctx: Ctx, db: Db = defaultDb): Promis
       const fix = LEGACY_SLOT_FIX[s.key];
       await tx.update(shiftSlots).set({ minutes: fix.minutes, hours: minutesToHoursX100(fix.minutes), audience: fix.audience, active: false }).where(eq(shiftSlots.id, s.id));
     }
-    // 근무 형태 없이 쓰던 평일 타임은 지우지 않고 '사용 안 함'으로 돌린다 — 지난 근무 기록이 그 키를 가리키고 있다
-    const retire = existing.filter((s) => s.active && !s.weekend && s.audience === null && LEGACY_SLOT_FIX[s.key] === undefined);
+    // 근무 형태 없이 쓰던 평일 타임과 없어진 야간조교 타임은 지우지 않고 '사용 안 함'으로 돌린다 — 지난 근무 기록이 그 키를 가리키고 있다
+    const retire = existing.filter((s) => s.active && ((!s.weekend && s.audience === null) || s.audience === "야간조교") && LEGACY_SLOT_FIX[s.key] === undefined);
     if (retire.length) await tx.update(shiftSlots).set({ active: false }).where(inArray(shiftSlots.id, retire.map((s) => s.id)));
 
     // 길게 잡힌 타임으로 저장된 근무 기록을 시트 값으로 다시 계산한다.
@@ -99,6 +99,11 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
   requireRole(ctx, ...MANAGER_ROLES);
   const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, input.userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
+  if (!(EMPLOYMENT_TYPES as readonly string[]).includes(input.employmentType)) {
+    // 없어진 형태(야간조교)는 이미 그렇게 적힌 사람의 다른 칸을 고칠 때만 그대로 둔다
+    const [cur] = await db.select({ t: staffProfiles.employmentType }).from(staffProfiles).where(eq(staffProfiles.userId, input.userId)).limit(1);
+    if (cur?.t !== input.employmentType) throw new ValidationError("근무 형태가 올바르지 않습니다");
+  }
   if (input.hourlyRate !== null && (!Number.isInteger(input.hourlyRate) || input.hourlyRate < 0)) throw new ValidationError("시급은 0 이상의 정수");
   if (input.targetHoursX100 !== null && input.targetHoursX100 !== undefined && (input.targetHoursX100 < 0 || input.targetHoursX100 > 2400)) throw new ValidationError("하루 근무 예정 시간은 0~24시간");
   if (input.weeklyTargetHoursX100 !== null && input.weeklyTargetHoursX100 !== undefined && (input.weeklyTargetHoursX100 < 0 || input.weeklyTargetHoursX100 > 16800)) throw new ValidationError("주 소정근로시간은 0~168시간");
@@ -107,6 +112,29 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
     .insert(staffProfiles)
     .values({ userId: input.userId, ...vals })
     .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
+}
+
+/**
+ * 직원 근무 정보 한두 칸만 고친다. 일별 현황 표(근무 형태·근무 요일)와 월 집계(시급)에서
+ * 설정 화면으로 가지 않고 그 자리에서 고치려는 것 — 나머지 칸은 저장된 값을 그대로 둔다.
+ */
+export async function patchStaffProfile(ctx: Ctx, userId: string, patch: Partial<Omit<StaffProfileInput, "userId">>, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  const cur = (await listStaff(ctx, db)).find((s) => s.userId === userId);
+  if (!cur) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
+  await upsertStaffProfile(
+    ctx,
+    {
+      userId,
+      employmentType: patch.employmentType ?? cur.employmentType,
+      hourlyRate: patch.hourlyRate !== undefined ? patch.hourlyRate : cur.hourlyRate,
+      workDays: patch.workDays !== undefined ? patch.workDays : cur.workDays,
+      direct: patch.direct ?? cur.direct,
+      targetHoursX100: patch.targetHoursX100 !== undefined ? patch.targetHoursX100 : cur.targetHoursX100,
+      weeklyTargetHoursX100: patch.weeklyTargetHoursX100 !== undefined ? patch.weeklyTargetHoursX100 : cur.weeklyTargetHoursX100,
+    },
+    db,
+  );
 }
 
 export type StaffRow = { userId: string; name: string; role: string; employmentType: string; hourlyRate: number | null; workDays: string | null; direct: boolean; targetHoursX100: number | null; weeklyTargetHoursX100: number | null; hasProfile: boolean; group: StaffGroup };
@@ -152,6 +180,62 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     if (userId !== ctx.userId) await writeAudit(tx, ctx, "work_log", row.id, existing ? "update" : "create", existing ? { slotKeys: existing.slotKeys, overtimeX100: existing.overtimeX100 } : null, { ...vals, userId, date: input.date });
     return row.id;
   });
+}
+
+/**
+ * 근무 기록의 일부만 고친다. 일별 현황 표에서 칸 하나(타임 체크, 초과근무)를 바꿀 때 쓰며,
+ * 나머지(메모 등)는 저장된 값을 그대로 둔다.
+ */
+export async function patchWorkLog(ctx: Ctx, input: { userId: string; date: string; slotKeys?: string[]; overtimeX100?: number; overtimeReason?: string | null }, db: Db = defaultDb): Promise<WorkLogRow> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  const [cur] = await db.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, input.userId), eq(workLogs.date, input.date))).limit(1);
+  await saveWorkLog(
+    ctx,
+    {
+      userId: input.userId,
+      date: input.date,
+      slotKeys: input.slotKeys ?? cur?.slotKeys ?? [],
+      overtimeX100: input.overtimeX100 ?? cur?.overtimeX100 ?? 0,
+      overtimeReason: input.overtimeReason !== undefined ? input.overtimeReason : (cur?.overtimeReason ?? null),
+      note: cur?.note ?? null,
+    },
+    db,
+  );
+  const [after] = await db.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, input.userId), eq(workLogs.date, input.date))).limit(1);
+  return after;
+}
+
+export type WorkDayRow = {
+  userId: string;
+  name: string;
+  role: string;
+  employmentType: string;
+  workDays: string | null;
+  group: StaffGroup;
+  log: WorkLogRow | null;
+  hqConfirmedByName: string | null;
+  /** 지점에서 빠졌거나 쉬게 된 사람. 그날 기록이 있어 표에 남는다 */
+  former: boolean;
+};
+
+/**
+ * 일별 현황 표: 지점 직원 전원 × 그날 기록. 시트의 하루 탭처럼 기록이 없는 사람도 줄이 있어서
+ * 누가 빠졌는지 보이고, 지점장이 그 줄에서 바로 체크한다.
+ */
+export async function workDay(ctx: Ctx, date: string, db: Db = defaultDb): Promise<WorkDayRow[]> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  const [staff, logs] = await Promise.all([listStaff(ctx, db), dailyWorkLogs(ctx, date, db)]);
+  const logBy = new Map(logs.map((l) => [l.userId, l]));
+  const rows: WorkDayRow[] = staff.map((s) => {
+    const l = logBy.get(s.userId);
+    return { userId: s.userId, name: s.name, role: s.role, employmentType: s.employmentType, workDays: s.workDays, group: s.group, log: l ?? null, hqConfirmedByName: l?.hqConfirmedByName ?? null, former: false };
+  });
+  const inStaff = new Set(staff.map((s) => s.userId));
+  for (const l of logs) {
+    if (inStaff.has(l.userId)) continue;
+    rows.push({ userId: l.userId, name: l.userName, role: "", employmentType: l.employmentType, workDays: null, group: l.group, log: l, hqConfirmedByName: l.hqConfirmedByName, former: true });
+  }
+  return rows;
 }
 
 /**
