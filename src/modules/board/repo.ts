@@ -6,6 +6,7 @@ import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError } from "@/lib/errors";
 import { maskName } from "@/lib/rules/masking";
 import { sumPoints } from "@/lib/rules/penalty";
+import { ROUND_KEY } from "@/lib/rules/rounding";
 import { toDateKey, weekDays, weekStart } from "@/lib/rules/week";
 import { penaltyRulesFor } from "@/modules/rounding/repo";
 import { boardItemsFor } from "@/modules/settings/repo";
@@ -71,13 +72,15 @@ export async function boardData(branchId: string, weekStartInput: string, db: Db
     cells[`${seatNo}|${c.date}|${c.itemKey}|${c.roundNo}`] = { grade: c.grade, points: c.points };
     pointsByMember.set(c.memberId, [...(pointsByMember.get(c.memberId) ?? []), { grade: c.grade, points: c.points }]);
   }
+  // 하루 표처럼, 이번 주에 하루 회차 수보다 많은 회차가 기록돼 있으면(시트에서 옮긴 R12 등) 그 줄까지 보여 준다
+  const maxRound = checkRows.reduce((m, c) => (c.itemKey === ROUND_KEY ? Math.max(m, c.roundNo) : m), 0);
   return {
     branchName: branch.name,
     weekStart: ws,
     days,
     rules: rules.map((r) => ({ name: r.name, points: r.points })),
     items: items.map((i) => ({ key: i.key, label: i.label, kind: i.kind })),
-    roundsPerDay: branch.settings.roundsPerDay,
+    roundsPerDay: Math.max(branch.settings.roundsPerDay, maxRound),
     seats: memberRows.map((m) => ({
       seatNo: m.seatNo,
       name: branch.settings.maskNames ? maskName(m.name) : m.name,

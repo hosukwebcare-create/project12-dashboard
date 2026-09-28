@@ -1,11 +1,12 @@
-import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { checks, issues, members, penaltyRules, roundingSessions, seats, users, type Grade } from "@/db/schema";
 import { requireRole, type Ctx, type Role } from "@/lib/auth/ctx";
 import { writeAudit } from "@/lib/audit";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { pointsFor } from "@/lib/rules/penalty";
-import { ATTENDANCE_KEY, AUTO_ATTENDANCE_NOTE, canFillRest, carryForwardGrade, cellKey, dayColumns, deriveAttendance, isAutoAttendance, nextRoundNo, type DayColumn } from "@/lib/rules/rounding";
+import { ATTENDANCE_KEY, autoAttendanceCell, canFillRest, carryForwardGrade, cellKey, dayColumns, deriveAttendance, isAutoAttendance, nextRoundNo, ROUND_KEY, type DayCell, type DayColumn } from "@/lib/rules/rounding";
+import { toDateKey, todayKey, weekDays, weekStart } from "@/lib/rules/week";
 import { createIssue } from "@/modules/issues/repo";
 import { enqueueEvent, HIGH_PENALTY_THRESHOLD } from "@/modules/outbox/repo";
 import { boardItemsFor } from "@/modules/settings/repo";
@@ -34,6 +35,11 @@ export type SheetRow = {
   priorPenalties: string[];
 };
 
+/**
+ * 칸 하나에 적을 값. 메모·이슈·등원 시각·CALL 은 보내지 않으면(undefined) 저장된 값을 그대로 둔다 —
+ * 태블릿은 등급만 누르고 메모는 PC 에서 적는데, 태블릿 화면에 없는 메모를 등급만 고치다 지우지 않게.
+ * 비우려면 null(이슈는 false)을 보낸다.
+ */
 export type CheckInput = {
   memberId: string;
   date: string;
@@ -152,24 +158,33 @@ export async function sessionById(ctx: Ctx, sessionId: string, db: Db = defaultD
  * 그 회차에 처음 적는 순간 시작한 것으로 본다(누가 시작했는지는 남긴다).
  */
 async function ensureSession(ctx: Ctx, tx: Db | Tx, date: string, roundNo: number) {
-  if (!Number.isInteger(roundNo) || roundNo < 1 || roundNo > ctx.settings.roundsPerDay) throw new ValidationError(`회차는 1~${ctx.settings.roundsPerDay} 사이여야 합니다`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  if (!Number.isInteger(roundNo) || roundNo < 1) throw new ValidationError("회차 번호가 올바르지 않습니다");
   const where = and(eq(roundingSessions.branchId, ctx.branchId), eq(roundingSessions.date, date), eq(roundingSessions.roundNo, roundNo));
   const [existing] = await tx.select().from(roundingSessions).where(where).limit(1);
+  // 이미 있는 회차는 하루 회차 수보다 커도 고칠 수 있다(시트에서 옮긴 R12 등). 새로 여는 것만 회차 수 안에서
   if (existing) return existing;
+  if (roundNo > ctx.settings.roundsPerDay) throw new ValidationError(`회차는 1~${ctx.settings.roundsPerDay} 사이여야 합니다`);
   const [row] = await tx.insert(roundingSessions).values({ branchId: ctx.branchId, date, roundNo, startedBy: ctx.userId }).onConflictDoNothing().returning();
   if (row) return row;
   const [again] = await tx.select().from(roundingSessions).where(where).limit(1);
   return again;
 }
 
-/** 하루 표 한 칸의 값. 출석 칸은 auto 로 라운딩에서 채운 것인지 표시한다 */
-export type DayCell = { grade: Grade; points: number; penaltyRuleId: string | null; note: string | null; isIssue: boolean; auto: boolean };
+export type { DayCell };
 /** 바뀐 칸들. null 은 비워졌다는 뜻 */
 export type CellPatch = Record<string, DayCell | null>;
 
-function toCell(c: { itemKey: string; grade: Grade; points: number; penaltyRuleId: string | null; note: string | null; isIssue: boolean }): DayCell {
-  return { grade: c.grade, points: c.points, penaltyRuleId: c.penaltyRuleId, note: c.note, isIssue: c.isIssue, auto: c.itemKey === ATTENDANCE_KEY && isAutoAttendance(c.note) };
+type CheckLike = { itemKey: string; grade: Grade; points: number; penaltyRuleId: string | null; note: string | null; isIssue: boolean; arrivalTime?: string | null; called?: boolean | null };
+
+function toCell(c: CheckLike): DayCell {
+  return { grade: c.grade, points: c.points, penaltyRuleId: c.penaltyRuleId, note: c.note, isIssue: c.isIssue, auto: c.itemKey === ATTENDANCE_KEY && isAutoAttendance(c) };
+}
+
+/** 하루 표에서 적는 날짜는 오늘까지. 다음 날로 잘못 넘어가 적는 일을 막는다 */
+function assertNotFuture(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  if (date > todayKey()) throw new ValidationError("앞으로의 날짜에는 적을 수 없습니다");
 }
 
 /**
@@ -180,15 +195,16 @@ async function syncAttendance(ctx: Ctx, tx: Db | Tx, date: string, memberIds: st
   const patch: CellPatch = {};
   if (!memberIds.length) return patch;
   const rows = await tx
-    .select({ id: checks.id, memberId: checks.memberId, itemKey: checks.itemKey, grade: checks.grade, note: checks.note, seatNo: checks.seatNoSnapshot })
+    .select({ id: checks.id, memberId: checks.memberId, itemKey: checks.itemKey, grade: checks.grade, note: checks.note, points: checks.points, arrivalTime: checks.arrivalTime, called: checks.called, seatNo: checks.seatNoSnapshot })
     .from(checks)
-    .where(and(eq(checks.branchId, ctx.branchId), eq(checks.date, date), inArray(checks.memberId, memberIds), inArray(checks.itemKey, ["round", ATTENDANCE_KEY])));
+    .where(and(eq(checks.branchId, ctx.branchId), eq(checks.date, date), inArray(checks.memberId, memberIds), inArray(checks.itemKey, [ROUND_KEY, ATTENDANCE_KEY])));
   const inserts: (typeof checks.$inferInsert)[] = [];
   for (const memberId of memberIds) {
     const mine = rows.filter((r) => r.memberId === memberId);
     const att = mine.find((r) => r.itemKey === ATTENDANCE_KEY);
-    if (att && !isAutoAttendance(att.note)) continue;
-    const rounds = mine.filter((r) => r.itemKey === "round");
+    // 사람이 적거나 고친 출석(지각 시각·CALL·벌점 포함)은 건드리지 않는다
+    if (att && !isAutoAttendance(att)) continue;
+    const rounds = mine.filter((r) => r.itemKey === ROUND_KEY);
     const derived = deriveAttendance(rounds.map((r) => r.grade));
     const key = cellKey(memberId, ATTENDANCE_KEY, 0);
     if (!derived) {
@@ -198,13 +214,13 @@ async function syncAttendance(ctx: Ctx, tx: Db | Tx, date: string, memberIds: st
       }
       continue;
     }
-    const cell: DayCell = { grade: derived, points: 0, penaltyRuleId: null, note: AUTO_ATTENDANCE_NOTE, isIssue: false, auto: true };
+    const cell = autoAttendanceCell(derived);
     if (att) {
-      if (att.grade !== derived || att.note !== AUTO_ATTENDANCE_NOTE) await tx.update(checks).set({ grade: derived, note: AUTO_ATTENDANCE_NOTE, updatedAt: new Date() }).where(eq(checks.id, att.id));
+      if (att.grade !== derived || att.note !== cell.note) await tx.update(checks).set({ grade: derived, points: 0, penaltyRuleId: null, note: cell.note, isIssue: false, updatedAt: new Date() }).where(eq(checks.id, att.id));
       patch[key] = cell;
       continue;
     }
-    inserts.push({ branchId: ctx.branchId, memberId, seatNoSnapshot: rounds[0]?.seatNo ?? null, date, itemKey: ATTENDANCE_KEY, roundNo: 0, grade: derived, points: 0, note: AUTO_ATTENDANCE_NOTE, createdBy: ctx.userId });
+    inserts.push({ branchId: ctx.branchId, memberId, seatNoSnapshot: rounds[0]?.seatNo ?? null, date, itemKey: ATTENDANCE_KEY, roundNo: 0, grade: derived, points: 0, note: cell.note, createdBy: ctx.userId });
     patch[key] = cell;
   }
   if (inserts.length) await tx.insert(checks).values(inserts).onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] });
@@ -219,6 +235,7 @@ export async function upsertCheck(ctx: Ctx, input: CheckInput, db: Db = defaultD
 /** 하루 표에서 칸 하나를 적는다. 적은 칸과, 그 때문에 바뀐 출석 칸을 돌려준다 */
 export async function saveCell(ctx: Ctx, input: CheckInput, db: Db = defaultDb): Promise<CellPatch> {
   requireRole(ctx, ...CHECK_ROLES);
+  assertNotFuture(input.date);
   return db.transaction((tx) => upsertCheckTx(ctx, tx, input));
 }
 
@@ -233,7 +250,7 @@ async function upsertCheckTx(ctx: Ctx, tx: Tx, input: CheckInput): Promise<CellP
     if (!m) throw new NotFoundError("회원을 찾을 수 없습니다");
     // 라운딩은 회차에 묶인다. 회차 id 를 모르면(하루 표) 그 회차를 찾거나 새로 연다
     let sessionId = input.sessionId ?? null;
-    if (input.itemKey === "round") sessionId = (sessionId ? await findSession(ctx, sessionId, tx) : await ensureSession(ctx, tx, input.date, input.roundNo)).id;
+    if (input.itemKey === ROUND_KEY) sessionId = (sessionId ? await findSession(ctx, sessionId, tx) : await ensureSession(ctx, tx, input.date, input.roundNo)).id;
     else if (sessionId) await findSession(ctx, sessionId, tx);
 
     let rule: PenaltyRule | null = null;
@@ -246,6 +263,11 @@ async function upsertCheckTx(ctx: Ctx, tx: Tx, input: CheckInput): Promise<CellP
       if (!r) throw new NotFoundError("벌점 규칙을 찾을 수 없습니다");
       rule = r;
     }
+    const [prev] = await tx
+      .select({ id: checks.id, grade: checks.grade, points: checks.points, penaltyRuleId: checks.penaltyRuleId, note: checks.note, isIssue: checks.isIssue, arrivalTime: checks.arrivalTime, called: checks.called })
+      .from(checks)
+      .where(and(eq(checks.memberId, input.memberId), eq(checks.date, input.date), eq(checks.itemKey, input.itemKey), eq(checks.roundNo, input.roundNo)))
+      .limit(1);
     const values = {
       branchId: ctx.branchId,
       memberId: input.memberId,
@@ -257,17 +279,13 @@ async function upsertCheckTx(ctx: Ctx, tx: Tx, input: CheckInput): Promise<CellP
       grade: input.grade,
       points: pointsFor(input.grade, rule?.points ?? null),
       penaltyRuleId: input.grade === "p" ? (rule?.id ?? null) : null,
-      note: input.note ?? null,
-      isIssue: input.isIssue ?? false,
-      arrivalTime: input.arrivalTime ?? null,
-      called: input.called ?? null,
+      // 보내지 않은 칸은 저장된 값 그대로 (CheckInput 설명)
+      note: input.note === undefined ? (prev?.note ?? null) : input.note,
+      isIssue: input.isIssue === undefined ? (prev?.isIssue ?? false) : input.isIssue,
+      arrivalTime: input.arrivalTime === undefined ? (prev?.arrivalTime ?? null) : input.arrivalTime,
+      called: input.called === undefined ? (prev?.called ?? null) : input.called,
       createdBy: ctx.userId,
     };
-    const [prev] = await tx
-      .select({ id: checks.id, grade: checks.grade, points: checks.points, penaltyRuleId: checks.penaltyRuleId, note: checks.note })
-      .from(checks)
-      .where(and(eq(checks.memberId, input.memberId), eq(checks.date, input.date), eq(checks.itemKey, input.itemKey), eq(checks.roundNo, input.roundNo)))
-      .limit(1);
     const [row] = await tx
       .insert(checks)
       .values(values)
@@ -282,17 +300,30 @@ async function upsertCheckTx(ctx: Ctx, tx: Tx, input: CheckInput): Promise<CellP
     }
 
     // 출석은 적지 않는다. 라운딩을 적을 때마다 그날 모습으로 다시 맞춘다
-    const patch: CellPatch = { [cellKey(m.id, input.itemKey, input.roundNo)]: toCell({ ...values, penaltyRuleId: values.penaltyRuleId }) };
-    if (input.itemKey === "round") Object.assign(patch, await syncAttendance(ctx, tx, input.date, [m.id]));
+    const patch: CellPatch = { [cellKey(m.id, input.itemKey, input.roundNo)]: toCell(values) };
+    if (input.itemKey === ROUND_KEY) Object.assign(patch, await syncAttendance(ctx, tx, input.date, [m.id]));
 
-    if (values.grade === "p" && values.points >= HIGH_PENALTY_THRESHOLD) {
-      const where = input.itemKey === "round" ? `R${input.roundNo}` : input.itemKey;
+    // 고벌점 알림은 고벌점이 새로 생길 때만. 같은 벌점에 메모만 고칠 때 다시 울리지 않는다
+    if (values.grade === "p" && values.points >= HIGH_PENALTY_THRESHOLD && !(prev && prev.grade === "p" && prev.points >= HIGH_PENALTY_THRESHOLD)) {
+      const where = input.itemKey === ROUND_KEY ? `R${input.roundNo}` : input.itemKey;
       await enqueueEvent(tx, ctx.branchId, "penalty.high", { memberId: m.id, member: m.name, seatNo: m.seatNo, points: values.points, rule: rule?.name ?? null, date: input.date, where }, `[고벌점] ${m.seatNo ?? "-"}번 ${m.name} · ${rule?.name ?? "벌점"} ${values.points}점 (${input.date} ${where})`);
     }
     if (values.isIssue) {
-      const [exists] = await tx.select({ id: issues.id }).from(issues).where(eq(issues.checkId, row.id)).limit(1);
+      const where = input.itemKey === ROUND_KEY ? `R${input.roundNo}` : input.itemKey;
+      let [exists] = await tx.select({ id: issues.id }).from(issues).where(eq(issues.checkId, row.id)).limit(1);
       if (!exists) {
-        const where = input.itemKey === "round" ? `R${input.roundNo}` : input.itemKey;
+        // 칸을 지웠다가 되살리면 새 체크가 된다. 그 칸으로 만든 이슈가 연결만 끊긴 채 남아 있으면 다시 잇고 새로 만들지 않는다
+        const [orphan] = await tx
+          .select({ id: issues.id })
+          .from(issues)
+          .where(and(eq(issues.branchId, ctx.branchId), eq(issues.memberId, m.id), eq(issues.source, "rounding"), isNull(issues.checkId), like(issues.title, `%(${input.date} ${where})`)))
+          .limit(1);
+        if (orphan) {
+          await tx.update(issues).set({ checkId: row.id }).where(eq(issues.id, orphan.id));
+          exists = orphan;
+        }
+      }
+      if (!exists) {
         await createIssue(
           ctx,
           {
@@ -317,6 +348,7 @@ async function upsertCheckTx(ctx: Ctx, tx: Tx, input: CheckInput): Promise<CellP
  */
 export async function clearCheck(ctx: Ctx, input: { memberId: string; date: string; itemKey: string; roundNo: number }, db: Db = defaultDb): Promise<CellPatch> {
   requireRole(ctx, ...CHECK_ROLES);
+  assertNotFuture(input.date);
   if (input.itemKey === ATTENDANCE_KEY) throw new ValidationError("출석은 라운딩에서 자동으로 채워집니다");
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -329,7 +361,7 @@ export async function clearCheck(ctx: Ctx, input: { memberId: string; date: stri
     await tx.update(issues).set({ checkId: null }).where(eq(issues.checkId, row.id));
     await tx.delete(checks).where(eq(checks.id, row.id));
     await writeAudit(tx, ctx, "check", row.id, "delete", { grade: row.grade, points: row.points, penaltyRuleId: row.penaltyRuleId, note: row.note, itemKey: row.itemKey, roundNo: row.roundNo, date: row.date }, null);
-    if (input.itemKey === "round") Object.assign(patch, await syncAttendance(ctx, tx, input.date, [input.memberId]));
+    if (input.itemKey === ROUND_KEY) Object.assign(patch, await syncAttendance(ctx, tx, input.date, [input.memberId]));
     return patch;
   });
 }
@@ -341,17 +373,18 @@ export async function clearCheck(ctx: Ctx, input: { memberId: string; date: stri
  */
 export async function copyPreviousRound(ctx: Ctx, date: string, roundNo: number, db: Db = defaultDb): Promise<CellPatch> {
   requireRole(ctx, ...CHECK_ROLES);
+  assertNotFuture(date);
   if (roundNo < 2) throw new ValidationError("첫 회차는 가져올 앞 회차가 없습니다");
   return db.transaction(async (tx) => {
     const session = await ensureSession(ctx, tx, date, roundNo);
-    const [current, prev] = await Promise.all([sheetRows(ctx, date, "round", roundNo, tx), sheetRows(ctx, date, "round", roundNo - 1, tx)]);
+    const [current, prev] = await Promise.all([sheetRows(ctx, date, ROUND_KEY, roundNo, tx), sheetRows(ctx, date, ROUND_KEY, roundNo - 1, tx)]);
     const prevBy = new Map(prev.filter((r) => r.grade).map((r) => [r.memberId, r.grade as Grade]));
     const targets = current.filter((r) => !r.checkId && prevBy.has(r.memberId));
     const patch: CellPatch = {};
     if (!targets.length) return patch;
-    const values = targets.map((r) => ({ branchId: ctx.branchId, memberId: r.memberId, seatNoSnapshot: r.seatNo, date, itemKey: "round", roundNo, sessionId: session.id, grade: carryForwardGrade(prevBy.get(r.memberId)!), points: 0, createdBy: ctx.userId }));
+    const values = targets.map((r) => ({ branchId: ctx.branchId, memberId: r.memberId, seatNoSnapshot: r.seatNo, date, itemKey: ROUND_KEY, roundNo, sessionId: session.id, grade: carryForwardGrade(prevBy.get(r.memberId)!), points: 0, createdBy: ctx.userId }));
     await tx.insert(checks).values(values).onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] });
-    for (const v of values) patch[cellKey(v.memberId, "round", roundNo)] = { grade: v.grade, points: 0, penaltyRuleId: null, note: null, isIssue: false, auto: false };
+    for (const v of values) patch[cellKey(v.memberId, ROUND_KEY, roundNo)] = { grade: v.grade, points: 0, penaltyRuleId: null, note: null, isIssue: false, auto: false };
     Object.assign(patch, await syncAttendance(ctx, tx, date, values.map((v) => v.memberId)));
     await writeAudit(tx, ctx, "check", session.id, "create", null, { bulk: "copy_previous_round", date, roundNo, count: values.length });
     return patch;
@@ -362,21 +395,28 @@ export async function copyPreviousRound(ctx: Ctx, date: string, roundNo: number,
  * 일별 항목에서 아직 표시하지 않은 등록 회원을 모두 a 로 채운다. 예외만 먼저 적고 나머지를 한 번에 끝내기 위한 것.
  * 출석과 라운딩은 받지 않는다(출석은 canFillRest 설명 참고, 라운딩은 회차 완료가 같은 일을 한다).
  */
-export async function fillRemaining(ctx: Ctx, date: string, itemKey: string, db: Db = defaultDb): Promise<number> {
+export async function fillRemaining(ctx: Ctx, date: string, itemKey: string, db: Db = defaultDb): Promise<CellPatch> {
   requireRole(ctx, ...CHECK_ROLES);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  assertNotFuture(date);
   if (!canFillRest(itemKey)) throw new ValidationError("이 항목은 한꺼번에 채울 수 없습니다");
   return db.transaction(async (tx) => {
     const item = (await boardItemsFor(ctx, tx)).find((i) => i.kind === "daily" && i.key === itemKey);
     if (!item) throw new NotFoundError("항목을 찾을 수 없습니다");
-    const missing = (await sheetRows(ctx, date, itemKey, 0, tx)).filter((r) => !r.checkId);
-    if (!missing.length) return 0;
-    await tx
+    const rows = await sheetRows(ctx, date, itemKey, 0, tx);
+    // 아무도 보지 않고 모두 a 가 되지 않게, 한 칸이라도 적은 뒤에만 채운다(예외 먼저, 나머지 한 번에)
+    if (rows.length && !rows.some((r) => r.checkId)) throw new ValidationError("먼저 한 칸 이상 적은 뒤에 나머지를 채울 수 있습니다");
+    const missing = rows.filter((r) => !r.checkId);
+    const patch: CellPatch = {};
+    if (!missing.length) return patch;
+    // 실제로 들어간 칸만 돌려준다. 그사이 다른 기기가 적은 칸은 건드리지 않았으니 화면도 칠하지 않는다
+    const inserted = await tx
       .insert(checks)
       .values(missing.map((r) => ({ branchId: ctx.branchId, memberId: r.memberId, seatNoSnapshot: r.seatNo, date, itemKey, roundNo: 0, grade: "a" as const, points: 0, createdBy: ctx.userId })))
-      .onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] });
-    await writeAudit(tx, ctx, "check", ctx.branchId, "create", null, { bulk: "fill_rest", date, itemKey, count: missing.length });
-    return missing.length;
+      .onConflictDoNothing({ target: [checks.memberId, checks.date, checks.itemKey, checks.roundNo] })
+      .returning({ memberId: checks.memberId });
+    for (const r of inserted) patch[cellKey(r.memberId, itemKey, 0)] = { grade: "a", points: 0, penaltyRuleId: null, note: null, isIssue: false, auto: false };
+    await writeAudit(tx, ctx, "check", ctx.branchId, "create", null, { bulk: "fill_rest", date, itemKey, count: inserted.length });
+    return patch;
   });
 }
 
@@ -390,11 +430,12 @@ export async function completeSession(ctx: Ctx, sessionId: string, db: Db = defa
 /** 하루 표에서 회차를 완료한다: 빈 칸을 a 로 채우고 완료 표시. 채운 칸과 바뀐 출석을 함께 돌려준다 */
 export async function completeRound(ctx: Ctx, date: string, roundNo: number, db: Db = defaultDb): Promise<{ summary: SessionSummary; patch: CellPatch }> {
   requireRole(ctx, ...CHECK_ROLES);
+  assertNotFuture(date);
   return db.transaction(async (tx) => completeSessionTx(ctx, tx, await ensureSession(ctx, tx, date, roundNo)));
 }
 
 async function completeSessionTx(ctx: Ctx, tx: Tx, session: typeof roundingSessions.$inferSelect): Promise<{ summary: SessionSummary; patch: CellPatch }> {
-  const rows = await sheetRows(ctx, session.date, "round", session.roundNo, tx);
+  const rows = await sheetRows(ctx, session.date, ROUND_KEY, session.roundNo, tx);
   const missing = rows.filter((r) => !r.checkId);
   const patch: CellPatch = {};
   if (missing.length) {
@@ -404,7 +445,7 @@ async function completeSessionTx(ctx: Ctx, tx: Tx, session: typeof roundingSessi
         memberId: r.memberId,
         seatNoSnapshot: r.seatNo,
         date: session.date,
-        itemKey: "round",
+        itemKey: ROUND_KEY,
         roundNo: session.roundNo,
         sessionId: session.id,
         grade: "a" as const,
@@ -412,11 +453,11 @@ async function completeSessionTx(ctx: Ctx, tx: Tx, session: typeof roundingSessi
         createdBy: ctx.userId,
       })),
     );
-    for (const r of missing) patch[cellKey(r.memberId, "round", session.roundNo)] = { grade: "a", points: 0, penaltyRuleId: null, note: null, isIssue: false, auto: false };
+    for (const r of missing) patch[cellKey(r.memberId, ROUND_KEY, session.roundNo)] = { grade: "a", points: 0, penaltyRuleId: null, note: null, isIssue: false, auto: false };
     Object.assign(patch, await syncAttendance(ctx, tx, session.date, missing.map((r) => r.memberId)));
   }
   await tx.update(roundingSessions).set({ completedAt: new Date() }).where(eq(roundingSessions.id, session.id));
-  const final = await sheetRows(ctx, session.date, "round", session.roundNo, tx);
+  const final = await sheetRows(ctx, session.date, ROUND_KEY, session.roundNo, tx);
   const summary: SessionSummary = {
     penalties: final.filter((r) => r.grade === "p").length,
     points: final.reduce((a, r) => a + (r.grade === "p" ? r.points : 0), 0),
@@ -436,7 +477,6 @@ async function completeSessionTx(ctx: Ctx, tx: Tx, session: typeof roundingSessi
 }
 
 export type DayMember = { memberId: string; seatNo: number | null; zone: string | null; name: string; fieldNote: string | null; focusCare: boolean };
-export type DaySession = { roundNo: number; startedByName: string | null; completedAt: string | null };
 export type DaySheet = {
   date: string;
   columns: DayColumn[];
@@ -444,16 +484,18 @@ export type DaySheet = {
   /** cellKey(memberId, itemKey, roundNo) → 값 */
   cells: Record<string, DayCell>;
   rules: { id: string; name: string; points: number }[];
-  sessions: DaySession[];
+  /** 완료한 회차 번호 */
+  completedRounds: number[];
 };
 
 /**
  * 하루 표: 등록 학생 × (출석·일별 항목·R1…Rn). 시트의 하루 블록과 같은 내용을 한 화면에 담는다.
  * 라운딩과 일별 체크를 따로 돌지 않고, 태블릿에서는 누르기만, PC 에서는 메모까지 같은 표에서 적는다.
+ * 그날 하루 회차 수보다 많은 회차가 기록돼 있으면(시트에서 옮긴 R12 등) 그 열까지 보여 준다.
  */
 export async function daySheet(ctx: Ctx, date: string, db: Db = defaultDb): Promise<DaySheet> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
-  const [items, rules, memberRows, checkRows, sessions] = await Promise.all([
+  const [items, rules, memberRows, day] = await Promise.all([
     boardItemsFor(ctx, db),
     penaltyRulesFor(ctx, db),
     db
@@ -462,22 +504,49 @@ export async function daySheet(ctx: Ctx, date: string, db: Db = defaultDb): Prom
       .leftJoin(seats, eq(seats.id, members.seatId))
       .where(and(eq(members.branchId, ctx.branchId), eq(members.status, "enrolled")))
       .orderBy(sql`${seats.seatNo} asc nulls last`, asc(members.name)),
-    db
-      .select({ memberId: checks.memberId, itemKey: checks.itemKey, roundNo: checks.roundNo, grade: checks.grade, points: checks.points, penaltyRuleId: checks.penaltyRuleId, note: checks.note, isIssue: checks.isIssue })
-      .from(checks)
-      .where(and(eq(checks.branchId, ctx.branchId), eq(checks.date, date))),
-    todaySessions(ctx, date, db),
+    readDay(ctx, date, db),
   ]);
-  const cells: Record<string, DayCell> = {};
-  for (const c of checkRows) cells[cellKey(c.memberId, c.itemKey, c.roundNo)] = toCell(c);
   return {
     date,
-    columns: dayColumns(items, ctx.settings.roundsPerDay, ctx.settings.roundSchedule ?? []),
+    columns: dayColumns(items, Math.max(ctx.settings.roundsPerDay, day.maxRound), ctx.settings.roundSchedule ?? []),
     members: memberRows,
-    cells,
+    cells: day.cells,
     rules: rules.map((r) => ({ id: r.id, name: r.name, points: r.points })),
-    sessions: sessions.map((s) => ({ roundNo: s.roundNo, startedByName: s.startedByName, completedAt: s.completedAt?.toISOString() ?? null })),
+    completedRounds: day.completedRounds,
   };
+}
+
+/** 그날 칸 전부와 완료 회차, 기록된 가장 큰 회차 번호 */
+async function readDay(ctx: Ctx, date: string, db: Db) {
+  const [checkRows, sessionRows] = await Promise.all([
+    db
+      .select({ memberId: checks.memberId, itemKey: checks.itemKey, roundNo: checks.roundNo, grade: checks.grade, points: checks.points, penaltyRuleId: checks.penaltyRuleId, note: checks.note, isIssue: checks.isIssue, arrivalTime: checks.arrivalTime, called: checks.called })
+      .from(checks)
+      .where(and(eq(checks.branchId, ctx.branchId), eq(checks.date, date))),
+    // 회차별 완료 여부만 본다. 체크 수를 세는 쿼리(checks.session_id 는 색인이 없다)는 돌리지 않는다
+    db
+      .select({ roundNo: roundingSessions.roundNo, completedAt: roundingSessions.completedAt })
+      .from(roundingSessions)
+      .where(and(eq(roundingSessions.branchId, ctx.branchId), eq(roundingSessions.date, date))),
+  ]);
+  const cells: Record<string, DayCell> = {};
+  let maxRound = 0;
+  for (const c of checkRows) {
+    cells[cellKey(c.memberId, c.itemKey, c.roundNo)] = toCell(c);
+    if (c.itemKey === ROUND_KEY) maxRound = Math.max(maxRound, c.roundNo);
+  }
+  for (const s of sessionRows) maxRound = Math.max(maxRound, s.roundNo);
+  return { cells, maxRound, completedRounds: sessionRows.filter((s) => s.completedAt).map((s) => s.roundNo).sort((a, b) => a - b) };
+}
+
+/**
+ * 하루 표의 칸과 완료 회차만 다시 읽는다. 여러 기기(태블릿 둘, PC 하나)가 같은 표를 적을 때
+ * 화면이 서로의 입력을 따라가도록 표가 30초마다 부른다.
+ */
+export async function dayCells(ctx: Ctx, date: string, db: Db = defaultDb): Promise<{ cells: Record<string, DayCell>; completedRounds: number[] }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  const { cells, completedRounds } = await readDay(ctx, date, db);
+  return { cells, completedRounds };
 }
 
 export type MemberWeek = {
@@ -494,8 +563,6 @@ export type MemberWeek = {
 export async function memberWeek(ctx: Ctx, memberId: string, weekStartInput: string, db: Db = defaultDb): Promise<MemberWeek> {
   const [m] = await db.select({ id: members.id }).from(members).where(and(eq(members.id, memberId), eq(members.branchId, ctx.branchId))).limit(1);
   if (!m) throw new NotFoundError("회원을 찾을 수 없습니다");
-  const { boardItemsFor } = await import("@/modules/settings/repo");
-  const { weekDays, weekStart, toDateKey } = await import("@/lib/rules/week");
   const ws = toDateKey(weekStart(weekStartInput));
   const days = weekDays(ws).map(toDateKey);
   const [items, rows] = await Promise.all([
@@ -512,5 +579,6 @@ export async function memberWeek(ctx: Ctx, memberId: string, weekStartInput: str
     cells[`${c.date}|${c.itemKey}|${c.roundNo}`] = { grade: c.grade, points: c.points, note: c.note, ruleName };
     if (c.grade === "p") totalPoints += c.points;
   }
-  return { weekStart: ws, days, items: items.map((i) => ({ key: i.key, label: i.label, kind: i.kind })), roundsPerDay: ctx.settings.roundsPerDay, cells, totalPoints };
+  const maxRound = rows.reduce((m, { c }) => (c.itemKey === ROUND_KEY ? Math.max(m, c.roundNo) : m), 0);
+  return { weekStart: ws, days, items: items.map((i) => ({ key: i.key, label: i.label, kind: i.kind })), roundsPerDay: Math.max(ctx.settings.roundsPerDay, maxRound), cells, totalPoints };
 }

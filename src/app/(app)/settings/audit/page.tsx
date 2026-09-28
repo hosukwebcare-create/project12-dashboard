@@ -6,7 +6,22 @@ import { guarded } from "@/lib/page-guard";
 
 export const metadata = { title: "감사 로그" };
 
-const ENTITY_LABEL: Record<string, string> = { member: "회원", branch: "지점", issue: "이슈", user: "사용자" };
+const ENTITY_LABEL: Record<string, string> = {
+  member: "회원",
+  branch: "지점",
+  issue: "이슈",
+  user: "사용자",
+  check: "라운딩·체크",
+  counsel_log: "상담일지",
+  counsel_appointment: "상담 일정",
+  meal_order: "식사 주문",
+  meal_settings: "식사 설정",
+  meal_settlement: "식사 정산",
+  seat_payment: "좌석 결제",
+  work_log: "근무 기록",
+  staff_profile: "직원 근무 정보",
+  shift_slot: "근무 타임",
+};
 const ACTION_LABEL: Record<string, string> = { create: "생성", update: "수정", status: "상태 변경", seat: "좌석 변경", delete: "삭제" };
 
 function fmt(v: unknown): string {

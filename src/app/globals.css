@@ -300,10 +300,7 @@
  * '빈 표로 인쇄'를 켜면 값을 지우고 칸만 남긴다.
  */
 @media print {
-  @page {
-    size: A4 landscape;
-    margin: 8mm;
-  }
+  /* 가로 A4 는 하루 표 화면에서만 켠다(DaySheet 의 <style>). 여기 두면 다른 화면의 인쇄까지 가로로 고정된다 */
   .day-sheet .day-sheet-tools {
     display: none !important;
   }

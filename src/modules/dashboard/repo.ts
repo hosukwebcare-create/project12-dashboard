@@ -10,6 +10,8 @@ import { listIssues, type IssueRow } from "@/modules/issues/repo";
 export type DashboardData = {
   weekStart: string;
   sessionsDone: number;
+  /** 오늘 완료한 회차 번호 */
+  completedRounds: number[];
   roundsPerDay: number;
   openIssues: IssueRow[];
   topPenalties: { memberId: string; name: string; seatNo: number | null; points: number }[];
@@ -25,11 +27,12 @@ export async function dashboard(ctx: Ctx, today: string, db: Db = defaultDb): Pr
   const within = toDateKey(addDays(today, 7));
   const recentFrom = toDateKey(addDays(today, -6));
 
-  const [[done], allIssues, penalties, missingWeekly, expiringRows, recentRows] = await Promise.all([
+  const [doneRows, allIssues, penalties, missingWeekly, expiringRows, recentRows] = await Promise.all([
     db
-      .select({ n: count() })
+      .select({ roundNo: roundingSessions.roundNo })
       .from(roundingSessions)
-      .where(and(eq(roundingSessions.branchId, ctx.branchId), eq(roundingSessions.date, today), isNotNull(roundingSessions.completedAt))),
+      .where(and(eq(roundingSessions.branchId, ctx.branchId), eq(roundingSessions.date, today), isNotNull(roundingSessions.completedAt)))
+      .orderBy(asc(roundingSessions.roundNo)),
     listIssues(ctx, undefined, db),
     db
       .select({ memberId: checks.memberId, name: members.name, seatNo: seats.seatNo, points: sum(checks.points) })
@@ -73,7 +76,8 @@ export async function dashboard(ctx: Ctx, today: string, db: Db = defaultDb): Pr
 
   return {
     weekStart: ws,
-    sessionsDone: Number(done?.n ?? 0),
+    sessionsDone: doneRows.length,
+    completedRounds: doneRows.map((r) => r.roundNo),
     roundsPerDay: ctx.settings.roundsPerDay,
     openIssues: allIssues.filter((i) => i.status !== "resolved").slice(0, 5),
     topPenalties: penalties.map((p) => ({ memberId: p.memberId, name: p.name, seatNo: p.seatNo, points: Number(p.points ?? 0) })),

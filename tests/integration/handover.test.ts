@@ -136,6 +136,38 @@ describe("해 주세요", () => {
     expect(await openRequestCount(t.asstCtx1)).toBe(1);
   });
 
+  it("부탁을 올리면 지점 사람 모두에게 알림이 가고, 안 읽은 인수인계 수에는 들어가지 않는다", async () => {
+    const t = await seedTwoBranches();
+    await upsertNote(t.mgrCtx1, { date: TODAY, kind: "request", body: "3층 정수기 업체에 전화해 주세요" });
+    const title = (n: { payload: unknown }) => String((n.payload as { title?: string }).title ?? "");
+    for (const ctx of [t.asstCtx1, t.mentorCtx1]) expect((await listNotifications(ctx)).map(title)).toEqual(["해 주세요 · 3층 정수기 업체에 전화해 주세요"]);
+    // 쓴 사람과 다른 지점에는 가지 않는다
+    expect(await listNotifications(t.mgrCtx1)).toEqual([]);
+    expect(await listNotifications(t.mgrCtx2)).toEqual([]);
+    // '해 주세요'는 읽음 표시가 없는 글이라 안 읽은 수(대시보드·상단바)에 넣지 않는다 — 남은 일 수로 따로 센다
+    expect(await unreadNoteCount(t.asstCtx1, 14, TODAY)).toBe(0);
+    expect(await openRequestCount(t.asstCtx1)).toBe(1);
+  });
+
+  it("두 사람이 '했어요'를 눌러도 처음 한 사람만 기록되고 알림도 한 번", async () => {
+    const t = await seedTwoBranches();
+    const id = await upsertNote(t.mgrCtx1, { date: TODAY, kind: "request", body: "택배 받아 주세요" });
+    await setRequestDone(t.asstCtx1, id, true);
+    await setRequestDone(t.mentorCtx1, id, true);
+    const r = await listRequests(t.mgrCtx1, TODAY);
+    expect(r.done.map((n) => n.doneByName)).toEqual(["조교1"]);
+    const done = (await listNotifications(t.mgrCtx1)).filter((n) => String((n.payload as { title?: string }).title ?? "").startsWith("해 놓았어요"));
+    expect(done).toHaveLength(1);
+  });
+
+  it("잘못 올린 부탁은 쓴 사람이나 지점장이 지운다", async () => {
+    const t = await seedTwoBranches();
+    const id = await upsertNote(t.asstCtx1, { date: TODAY, kind: "request", body: "잘못 올림" });
+    await expect(deleteNote(t.mentorCtx1, id)).rejects.toThrow(ForbiddenError);
+    await deleteNote(t.asstCtx1, id);
+    expect((await listRequests(t.mgrCtx1, TODAY)).open).toEqual([]);
+  });
+
   it("인수인계 글은 완료로 표시하지 않는다", async () => {
     const t = await seedTwoBranches();
     const id = await upsertNote(t.asstCtx1, { date: TODAY, kind: "handover", body: "가" });

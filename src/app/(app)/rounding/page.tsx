@@ -7,7 +7,7 @@ import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
 import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { clearCellAction, completeRoundAction, copyPreviousRoundAction, fillRemainingAction, saveCellAction } from "@/modules/rounding/actions";
+import { clearCellAction, completeRoundAction, copyPreviousRoundAction, dayCellsAction, fillRemainingAction, saveCellAction } from "@/modules/rounding/actions";
 import { daySheet } from "@/modules/rounding/repo";
 
 export const metadata = { title: "라운딩" };
@@ -23,7 +23,13 @@ async function RoundingPage({ searchParams }: { searchParams: Promise<{ date?: s
   const today = todayKey();
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;
   const sheet = await daySheet(ctx, date);
-  const done = sheet.sessions.filter((s) => s.completedAt).length;
+  const done = sheet.completedRounds.length;
+  // 시트에서 가져온 날은 설정보다 회차가 많을 수 있다(R12 등) — 표에 있는 회차 수로 센다
+  const rounds = sheet.columns.filter((c) => c.kind === "round").length;
+  // 앞으로의 날짜는 아직 돌지 않았으니 적지 않는다(잘못 넘겨 적으면 그날 완료·출석이 미리 생긴다)
+  const future = date > today;
+  const canEdit = ctx.role !== "mentor" && !future;
+  const readOnlyReason = future ? "앞으로의 날짜라 적을 수 없습니다" : ctx.role === "mentor" ? "읽기 전용 — 칸을 누르면 메모가 보입니다" : null;
   const focusRound = sp.round && /^\d+$/.test(sp.round) ? Number(sp.round) : null;
   const prev = toDateKey(addDays(date, -1));
   const next = toDateKey(addDays(date, 1));
@@ -32,7 +38,7 @@ async function RoundingPage({ searchParams }: { searchParams: Promise<{ date?: s
     <div>
       <PageHeader
         title="라운딩"
-        description={`${ctx.branchName} · ${fmtShortDate(date)} · 완료 ${done}/${ctx.settings.roundsPerDay}회차 · 여기 적은 것이 매장 모니터에 1분 안에 그대로 보입니다`}
+        description={`${ctx.branchName} · ${fmtShortDate(date)} · 완료 ${done}/${rounds}회차 · 여기 적은 것이 매장 모니터에 1분 안에 그대로 보입니다`}
         actions={
           <>
             <div className="flex items-center gap-1">
@@ -46,11 +52,13 @@ async function RoundingPage({ searchParams }: { searchParams: Promise<{ date?: s
                   <Link href="/rounding">오늘</Link>
                 </Button>
               ) : null}
-              <Button asChild variant="outline" size="icon" className="size-9">
-                <Link href={`/rounding?date=${next}`} aria-label="다음 날">
-                  <ChevronRight />
-                </Link>
-              </Button>
+              {date < today ? (
+                <Button asChild variant="outline" size="icon" className="size-9">
+                  <Link href={`/rounding?date=${next}`} aria-label="다음 날">
+                    <ChevronRight />
+                  </Link>
+                </Button>
+              ) : null}
             </div>
             {ctx.role === "assistant" ? (
               <Button asChild variant="outline" size="sm">
@@ -71,14 +79,16 @@ async function RoundingPage({ searchParams }: { searchParams: Promise<{ date?: s
         members={sheet.members}
         cells={sheet.cells}
         rules={sheet.rules}
-        sessions={sheet.sessions}
-        canEdit={ctx.role !== "mentor"}
+        completedRounds={sheet.completedRounds}
+        canEdit={canEdit}
+        readOnlyReason={readOnlyReason}
         focusRound={focusRound}
         saveAction={saveCellAction}
         clearAction={clearCellAction}
         copyPrevAction={copyPreviousRoundAction}
         completeAction={completeRoundAction}
         fillRestAction={fillRemainingAction}
+        refreshAction={dayCellsAction}
       />
     </div>
   );

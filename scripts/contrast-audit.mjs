@@ -1,8 +1,11 @@
 /**
  * 모든 화면의 글자 대비를 실제로 재서 WCAG AA 미만을 찾아낸다.
  *
- *   PORT=3210 pnpm dev            # 먼저 개발 서버를 띄운다 (시드 데이터 필요)
+ *   PORT=3210 DATABASE_URL=postgres://localhost:5432/byeolha_test pnpm dev   # 가상 시드 DB 로 서버를 띄운다
  *   node scripts/contrast-audit.mjs [--base http://localhost:3210]
+ *
+ * 가상 시드 DB 로만 돌린다. 검사하면서 라운딩 칸 몇 개를 칠했다 지우고, 현황판 링크를 새로 발급한다
+ * (실데이터가 든 개발 DB 에서 돌리면 쓰던 현황판 링크가 끊긴다).
  *
  * 눈으로 보는 대신 계산한다. 흰 배경에 흰 글씨 같은 사고는 스크린샷을 아무리
  * 들여다봐도 "빈 곳"으로 보이기 때문에 놓친다.
@@ -248,21 +251,34 @@ async function main() {
     console.log(`\n### 회원 상세  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
   }
 
-  // 라운딩 하루 표: 펜마다 칸 색이 달라진다. 몇 칸을 칠해 b·벌점·부재 색까지 잰다 (개발 DB 에만 칸이 생긴다)
+  // 라운딩 하루 표: 펜마다 칸 색이 달라진다. 빈 칸 몇 개를 칠해 b·벌점·부재 색까지 재고, 다 재면 지우개로 되돌린다.
+  // 벌점은 점수가 가장 낮은 규칙으로 칠한다 — 고벌점(5점 이상)은 메신저 알림을 쌓는다.
   try {
     await login(page, "assistant");
     await page.goto(base + "/rounding", { waitUntil: "networkidle" });
     const pens = page.getByRole("toolbar", { name: "펜" });
     const empties = page.getByRole("button", { name: / R\d+ 빈 칸$/ });
+    const painted = [];
+    const paint = async () => {
+      const cell = empties.first();
+      const name = (await cell.getAttribute("aria-label")).replace(/ 빈 칸$/, "");
+      await cell.click();
+      painted.push(name);
+    };
     for (const label of ["b", "부재"]) {
       if (!(await empties.count())) break;
       await pens.getByRole("button", { name: label, exact: true }).click();
-      await empties.first().click();
+      await paint();
     }
-    const rule = pens.getByRole("button", { name: /\d$/ }).first();
-    if ((await rule.count()) && (await empties.count())) {
-      await rule.click();
-      await empties.first().click();
+    const rulePens = pens.getByRole("button", { name: /\d$/ });
+    let lowest = null;
+    for (let i = 0; i < (await rulePens.count()); i++) {
+      const pts = Number((await rulePens.nth(i).innerText()).match(/(\d+)\s*$/)?.[1] ?? 99);
+      if (!lowest || pts < lowest.pts) lowest = { i, pts };
+    }
+    if (lowest && (await empties.count())) {
+      await rulePens.nth(lowest.i).click();
+      await paint();
     }
     await page.waitForLoadState("networkidle");
     await auditOne("/rounding (하루 표 · 칠한 칸)");
@@ -271,6 +287,11 @@ async function main() {
     await page.getByRole("button", { name: / R\d+ / }).first().click();
     await page.getByRole("dialog").waitFor();
     await auditOne("/rounding (메모·자세히 창)");
+    await page.keyboard.press("Escape");
+    // 칠한 칸을 지운다
+    await pens.getByRole("button", { name: "지우개" }).click();
+    for (const name of painted) await page.getByRole("button", { name: new RegExp(`^${name} `) }).click();
+    await page.waitForLoadState("networkidle");
   } catch (e) {
     console.log(`\n### 라운딩 하루 표  — 검사하지 못했습니다: ${e.message.split("\n")[0]}`);
   }

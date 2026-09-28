@@ -18,7 +18,8 @@ export type AttentionItem = {
 export type AttentionInput = {
   /** "HH:MM" 현재 시각. 라운딩 지연 판단에 쓴다 */
   nowTime: string;
-  sessionsDone: number;
+  /** 오늘 완료한 회차 번호. 하루 표에서는 아무 회차나 먼저 완료할 수 있어 개수가 아니라 번호로 본다 */
+  completedRounds: number[];
   roundsPerDay: number;
   roundSchedule: string[];
   missingWeekly: number;
@@ -37,13 +38,17 @@ const ORDER: Record<AttentionLevel, number> = { urgent: 0, warning: 1, info: 2 }
 export function buildAttention(i: AttentionInput): AttentionItem[] {
   const out: AttentionItem[] = [];
 
-  // 라운딩: 시간표에서 이미 지난 회차 수와 완료 수를 비교한다
-  const scheduledPast = i.roundSchedule.filter((t) => t && t <= i.nowTime).length;
-  const behind = Math.min(scheduledPast, i.roundsPerDay) - i.sessionsDone;
-  if (behind >= 2) {
-    out.push({ key: "rounds", level: "urgent", title: `라운딩이 ${behind}회차 밀려 있습니다`, detail: `${i.sessionsDone}/${scheduledPast} 회차 완료 · 시간표 기준`, href: "/rounding", target: "라운딩" });
-  } else if (behind === 1) {
-    out.push({ key: "rounds", level: "warning", title: `R${i.sessionsDone + 1} 시작 시간이 지났습니다`, detail: `${i.sessionsDone}/${i.roundsPerDay} 회차 완료`, href: "/rounding", target: "라운딩" });
+  // 라운딩: 시간표에서 시작 시각이 지났는데 아직 완료하지 않은 회차
+  const done = new Set(i.completedRounds);
+  const overdue = i.roundSchedule
+    .slice(0, i.roundsPerDay)
+    .map((t, k) => (t && t <= i.nowTime && !done.has(k + 1) ? k + 1 : null))
+    .filter((n): n is number => n !== null);
+  if (overdue.length >= 2) {
+    const names = overdue.slice(0, 4).map((n) => `R${n}`).join("·") + (overdue.length > 4 ? ` 외 ${overdue.length - 4}회차` : "");
+    out.push({ key: "rounds", level: "urgent", title: `라운딩이 ${overdue.length}회차 밀려 있습니다`, detail: `${names} 미완료 · 시간표 기준`, href: "/rounding", target: "라운딩" });
+  } else if (overdue.length === 1) {
+    out.push({ key: "rounds", level: "warning", title: `R${overdue[0]} 시작 시간이 지났습니다`, detail: `${i.completedRounds.length}/${i.roundsPerDay} 회차 완료`, href: "/rounding", target: "라운딩" });
   }
 
   const high = i.openIssues.filter((x) => x.severity === "high").length;

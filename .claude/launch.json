@@ -7,6 +7,12 @@
       "runtimeArgs": ["dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "byeolha-testdb",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["DATABASE_URL=postgres://localhost:5432/byeolha_test", "pnpm", "exec", "next", "dev", "-p", "3210"],
+      "port": 3210
     }
   ]
 }

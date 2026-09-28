@@ -30,13 +30,22 @@ export async function saveWorkLogAction(_p: ActionState, fd: FormData): Promise<
   });
 }
 
-export async function confirmWorkLogAction(fd: FormData): Promise<void> {
+/**
+ * 본사 확인·취소. 일별 현황 표가 돌려받은 값으로 그 줄만 고친다 —
+ * 화면 전체를 다시 그리면 다른 줄에 적고 있던 초과근무·사유가 날아간다.
+ */
+export async function setWorkLogConfirmedAction(input: { id: string; confirmed: boolean }): Promise<{ confirmedBy?: string | null; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
-    const id = String(fd.get("id") ?? "");
-    if (fd.get("undo")) await unconfirmWorkLog(ctx, id);
-    else await confirmWorkLog(ctx, id);
-    revalidatePath("/worklog", "layout");
+    try {
+      if (!input.confirmed) {
+        await unconfirmWorkLog(ctx, input.id);
+        return { confirmedBy: null };
+      }
+      return { confirmedBy: (await confirmWorkLog(ctx, input.id)) ?? "본사" };
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
   });
 }
 
@@ -138,8 +147,11 @@ export async function applySheetSlotPresetAction(): Promise<ActionState> {
   });
 }
 
-/** 일별 현황 표에서 그 줄의 타임 체크·초과근무를 바로 고친다. 고친 뒤의 근무 시간을 돌려준다 */
-export async function patchWorkLogAction(input: { userId: string; date: string; slotKeys?: string[]; overtime?: string; overtimeReason?: string | null }): Promise<{ log?: { id: string; slotKeys: string[]; hoursX100: number; overtimeX100: number; overtimeReason: string | null; locked: boolean }; error?: string }> {
+/**
+ * 일별 현황 표에서 그 줄의 타임 체크·초과근무를 바로 고친다. 고친 뒤의 근무 시간을 돌려준다.
+ * 체크를 다 풀어 기록이 지워졌으면 log 가 null 이다.
+ */
+export async function patchWorkLogAction(input: { userId: string; date: string; slotKeys?: string[]; overtime?: string; overtimeReason?: string | null }): Promise<{ log?: { id: string; slotKeys: string[]; hoursX100: number; overtimeX100: number; overtimeReason: string | null; locked: boolean } | null; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     let overtimeX100: number | undefined;
@@ -151,7 +163,7 @@ export async function patchWorkLogAction(input: { userId: string; date: string; 
     try {
       // 표가 돌려받은 값으로 그 줄을 고친다. 화면 전체를 다시 그리면 다른 줄에 입력 중인 글자가 날아간다
       const log = await patchWorkLog(ctx, { userId: input.userId, date: input.date, slotKeys: input.slotKeys, overtimeX100, overtimeReason: input.overtimeReason === undefined ? undefined : input.overtimeReason?.trim() || null });
-      return { log: { id: log.id, slotKeys: log.slotKeys, hoursX100: log.hoursX100, overtimeX100: log.overtimeX100, overtimeReason: log.overtimeReason, locked: Boolean(log.hqConfirmedAt) } };
+      return { log: log ? { id: log.id, slotKeys: log.slotKeys, hoursX100: log.hoursX100, overtimeX100: log.overtimeX100, overtimeReason: log.overtimeReason, locked: Boolean(log.hqConfirmedAt) } : null };
     } catch (e) {
       return { error: toMessage(e) };
     }

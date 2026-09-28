@@ -1,10 +1,9 @@
 "use server";
 
 import { withRequestRls } from "@/lib/rls";
-import { revalidatePath } from "next/cache";
 import { toMessage } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
-import { clearCheck, completeRound, copyPreviousRound, fillRemaining, saveCell, type CellPatch, type CheckInput, type SessionSummary } from "./repo";
+import { clearCheck, completeRound, copyPreviousRound, dayCells, fillRemaining, saveCell, type CellPatch, type CheckInput, type DayCell, type SessionSummary } from "./repo";
 
 type CellKeyInput = { memberId: string; date: string; itemKey: string; roundNo: number };
 
@@ -44,26 +43,39 @@ export async function copyPreviousRoundAction(input: { date: string; roundNo: nu
   });
 }
 
-/** 회차 완료: 빈 칸 a 로 채우고 완료 표시 */
+/**
+ * 회차 완료: 빈 칸 a 로 채우고 완료 표시. 표는 돌려받은 칸으로 고치므로 화면을 다시 그리지 않는다
+ * (revalidatePath 를 부르면 지금 보고 있는 하루 표 전체를 서버에서 다시 그려 보낸다).
+ */
 export async function completeRoundAction(input: { date: string; roundNo: number }): Promise<{ patch?: CellPatch; summary?: SessionSummary; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      const r = await completeRound(ctx, input.date, input.roundNo);
-      revalidatePath("/");
-      return r;
+      return await completeRound(ctx, input.date, input.roundNo);
     } catch (e) {
       return { error: toMessage(e) };
     }
   });
 }
 
-/** 일별 항목의 빈 칸을 a 로 채우기 */
-export async function fillRemainingAction(input: { date: string; itemKey: string }): Promise<{ filled?: number; error?: string }> {
+/** 일별 항목의 빈 칸을 a 로 채우기. 실제로 채운 칸만 돌려준다 */
+export async function fillRemainingAction(input: { date: string; itemKey: string }): Promise<{ patch?: CellPatch; error?: string }> {
   return withRequestRls(async () => {
     const ctx = await getCtx();
     try {
-      return { filled: await fillRemaining(ctx, input.date, input.itemKey) };
+      return { patch: await fillRemaining(ctx, input.date, input.itemKey) };
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+  });
+}
+
+/** 하루 표 새로 읽기(다른 기기가 적은 것 따라가기). 읽기만 하므로 멘토도 된다 */
+export async function dayCellsAction(input: { date: string }): Promise<{ cells?: Record<string, DayCell>; completedRounds?: number[]; error?: string }> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      return await dayCells(ctx, input.date);
     } catch (e) {
       return { error: toMessage(e) };
     }

@@ -118,18 +118,31 @@ export async function upsertBoardItem(ctx: Ctx, input: BoardItemInput, db: Db = 
     await db.update(boardItems).set(vals).where(eq(boardItems.id, input.id));
     return input.id;
   }
-  // 지점 항목이 하나라도 생기면 그 지점은 본사 기본 항목 대신 자기 항목만 쓴다.
-  // 첫 항목을 만들 때 기본 항목을 먼저 지점으로 옮겨 두지 않으면 출석·라운딩 열이 한꺼번에 사라진다.
-  if (!input.global) {
-    const own = await db.select({ id: boardItems.id }).from(boardItems).where(eq(boardItems.branchId, ctx.branchId)).limit(1);
-    if (!own.length) {
-      const defaults = await db.select().from(boardItems).where(isNull(boardItems.branchId));
-      const carry = defaults.filter((d) => d.key !== key);
-      if (carry.length) await db.insert(boardItems).values(carry.map((d) => ({ branchId: ctx.branchId, key: d.key, label: d.label, kind: d.kind, sort: d.sort, active: d.active })));
+  return db.transaction(async (tx) => {
+    const scope = input.global ? isNull(boardItems.branchId) : eq(boardItems.branchId, ctx.branchId);
+    const same = await tx.select().from(boardItems).where(scope);
+    // 켜 둔 지점 항목이 하나라도 있으면 그 지점은 본사 기본 항목 대신 자기 항목만 쓴다(boardItemsFor).
+    // 켜 둔 것이 하나도 없는 지점은 지금 기본 항목을 보고 있으므로, 새 항목을 더하기 전에 그 모습 그대로 지점 항목으로 옮긴다 —
+    // 안 그러면 출석·라운딩 열이 한꺼번에 사라진다. 같은 키로 꺼 둔 지점 항목은 기본 값으로 되살린다.
+    if (!input.global && !same.some((o) => o.active)) {
+      const defaults = await tx.select().from(boardItems).where(isNull(boardItems.branchId));
+      for (const d of defaults) {
+        if (d.key === key) continue;
+        const mine = same.find((o) => o.key === d.key);
+        const copy = { label: d.label, kind: d.kind, sort: d.sort, active: d.active };
+        if (mine) await tx.update(boardItems).set(copy).where(eq(boardItems.id, mine.id));
+        else await tx.insert(boardItems).values({ ...copy, branchId: ctx.branchId, key: d.key });
+      }
     }
-  }
-  const [row] = await db.insert(boardItems).values({ ...vals, branchId: input.global ? null : ctx.branchId }).returning({ id: boardItems.id });
-  return row.id;
+    // 같은 키가 이미 있으면(꺼 둔 것 포함) 새로 만들지 않고 그 항목을 고친다. 키가 같은 열이 둘이면 같은 칸을 두 번 보여 준다
+    const dup = same.find((o) => o.key === key);
+    if (dup) {
+      await tx.update(boardItems).set(vals).where(eq(boardItems.id, dup.id));
+      return dup.id;
+    }
+    const [row] = await tx.insert(boardItems).values({ ...vals, branchId: input.global ? null : ctx.branchId }).returning({ id: boardItems.id });
+    return row.id;
+  });
 }
 
 export type UserInput = { id?: string; loginId: string; name: string; password?: string; role: BranchRole; active: boolean; phone?: string | null };

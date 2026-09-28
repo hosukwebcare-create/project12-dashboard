@@ -158,7 +158,7 @@ test.describe("근무일지", () => {
     await expect(page.getByRole("checkbox", { name: "정조교 2타임" })).toHaveCount(1);
   });
 
-  test("일별 현황 표에서 설정 화면에 가지 않고 바로 체크하고 근무 형태·요일을 고친다", async ({ page }) => {
+  test("일별 현황 표에서 설정 화면에 가지 않고 바로 체크하고 근무 형태·요일을 고친다", async ({ page, browser }) => {
     await login(page, "manager");
     const day = new Date();
     day.setDate(day.getDate() - 7);
@@ -185,13 +185,35 @@ test.describe("근무일지", () => {
     await page.getByLabel("정조교 근무 요일").fill("월화수일");
     await page.getByLabel("정조교 근무 요일").press("Enter");
     await expect(page.getByText(/정조교 근무 요일 저장됨/)).toBeVisible();
-    await page.getByLabel("한청소 근무 형태").selectOption("청소조교");
+    // 한청소(청소조교)를 주간조교로 바꾸면 조교 묶음으로 옮겨 간다
+    await page.getByLabel("한청소 근무 형태").selectOption("주간조교");
     await expect(page.getByText(/한청소 근무 형태 저장됨/)).toBeVisible();
 
     await page.reload();
     await expect(page.getByLabel("정조교 근무 요일")).toHaveValue("월화수일");
     await expect(page.getByRole("checkbox", { name: "정조교 7타임" })).toBeChecked();
     await expect(page.getByLabel("정조교 초과근무 사유")).toHaveValue("커피머신 청소");
+    await expect(page.getByLabel("한청소 근무 형태")).toHaveValue("주간조교");
+    await expect(page.getByRole("checkbox", { name: "한청소 2타임" })).toHaveCount(1);
+    // 되돌려 둔다
+    await page.getByLabel("한청소 근무 형태").selectOption("청소조교");
+    await expect(page.getByText(/한청소 근무 형태 저장됨/)).toBeVisible();
+
+    // 본사 확인을 눌러도 다른 줄에 적고 있던 초과근무는 그대로다
+    const hqCtx = await browser.newContext();
+    const hq = await hqCtx.newPage();
+    await login(hq, "hq");
+    await hq.goto(page.url());
+    // 사유만 적고 시간은 아직 안 적은 채(저장되지 않고 칸에 남는다) 다른 줄의 확인을 누른다
+    await hq.getByLabel("최조교 초과근무 사유").fill("적는 중");
+    await hq.locator("tbody tr").filter({ has: hq.getByRole("checkbox", { name: "정조교 1타임" }) }).getByRole("button", { name: "확인" }).click();
+    await expect(hq.getByText(/정조교 본사 확인/)).toBeVisible();
+    await expect(hq.getByLabel("최조교 초과근무 사유")).toHaveValue("적는 중");
+    await expect(hq.getByRole("checkbox", { name: "정조교 1타임" })).toBeDisabled();
+    // 확인을 취소해 둔다
+    await hq.locator("tbody tr").filter({ has: hq.getByRole("checkbox", { name: "정조교 1타임" }) }).getByRole("button", { name: "취소" }).click();
+    await expect(hq.getByRole("checkbox", { name: "정조교 1타임" })).toBeEnabled();
+    await hqCtx.close();
   });
 });
 

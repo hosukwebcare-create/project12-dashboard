@@ -43,9 +43,24 @@ export function staffGroupOf(role: string, employmentType?: string | null): Staf
 /**
  * 그날 이 근무 형태가 체크할 수 있는 타임: 요일이 맞고, 자기 형태 것이거나 공통인 것.
  * 시트는 토요일에도 1~7타임을 쓰고 일요일에만 일1·일2타임을 쓴다 — 그래서 기준은 주말이 아니라 일요일이다.
+ * 자기 타임이 따로 없는 형태(기타, 없어진 야간조교)는 그날 타임 전부에서 고른다 — 체크할 칸이 없어 근무를 못 적는 일이 없게.
  */
 export function slotsForAudience<T extends { weekend: boolean; audience: string | null }>(slots: T[], employmentType: string, sunday: boolean): T[] {
-  return slots.filter((s) => s.weekend === sunday && (s.audience === null || s.audience === employmentType));
+  const day = slots.filter((s) => s.weekend === sunday);
+  if (!(SLOT_AUDIENCES as string[]).includes(employmentType)) return day;
+  return day.filter((s) => s.audience === null || s.audience === employmentType);
+}
+
+type LogLike = { slotKeys: string[]; hoursX100: number; overtimeX100: number; note?: string | null; clockInAt?: Date | string | null; hqConfirmedAt?: Date | string | null };
+
+/** 그날 일한 기록인가(월 집계의 근무일 수). 메모만 있는 날은 세지 않는다 */
+export function isWorkedDay(l: LogLike): boolean {
+  return l.slotKeys.length > 0 || l.hoursX100 > 0 || l.overtimeX100 > 0 || Boolean(l.clockInAt);
+}
+
+/** 아무것도 남지 않은 기록(체크를 다 풀었을 때). 지워서 근무일 수·목록에 빈 날이 끼지 않게 한다 */
+export function isEmptyWorkLog(l: LogLike): boolean {
+  return !isWorkedDay(l) && !l.note && !l.hqConfirmedAt;
 }
 
 /**

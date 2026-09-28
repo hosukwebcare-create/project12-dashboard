@@ -62,7 +62,7 @@ async function DashboardPage() {
   const nowTime = new Date().toTimeString().slice(0, 5);
   const attention = buildAttention({
     nowTime,
-    sessionsDone: d.sessionsDone,
+    completedRounds: d.completedRounds,
     roundsPerDay: d.roundsPerDay,
     roundSchedule: ctx.settings.roundSchedule ?? [],
     missingWeekly: d.missingWeekly,

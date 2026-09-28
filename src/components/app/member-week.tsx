@@ -3,16 +3,14 @@ import Link from "next/link";
 import { GradeChip } from "@/components/app/grade-chip";
 import { Button } from "@/components/ui/button";
 import { fmtShortDate } from "@/lib/format";
+import { dayColumns } from "@/lib/rules/rounding";
 import { addDays, toDateKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
 import type { MemberWeek } from "@/modules/rounding/repo";
 
 export function MemberWeekView({ memberId, week }: { memberId: string; week: MemberWeek }) {
-  const cols: { key: string; roundNo: number; label: string }[] = [];
-  for (const it of week.items) {
-    if (it.kind === "round") for (let n = 1; n <= week.roundsPerDay; n++) cols.push({ key: it.key, roundNo: n, label: `R${n}` });
-    else cols.push({ key: it.key, roundNo: 0, label: it.label });
-  }
+  // 라운딩 표와 같은 순서·같은 키로 열을 만든다(라운딩 칸은 항목 키와 상관없이 round 로 쌓인다)
+  const cols = dayColumns(week.items, week.roundsPerDay).map((c) => ({ key: c.itemKey, roundNo: c.roundNo, label: c.label }));
   const prev = toDateKey(addDays(week.weekStart, -7));
   const next = toDateKey(addDays(week.weekStart, 7));
   const penaltyCount = Object.values(week.cells).filter((c) => c?.grade === "p").length;

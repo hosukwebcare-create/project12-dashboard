@@ -37,6 +37,23 @@ async function until<T>(fn: () => Promise<T | null | false | undefined>, ms: num
   }
 }
 
+/** 라운딩 하루 표: 칸은 "이름 열 값" 이름의 버튼, 펜은 '펜' 도구 모음의 버튼 */
+const dayCell = (page: Page, name: string, col: string) => page.getByRole("button", { name: new RegExp(`^${name} ${col} `) });
+const dayPen = (page: Page, label: string | RegExp) => page.getByRole("toolbar", { name: "펜" }).getByRole("button", { name: label });
+/** 오늘 아직 완료하지 않은 가장 이른 회차 번호 */
+async function openRound(page: Page): Promise<number> {
+  const heads = page.getByRole("button", { name: /^R\d+ 열 메뉴$/ });
+  for (let i = 0; i < (await heads.count()); i++) {
+    const h = heads.nth(i);
+    if (!(await h.innerText()).includes("완료")) return Number((await h.getAttribute("aria-label"))!.match(/^R(\d+)/)![1]);
+  }
+  throw new Error("오늘 남은 회차가 없습니다");
+}
+const localDateKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 let browser: Browser;
 async function login(who: keyof typeof ACCOUNTS, opts: { mobile?: boolean } = {}): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({ baseURL: BASE, locale: "ko-KR", timezoneId: "Asia/Seoul", ...(opts.mobile ? { viewport: { width: 390, height: 844 }, hasTouch: true } : { viewport: { width: 1280, height: 860 } }) });
@@ -231,15 +248,11 @@ async function main() {
     // 상담일지 그리드
     await M.goto("/counsel/weekly");
     await M.getByRole("row").filter({ hasText: "검수회원B" }).first().waitFor();
-    // 라운딩 명단 (회차 시작)
+    // 라운딩 하루 표
     await M.goto("/rounding");
-    const resume = M.getByRole("link", { name: /진행 중 · 이어서 입력/ });
-    if (await resume.count()) await resume.click();
-    else await M.getByRole("button", { name: /R\d+ 시작/ }).click();
-    await M.waitForURL(/\/rounding\/[0-9a-f-]+$/);
-    const row = M.getByRole("listitem").filter({ hasText: "검수회원B" });
-    await row.waitFor();
-    if (!(await row.innerText()).includes("31")) throw new Error("라운딩 명단에 새 좌석 31이 없음");
+    const row = M.locator("tbody tr").filter({ hasText: "검수회원B" });
+    await row.first().waitFor();
+    if ((await row.first().locator("td").first().innerText()).trim() !== "31") throw new Error("라운딩 표에 새 좌석 31이 없음");
     // 현황판 API
     const b = await boardApi();
     const seat = b.seats.find((s) => s.seatNo === 31);
@@ -355,68 +368,67 @@ async function main() {
   // ───────────────────────── 라운딩 (조교·모바일) ─────────────────────────
   const asst = await login("assistant", { mobile: true });
   const A = asst.page;
-  let sessionUrl = "";
-  await check("R1", "1-3 라운딩", "회차 이어서 입력 · 좌석 순 명단 · 기본 a", async (log) => {
+  let round = 0;
+  await check("R1", "1-3 라운딩", "하루 표 · 좌석 순 명단 · 오늘 돌 회차", async (log) => {
     await A.goto("/rounding");
-    const resume = A.getByRole("link", { name: /진행 중 · 이어서 입력/ });
-    if (await resume.count()) await resume.click();
-    else await A.getByRole("button", { name: /R\d+ 시작/ }).click();
-    await A.waitForURL(/\/rounding\/[0-9a-f-]+$/);
-    sessionUrl = A.url();
-    const names = await A.getByRole("listitem").allInnerTexts();
-    const seatNos = names.map((t) => Number((t.match(/^\s*(\d+)/) ?? [])[1])).filter((n) => Number.isFinite(n));
-    const sorted = [...seatNos].every((n, i) => i === 0 || seatNos[i - 1] <= n);
+    round = await openRound(A);
+    const seatNos = (await A.locator("tbody tr td:first-child").allInnerTexts()).map((t) => Number(t.trim())).filter((n) => Number.isFinite(n) && n > 0);
+    const sorted = seatNos.every((n, i) => i === 0 || seatNos[i - 1] <= n);
     if (!sorted) throw new Error(`좌석 순이 아님: ${seatNos.slice(0, 8).join(",")}`);
-    log(`명단 ${names.length}명, 좌석 번호 오름차순, 지점장이 시작한 회차를 조교가 이어받음`);
+    log(`하루 표 ${seatNos.length}명, 좌석 번호 오름차순, 오늘 돌 회차 R${round}`);
     await shot(A, "R1");
   }, () => A);
 
   await check("R7", "1-3 라운딩", "탭 응답 속도 (50석 1회차 3분 기준)", async (log) => {
-    const rows = A.getByRole("listitem");
-    const n = Math.min(10, await rows.count());
+    await dayPen(A, "b").click();
+    const cells = A.getByRole("button", { name: new RegExp(` R${round} 빈 칸$`) });
+    const n = Math.min(10, await cells.count());
     const times: number[] = [];
     for (let i = 0; i < n; i++) {
-      const b = rows.nth(i).getByRole("button", { name: "b", exact: true });
+      const cell = cells.first();
+      const who = (await cell.getAttribute("aria-label"))!.replace(/ 빈 칸$/, "");
       const t0 = Date.now();
-      await b.click();
-      await until(async () => (await b.getAttribute("aria-pressed")) === "true", 5000, 50);
+      await cell.click();
+      await until(async () => (await A.getByRole("button", { name: `${who} b` }).count()) > 0, 5000, 50);
       times.push(Date.now() - t0);
     }
+    await until(async () => !(await A.getByText("저장 중…").count()), 15000, 100);
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
     log(`${n}명 탭 평균 ${avg.toFixed(0)}ms (최대 ${Math.max(...times)}ms) → 50석 예외 전부 입력해도 약 ${((avg * 50) / 1000).toFixed(0)}초 + 이동 시간`);
   }, () => A);
 
   await check("R5", "1-3 라운딩", "오프라인 입력 → 복귀 후 자동 저장", async (log) => {
-    const row = A.getByRole("listitem").filter({ hasText: "나윤서" });
+    await dayPen(A, "부재").click();
     await asst.ctx.setOffline(true);
-    await row.getByRole("button", { name: "부재", exact: true }).click();
+    await dayCell(A, "나윤서", `R${round}`).click();
     await A.getByText(/미전송 \d+건/).waitFor({ timeout: 15000 });
     await shot(A, "R5-offline");
     await asst.ctx.setOffline(false);
     await A.getByText(/미전송 \d+건/).waitFor({ state: "hidden", timeout: 25000 });
     await A.reload();
-    const pressed = await A.getByRole("listitem").filter({ hasText: "나윤서" }).getByRole("button", { name: "부재", exact: true }).getAttribute("aria-pressed");
-    if (pressed !== "true") throw new Error("복귀 후 서버에 저장되지 않음");
+    const name = await dayCell(A, "나윤서", `R${round}`).getAttribute("aria-label");
+    if (!name?.endsWith("부재")) throw new Error(`복귀 후 서버에 저장되지 않음: ${name}`);
     log("오프라인에서 '부재' 입력 → '미전송 1건' 표시 → 온라인 복귀 후 자동 전송 → 새로고침해도 유지");
   }, () => A);
 
   await check("R3", "1-3 라운딩", "벌점 규칙 선택 시 점수 자동 + 이슈 보고", async (log) => {
-    const row = A.getByRole("listitem").filter({ hasText: "검수회원B" });
-    await row.getByRole("button", { name: "벌점", exact: true }).click();
+    // 메모·이슈는 '메모·자세히' 펜으로
+    await dayPen(A, "메모·자세히").click();
+    await dayCell(A, "검수회원B", `R${round}`).click();
     const sheet = A.getByRole("dialog");
+    await sheet.getByRole("button", { name: "벌점", exact: true }).click();
     await sheet.getByRole("button", { name: /지각/ }).click();
     await sheet.getByLabel("메모").fill("검수: 10분 지각");
     await sheet.getByLabel("지점장에게 이슈로 보고").check();
     await sheet.getByRole("button", { name: "저장" }).click();
-    await row.getByText(/지각 4점 · 이슈/).waitFor();
-    // 고벌점(5점) 이벤트용
-    const row2 = A.getByRole("listitem").filter({ hasText: "도현우" });
-    await row2.getByRole("button", { name: "벌점", exact: true }).click();
-    await A.getByRole("dialog").getByRole("button", { name: /이동금지/ }).click();
-    await A.getByRole("dialog").getByRole("button", { name: "저장" }).click();
-    await row2.getByText(/이동금지 위반 5점/).waitFor();
+    await A.getByRole("button", { name: `검수회원B R${round} 지각 4점` }).waitFor();
+    // 고벌점(5점) 이벤트용: 규칙 펜 하나로
+    await dayPen(A, /^이동금지/).click();
+    await dayCell(A, "도현우", `R${round}`).click();
+    await A.getByRole("button", { name: `도현우 R${round} 이동금지 위반 5점` }).waitFor();
+    await until(async () => !(await A.getByText("저장 중…").count()), 15000, 100);
     await shot(A, "R3");
-    log("지각 → 4점 자동, 이동금지 위반 → 5점 자동, 이슈 보고 체크");
+    log("지각 → 4점 자동(메모·이슈 보고), 이동금지 위반 펜 → 5점 자동");
   }, () => A);
 
   await check("R4", "1-3 라운딩", "이슈 보고가 지점장 이슈함·알림에 즉시 표시", async (log) => {
@@ -427,29 +439,30 @@ async function main() {
     log("조교 저장 직후 지점장 이슈함과 알림에 '검수회원B · 지각' 도착");
   }, () => M);
 
-  let sessionRound = 0;
   await check("R2", "1-3 라운딩", "회차 완료: 미입력은 a, 요약 표시", async (log) => {
-    await A.getByRole("button", { name: /회차 완료/ }).click();
-    await A.getByRole("dialog").getByText(/R\d+ 회차 완료/).waitFor();
-    sessionRound = Number((await A.getByRole("dialog").innerText()).match(/R(\d+)/)?.[1] ?? 0);
-    const sid = sessionUrl.split("/").pop();
-    const total = psql(`select count(*) from checks where session_id='${sid}'`);
-    const a = psql(`select count(*) from checks where session_id='${sid}' and grade='a'`);
-    const enrolled = psql(`select count(*) from members where branch_id='${DT2}' and status='enrolled' and seat_id is not null`);
+    await A.getByRole("button", { name: `R${round} 열 메뉴` }).click();
+    await A.getByRole("dialog").getByRole("button", { name: new RegExp(`^R${round} 완료`) }).click();
+    await A.getByRole("dialog").getByRole("button", { name: "완료", exact: true }).click();
+    await A.getByRole("status").filter({ hasText: `R${round} 완료` }).waitFor();
+    const today = localDateKey();
+    const where = `branch_id='${DT2}' and date='${today}' and item_key='round' and round_no=${round}`;
+    const total = psql(`select count(*) from checks where ${where}`);
+    const a = psql(`select count(*) from checks where ${where} and grade='a'`);
+    const enrolled = psql(`select count(*) from members where branch_id='${DT2}' and status='enrolled'`);
     if (total !== enrolled) throw new Error(`체크 ${total}건 ≠ 재원 ${enrolled}명`);
     await shot(A, "R2");
-    log(`R${sessionRound} 완료 → 재원 ${enrolled}명 전원 체크 저장(양호 ${a}명), 요약 다이얼로그 표시`);
+    log(`R${round} 완료 → 재원 ${enrolled}명 전원 체크 저장(양호 ${a}명), 요약 표시`);
   }, () => A);
 
-  await check("R6", "1-3 라운딩", "회차·일별·회원별 조회", async (log) => {
-    const res = await M.goto("/rounding/history");
+  await check("R6", "1-3 라운딩", "날짜별·회원별 조회", async (log) => {
+    const res = await M.goto(`/rounding?date=${localDateKey()}`);
     if (res?.status() !== 200) throw new Error(`status ${res?.status()}`);
-    await M.getByText("검수회원B").first().waitFor();
+    await M.getByRole("button", { name: `검수회원B R${round} 지각 4점` }).waitFor();
     await M.goto(memberUrl);
     await M.getByRole("tab", { name: /라운딩 · 벌점/ }).click();
     await M.getByText(/주간 벌점 4점/).waitFor();
     await shot(M, "R6");
-    log("조회 화면에 오늘 회차 결과, 회원 상세 주간표 R3 칸에 4점·주간 벌점 4점 1건 표시");
+    log(`하루 표에 오늘 R${round} 결과, 회원 상세 주간표 R${round} 칸에 4점·주간 벌점 4점 1건 표시`);
   }, () => M);
 
   // ───────────────────────── 현황판 ─────────────────────────
@@ -506,15 +519,13 @@ async function main() {
     await page.goto(`/board/${DT2}?t=${BOARD_TOKEN}`);
     await page.getByText("동탄2").first().waitFor();
     const before = (await boardApi()).seats.find((s) => s.seatNo === 31)!.weeklyPoints;
-    // 조교가 다음 회차에서 검수회원B 에게 지각 4점
+    // 조교가 다음 회차에서 검수회원B 에게 지각 4점 (지각 펜 하나로)
     await A.goto("/rounding");
-    await A.getByRole("button", { name: /R\d+ 시작/ }).click();
-    await A.waitForURL(/\/rounding\/[0-9a-f-]+$/);
-    const row = A.getByRole("listitem").filter({ hasText: "검수회원B" });
-    await row.getByRole("button", { name: "벌점", exact: true }).click();
-    await A.getByRole("dialog").getByRole("button", { name: /지각/ }).click();
-    await A.getByRole("dialog").getByRole("button", { name: "저장" }).click();
-    await row.getByText(/지각 4점/).waitFor();
+    const next = await openRound(A);
+    await dayPen(A, /^지각/).click();
+    await dayCell(A, "검수회원B", `R${next}`).click();
+    await A.getByRole("button", { name: `검수회원B R${next} 지각 4점` }).waitFor();
+    await until(async () => !(await A.getByText("저장 중…").count()), 15000, 100);
     const t0 = Date.now();
     const expected = before + 4;
     await until(async () => {
@@ -681,7 +692,7 @@ async function main() {
     const b = await boardApi();
     if (b.seats.some((s) => s.seatNo === 31)) throw new Error("현황판에 31번이 남아 있음");
     await A.reload();
-    if (await A.getByRole("listitem").filter({ hasText: "검수회원B" }).count()) throw new Error("라운딩 명단에 남아 있음");
+    if (await A.locator("tbody tr").filter({ hasText: "검수회원B" }).count()) throw new Error("라운딩 표에 남아 있음");
     await M.getByRole("tab", { name: /타임라인/ }).click();
     for (const t of ["상태 변경", "좌석 변경", "회원 등록"]) await M.getByText(t).first().waitFor();
     const txt = await M.locator("body").innerText();

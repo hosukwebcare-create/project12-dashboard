@@ -6,7 +6,7 @@ import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
 import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
-import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, EMPLOYMENT_TYPES, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, EMPLOYMENT_TYPES, isEmptyWorkLog, isWorkedDay, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
 export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; minutes: number; weekend: boolean; audience?: SlotAudience | null; sort: number; active: boolean };
@@ -108,10 +108,27 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
   if (input.targetHoursX100 !== null && input.targetHoursX100 !== undefined && (input.targetHoursX100 < 0 || input.targetHoursX100 > 2400)) throw new ValidationError("하루 근무 예정 시간은 0~24시간");
   if (input.weeklyTargetHoursX100 !== null && input.weeklyTargetHoursX100 !== undefined && (input.weeklyTargetHoursX100 < 0 || input.weeklyTargetHoursX100 > 16800)) throw new ValidationError("주 소정근로시간은 0~168시간");
   const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct, targetHoursX100: input.targetHoursX100 ?? null, weeklyTargetHoursX100: input.weeklyTargetHoursX100 ?? null };
-  await db
-    .insert(staffProfiles)
-    .values({ userId: input.userId, ...vals })
-    .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
+  await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(staffProfiles).where(eq(staffProfiles.userId, input.userId)).limit(1);
+    await tx
+      .insert(staffProfiles)
+      .values({ userId: input.userId, ...vals })
+      .onConflictDoUpdate({ target: staffProfiles.userId, set: vals });
+    // 시급·근무 형태는 급여에 닿는다. 바뀐 칸만 이전 값과 함께 남긴다
+    const fields = ["employmentType", "hourlyRate", "workDays", "direct", "targetHoursX100", "weeklyTargetHoursX100"] as const;
+    const changed = fields.filter((f) => (before?.[f] ?? null) !== (vals[f] ?? null));
+    if (changed.length) {
+      await writeAudit(
+        tx,
+        ctx,
+        "staff_profile",
+        input.userId,
+        before ? "update" : "create",
+        before ? Object.fromEntries(changed.map((f) => [f, before[f]])) : null,
+        Object.fromEntries(changed.map((f) => [f, vals[f]])),
+      );
+    }
+  });
 }
 
 /**
@@ -154,30 +171,41 @@ export async function listStaff(ctx: Ctx, db: Db = defaultDb): Promise<StaffRow[
 export type WorkLogInput = { userId?: string; date: string; slotKeys: string[]; overtimeX100: number; overtimeReason: string | null; note: string | null };
 export type WorkLogRow = typeof workLogs.$inferSelect;
 
-export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaultDb): Promise<string> {
+/**
+ * 하루 근무 기록을 저장한다. 체크를 다 풀어 아무것도 남지 않으면 그 기록을 지우고 null 을 돌려준다
+ * (빈 줄이 월 집계의 근무일 수와 내 근무 목록에 끼지 않게).
+ */
+export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaultDb): Promise<string | null> {
   const userId = input.userId ?? ctx.userId;
   if (userId !== ctx.userId) requireRole(ctx, ...MANAGER_ROLES);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError("날짜 형식 오류");
   if (!Number.isInteger(input.overtimeX100) || input.overtimeX100 < 0) throw new ValidationError("초과근무 시간이 올바르지 않습니다");
-  if (input.overtimeX100 > 0 && !input.overtimeReason?.trim()) throw new ValidationError("초과근무는 사유를 입력해야 합니다");
   const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
 
   return db.transaction(async (tx) => {
     const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, userId), eq(workLogs.date, input.date))).limit(1);
     if (existing?.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 수정할 수 없습니다");
+    // 초과근무를 새로 적거나 바꿀 때는 사유가 있어야 한다. 시트에서 옮겨 온 사유 없는 초과근무는 그대로 두면 다른 칸을 고칠 수 있다
+    const reason = input.overtimeReason?.trim() || null;
+    const keepsImported = existing !== undefined && existing.overtimeX100 === input.overtimeX100 && !existing.overtimeReason;
+    if (input.overtimeX100 > 0 && !reason && !keepsImported) throw new ValidationError("초과근무는 사유를 입력해야 합니다");
     // 지난 날짜에는 지금은 쓰지 않는 타임이 체크돼 있을 수 있다. 그 시간도 계속 인정한다
     const slots = await listShiftSlots(ctx, db, true);
     // 출근·퇴근을 모두 누른 날은 시계가 잰 시간이 사실이다. 타임 체크를 고쳐도 시간을 되돌리지 않는다.
     const clocked = existing?.clockInAt && existing?.clockOutAt;
     const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, minutes: s.minutes, weekend: s.weekend })), input.slotKeys);
-    const vals = { slotKeys: input.slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? input.overtimeReason?.trim() ?? null : null, note: input.note?.trim() || null };
+    const vals = { slotKeys: input.slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? reason : null, note: input.note?.trim() || null };
     const [row] = await tx
       .insert(workLogs)
       .values({ branchId: ctx.branchId, userId, date: input.date, ...vals })
       .onConflictDoUpdate({ target: [workLogs.branchId, workLogs.userId, workLogs.date], set: { ...vals, updatedAt: new Date() } })
       .returning({ id: workLogs.id });
     if (userId !== ctx.userId) await writeAudit(tx, ctx, "work_log", row.id, existing ? "update" : "create", existing ? { slotKeys: existing.slotKeys, overtimeX100: existing.overtimeX100 } : null, { ...vals, userId, date: input.date });
+    if (isEmptyWorkLog({ ...vals, clockInAt: existing?.clockInAt ?? null })) {
+      await tx.delete(workLogs).where(eq(workLogs.id, row.id));
+      return null;
+    }
     return row.id;
   });
 }
@@ -186,7 +214,7 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
  * 근무 기록의 일부만 고친다. 일별 현황 표에서 칸 하나(타임 체크, 초과근무)를 바꿀 때 쓰며,
  * 나머지(메모 등)는 저장된 값을 그대로 둔다.
  */
-export async function patchWorkLog(ctx: Ctx, input: { userId: string; date: string; slotKeys?: string[]; overtimeX100?: number; overtimeReason?: string | null }, db: Db = defaultDb): Promise<WorkLogRow> {
+export async function patchWorkLog(ctx: Ctx, input: { userId: string; date: string; slotKeys?: string[]; overtimeX100?: number; overtimeReason?: string | null }, db: Db = defaultDb): Promise<WorkLogRow | null> {
   requireRole(ctx, ...MANAGER_ROLES);
   const [cur] = await db.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, input.userId), eq(workLogs.date, input.date))).limit(1);
   await saveWorkLog(
@@ -201,8 +229,9 @@ export async function patchWorkLog(ctx: Ctx, input: { userId: string; date: stri
     },
     db,
   );
+  // 체크를 다 풀어 기록이 지워졌으면 null
   const [after] = await db.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, input.userId), eq(workLogs.date, input.date))).limit(1);
-  return after;
+  return after ?? null;
 }
 
 export type WorkDayRow = {
@@ -375,11 +404,18 @@ export async function dailyWorkLogs(ctx: Ctx, date: string, db: Db = defaultDb):
     .sort((a, b) => a.userName.localeCompare(b.userName, "ko"));
 }
 
-export async function confirmWorkLog(ctx: Ctx, id: string, db: Db = defaultDb): Promise<void> {
+/** 본사 확인. 확인한 사람 이름을 돌려준다(이미 확인된 것은 처음 확인한 사람·시각을 그대로 두고 그 이름을) */
+export async function confirmWorkLog(ctx: Ctx, id: string, db: Db = defaultDb): Promise<string | null> {
   if (ctx.role !== "hq_admin") throw new ForbiddenError("본사 확인은 본사 관리자만 할 수 있습니다");
   const [row] = await db.select().from(workLogs).where(and(eq(workLogs.id, id), eq(workLogs.branchId, ctx.branchId))).limit(1);
   if (!row) throw new NotFoundError("근무 기록을 찾을 수 없습니다");
+  if (row.hqConfirmedAt) {
+    if (!row.hqConfirmedBy) return null;
+    const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, row.hqConfirmedBy)).limit(1);
+    return u?.name ?? null;
+  }
   await db.update(workLogs).set({ hqConfirmedBy: ctx.userId, hqConfirmedAt: new Date() }).where(eq(workLogs.id, id));
+  return ctx.userName;
 }
 
 export async function unconfirmWorkLog(ctx: Ctx, id: string, db: Db = defaultDb): Promise<void> {
@@ -403,7 +439,8 @@ export async function monthlySummary(ctx: Ctx, yearMonth: string, db: Db = defau
   const map = new Map<string, MonthlyRow>();
   for (const r of rows) {
     const cur = map.get(r.w.userId) ?? { userId: r.w.userId, userName: r.userName, employmentType: r.employmentType ?? "-", group: staffGroupOf(r.role ?? "", r.employmentType), days: 0, hoursX100: 0, overtimeX100: 0, confirmedX100: 0, hourlyRate: r.hourlyRate, estimatedPay: null };
-    cur.days += 1;
+    // 메모만 있거나 비어 있는 날은 근무일로 세지 않는다
+    if (isWorkedDay(r.w)) cur.days += 1;
     cur.hoursX100 += r.w.hoursX100;
     cur.overtimeX100 += r.w.overtimeX100;
     if (r.w.hqConfirmedAt) cur.confirmedX100 += r.w.hoursX100 + r.w.overtimeX100;

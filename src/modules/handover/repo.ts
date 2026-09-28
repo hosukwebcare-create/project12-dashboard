@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
 import { handoverComments, handoverNotes, handoverReads, shiftSlots, users, type HandoverKind } from "@/db/schema";
 import { ALL_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { addDays, toDateKey } from "@/lib/rules/week";
+import { employmentLabel } from "@/lib/rules/worklog";
 import { notify } from "@/modules/notifications/repo";
 
 /**
@@ -33,7 +34,7 @@ export type HandoverComment = typeof handoverComments.$inferSelect & { authorNam
 
 /** 근무 타임 이름. 근무 형태마다 '1타임'이 따로 있어서 형태를 앞에 붙인다 (주간조교 1타임, 원장 1타임) */
 function slotName(s: { name: string; audience: string | null }): string {
-  return s.audience ? `${s.audience === "컨설팅" ? "학습멘토" : s.audience} ${s.name}` : s.name;
+  return s.audience ? `${employmentLabel(s.audience)} ${s.name}` : s.name;
 }
 
 export type NoteInput = { id?: string; date: string; slotKey?: string | null; kind: HandoverKind; body: string };
@@ -112,23 +113,43 @@ export async function setRequestDone(ctx: Ctx, id: string, done: boolean, db: Db
   requireRole(ctx, ...ALL_ROLES);
   const note = await getNote(ctx, id, db);
   if (note.kind !== "request") throw new ValidationError("'해 주세요' 글만 완료로 표시할 수 있습니다");
-  await db
+  if (!done) {
+    await db
+      .update(handoverNotes)
+      .set({ doneAt: null, doneBy: null })
+      .where(and(eq(handoverNotes.id, id), eq(handoverNotes.branchId, ctx.branchId)));
+    return;
+  }
+  // 두 사람이 거의 같이 눌러도(또는 두 번 눌러도) 처음 한 번만 기록하고 알린다
+  const updated = await db
     .update(handoverNotes)
-    .set(done ? { doneAt: new Date(), doneBy: ctx.userId } : { doneAt: null, doneBy: null })
-    .where(and(eq(handoverNotes.id, id), eq(handoverNotes.branchId, ctx.branchId)));
-  if (done && note.authorId && note.authorId !== ctx.userId) {
+    .set({ doneAt: new Date(), doneBy: ctx.userId })
+    .where(and(eq(handoverNotes.id, id), eq(handoverNotes.branchId, ctx.branchId), isNull(handoverNotes.doneAt)))
+    .returning({ id: handoverNotes.id });
+  if (updated.length && note.authorId && note.authorId !== ctx.userId) {
     await notify(db, [note.authorId], "handover", { title: `해 놓았어요 · ${note.body.slice(0, 40)} (${ctx.userName})`, noteId: id }, ctx.branchId);
   }
 }
 
-/** 상단바·대시보드에 쓰는 안 읽은 건수 */
+/**
+ * 상단바·대시보드에 쓰는 안 읽은 건수. '해 주세요'는 읽음 표시가 없는 글이라 빼고(남은 일 수는 openRequestCount 로 따로 센다),
+ * 인수인계·공지만 센다 — 목록(listNotes)에 보이는 것과 같아야 '모두 읽음'을 눌러 0이 된다.
+ */
 export async function unreadNoteCount(ctx: Ctx, days = 14, today = toDateKey(new Date()), db: Db = defaultDb): Promise<number> {
   const from = toDateKey(addDays(today, -days));
   const [row] = await db
     .select({ n: sql<string>`count(*)` })
     .from(handoverNotes)
     .leftJoin(handoverReads, and(eq(handoverReads.noteId, handoverNotes.id), eq(handoverReads.userId, ctx.userId)))
-    .where(and(eq(handoverNotes.branchId, ctx.branchId), sql`${handoverNotes.date} >= ${from}`, isNull(handoverReads.noteId), sql`${handoverNotes.authorId} is distinct from ${ctx.userId}`));
+    .where(
+      and(
+        eq(handoverNotes.branchId, ctx.branchId),
+        ne(handoverNotes.kind, "request"),
+        sql`${handoverNotes.date} >= ${from}`,
+        isNull(handoverReads.noteId),
+        sql`${handoverNotes.authorId} is distinct from ${ctx.userId}`,
+      ),
+    );
   return Number(row?.n ?? 0);
 }
 
@@ -159,10 +180,10 @@ export async function upsertNote(ctx: Ctx, input: NoteInput, db: Db = defaultDb)
     .insert(handoverNotes)
     .values({ ...vals, branchId: ctx.branchId, authorId: ctx.userId })
     .returning({ id: handoverNotes.id });
-  // 공지는 지점 사람들에게 알림까지 보낸다
-  if (input.kind === "notice") {
+  // 공지와 '해 주세요'는 지점 사람들에게 알림까지 보낸다 — 다음에 누가 근무할지 모르니 모두에게
+  if (input.kind === "notice" || input.kind === "request") {
     const staff = await branchUserIds(ctx, db);
-    await notify(db, staff.filter((u) => u !== ctx.userId), "handover", { title: `공지 · ${body.slice(0, 40)}`, noteId: row.id }, ctx.branchId);
+    await notify(db, staff.filter((u) => u !== ctx.userId), "handover", { title: `${KIND_LABEL[input.kind]} · ${body.slice(0, 40)}`, noteId: row.id }, ctx.branchId);
   }
   return row.id;
 }

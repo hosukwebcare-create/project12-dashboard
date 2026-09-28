@@ -3,7 +3,7 @@ import { buildAttention, type AttentionInput } from "@/lib/rules/attention";
 
 const base: AttentionInput = {
   nowTime: "10:30",
-  sessionsDone: 2,
+  completedRounds: [1, 2],
   roundsPerDay: 12,
   roundSchedule: ["09:00", "10:00", "11:00", "12:00"],
   missingWeekly: 0,
@@ -20,9 +20,16 @@ describe("오늘 챙길 것", () => {
     expect(buildAttention(base)).toEqual([]);
   });
 
-  it("시간표에서 지난 회차보다 완료가 적으면 라운딩을 올린다", () => {
-    expect(buildAttention({ ...base, sessionsDone: 1 }).map((x) => [x.key, x.level])).toEqual([["rounds", "warning"]]);
-    expect(buildAttention({ ...base, sessionsDone: 0 })[0]).toMatchObject({ key: "rounds", level: "urgent", title: "라운딩이 2회차 밀려 있습니다" });
+  it("시간표에서 시작 시각이 지났는데 완료하지 않은 회차가 있으면 라운딩을 올린다", () => {
+    expect(buildAttention({ ...base, completedRounds: [1] }).map((x) => [x.key, x.level, x.title])).toEqual([["rounds", "warning", "R2 시작 시간이 지났습니다"]]);
+    expect(buildAttention({ ...base, completedRounds: [] })[0]).toMatchObject({ key: "rounds", level: "urgent", title: "라운딩이 2회차 밀려 있습니다", detail: "R1·R2 미완료 · 시간표 기준" });
+  });
+
+  it("뒤 회차를 먼저 완료했어도 앞 회차가 밀린 것을 놓치지 않는다 (개수가 아니라 번호로)", () => {
+    // R3 만 완료: 개수로는 1/2 지만 R1·R2 가 모두 밀렸다
+    expect(buildAttention({ ...base, completedRounds: [3] })[0]).toMatchObject({ key: "rounds", level: "urgent", detail: "R1·R2 미완료 · 시간표 기준" });
+    // R2 만 완료: R1 이 밀렸다
+    expect(buildAttention({ ...base, completedRounds: [2, 3] })[0]).toMatchObject({ key: "rounds", title: "R1 시작 시간이 지났습니다" });
   });
 
   it("아무도 안 한 '해 주세요'가 있으면 인수인계로 안내한다", () => {
@@ -33,7 +40,7 @@ describe("오늘 챙길 것", () => {
   });
 
   it("시간표가 없으면 라운딩 지연을 판단하지 않는다", () => {
-    expect(buildAttention({ ...base, roundSchedule: [], sessionsDone: 0 })).toEqual([]);
+    expect(buildAttention({ ...base, roundSchedule: [], completedRounds: [] })).toEqual([]);
   });
 
   it("급한 순서로 줄 세운다: 긴급 → 주의 → 참고", () => {

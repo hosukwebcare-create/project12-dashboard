@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canFillRest, carryForwardGrade, cellKey, currentRound, dayColumns, deriveAttendance, isAutoAttendance, nextRoundNo } from "@/lib/rules/rounding";
+import { AUTO_ATTENDANCE_NOTE, autoAttendanceCell, canFillRest, carryForwardGrade, cellKey, dayColumns, deriveAttendance, escalateSleepy, isAutoAttendance, nextRoundNo } from "@/lib/rules/rounding";
 
 describe("nextRoundNo", () => {
   it("아무 회차도 없으면 1", () => {
@@ -26,10 +26,19 @@ describe("출석은 라운딩에서 채운다", () => {
     expect(deriveAttendance([])).toBeNull();
   });
   it("자동으로 채운 출석만 다시 맞춘다. 사람이 적은 출석(이관한 시트 값 포함)은 그대로", () => {
-    expect(isAutoAttendance("라운딩에서 자동")).toBe(true);
-    expect(isAutoAttendance("R3 라운딩에서 확인")).toBe(true);
-    expect(isAutoAttendance(null)).toBe(false);
-    expect(isAutoAttendance("10:40 등원")).toBe(false);
+    expect(isAutoAttendance({ note: AUTO_ATTENDANCE_NOTE })).toBe(true);
+    expect(isAutoAttendance({ note: "R3 라운딩에서 확인", grade: "a", points: 0 })).toBe(true);
+    expect(isAutoAttendance({ note: null })).toBe(false);
+    expect(isAutoAttendance({ note: "10:40 등원" })).toBe(false);
+  });
+  it("예전 메모('R3 라운딩에서 확인')가 남아 있어도 사람이 고쳐 둔 줄(지각·b·등원 시각·CALL)은 사람이 적은 것", () => {
+    expect(isAutoAttendance({ note: "R3 라운딩에서 확인", grade: "p", points: 4 })).toBe(false);
+    expect(isAutoAttendance({ note: "R3 라운딩에서 확인", grade: "b" })).toBe(false);
+    expect(isAutoAttendance({ note: "R3 라운딩에서 확인", grade: "a", arrivalTime: "10:40" })).toBe(false);
+    expect(isAutoAttendance({ note: "R3 라운딩에서 확인", grade: "a", called: true })).toBe(false);
+  });
+  it("자동 출석 칸은 서버와 화면이 같은 모양", () => {
+    expect(autoAttendanceCell("b")).toEqual({ grade: "b", points: 0, penaltyRuleId: null, note: AUTO_ATTENDANCE_NOTE, isIssue: false, auto: true });
   });
   it("출석과 라운딩은 한꺼번에 채울 수 없다", () => {
     expect(canFillRest("planner")).toBe(true);
@@ -63,9 +72,36 @@ describe("하루 표의 열", () => {
     ]);
     expect(cellKey("m1", "round", 2)).toBe("m1|round|2");
   });
-  it("지금 돌 차례는 완료하지 않은 가장 이른 회차", () => {
-    expect(currentRound(12, [])).toBe(1);
-    expect(currentRound(12, [1, 2, 4])).toBe(3);
-    expect(currentRound(3, [1, 2, 3])).toBeNull();
+  it("라운딩 항목의 키가 무엇이든 회차 칸은 round 로 쌓고, 라운딩 항목이 둘이어도 한 번만 펼친다", () => {
+    const cols = dayColumns([{ key: "rounding", label: "라운딩", kind: "round" }, { key: "vocab", label: "영단어", kind: "daily" }, { key: "r2", label: "라운딩2", kind: "round" }], 2);
+    expect(cols.map((c) => [c.itemKey, c.label])).toEqual([
+      ["round", "R1"],
+      ["round", "R2"],
+      ["vocab", "영단어"],
+    ]);
+  });
+  it("라운딩 항목이 없는 지점도 회차 열은 맨 뒤에 붙는다", () => {
+    const cols = dayColumns([{ key: "planner", label: "플래너", kind: "daily" }], 2);
+    expect(cols.map((c) => c.label)).toEqual(["플래너", "R1", "R2"]);
+  });
+});
+
+describe("연속 졸음", () => {
+  const rules = [
+    { id: "sleep", name: "졸음" },
+    { id: "sleep2", name: "연속 졸음" },
+    { id: "late", name: "지각" },
+  ];
+  it("같은 날 앞 회차에 졸음이 있으면 졸음 펜도 연속 졸음으로 적는다", () => {
+    expect(escalateSleepy(rules, "sleep", ["late", "sleep"])).toBe("sleep2");
+    expect(escalateSleepy(rules, "sleep", ["sleep2"])).toBe("sleep2");
+  });
+  it("앞 회차에 졸음이 없거나 졸음이 아닌 규칙이면 고른 그대로", () => {
+    expect(escalateSleepy(rules, "sleep", ["late", null])).toBe("sleep");
+    expect(escalateSleepy(rules, "late", ["sleep"])).toBe("late");
+    expect(escalateSleepy(rules, "sleep2", ["sleep"])).toBe("sleep2");
+  });
+  it("연속 졸음 규칙이 없는 지점은 졸음 그대로", () => {
+    expect(escalateSleepy([{ id: "sleep", name: "졸음" }], "sleep", ["sleep"])).toBe("sleep");
   });
 });

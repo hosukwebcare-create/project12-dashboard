@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { dayColumns } from "@/lib/rules/rounding";
 import type { BoardData } from "@/modules/board/repo";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -52,12 +53,8 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
     else document.documentElement.requestFullscreen?.();
   }
 
-  const rounds = Array.from({ length: data.roundsPerDay }, (_, i) => i + 1);
-  const rowsPerDay: { key: string; roundNo: number; label: string }[] = [];
-  for (const item of data.items) {
-    if (item.kind === "round") rounds.forEach((n) => rowsPerDay.push({ key: item.key, roundNo: n, label: `R${n}` }));
-    else rowsPerDay.push({ key: item.key, roundNo: 0, label: item.label });
-  }
+  // 라운딩 표와 같은 순서·같은 키로 줄을 만든다(라운딩 칸은 항목 키와 상관없이 round 로 쌓인다)
+  const rowsPerDay = dayColumns(data.items, data.roundsPerDay).map((c) => ({ key: c.itemKey, roundNo: c.roundNo, label: c.label }));
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const visibleDays = data.days.filter((d) => d <= todayKey);

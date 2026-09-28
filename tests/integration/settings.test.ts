@@ -28,6 +28,25 @@ describe("설정 · 현황판 항목과 벌점 규칙", () => {
     expect((await boardItemsFor(t.mgrCtx2)).map((i) => i.key)).toEqual(["attendance", "round"]);
   });
 
+  it("지점 항목을 모두 꺼 둔 지점도 새 항목을 더하면 지금 보던 기본 항목이 함께 남는다", async () => {
+    const t = await seedTwoBranches();
+    await db.insert(boardItems).values([
+      { key: "attendance", label: "출석", kind: "daily", sort: 1 },
+      { key: "round", label: "라운딩", kind: "round", sort: 2 },
+      { branchId: t.b1.id, key: "attendance", label: "옛 출석", kind: "daily", sort: 9, active: false },
+    ]);
+    // 켜 둔 지점 항목이 없으니 기본 항목을 본다
+    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.label)).toEqual(["출석", "라운딩"]);
+    await upsertBoardItem(t.mgrCtx1, { key: "homework", label: "과제", kind: "daily", sort: 3, active: true });
+    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.label)).toEqual(["출석", "라운딩", "과제"]);
+    // 같은 키 항목이 둘로 늘지 않는다
+    const own = await db.select().from(boardItems).where(eq(boardItems.branchId, t.b1.id));
+    expect(own.filter((i) => i.key === "attendance")).toHaveLength(1);
+    // 같은 키로 다시 더하면 새 줄이 아니라 그 항목을 고친다
+    await upsertBoardItem(t.mgrCtx1, { key: "homework", label: "숙제", kind: "daily", sort: 3, active: true });
+    expect((await boardItemsFor(t.mgrCtx1)).map((i) => i.label)).toEqual(["출석", "라운딩", "숙제"]);
+  });
+
   it("지점장이 벌점 규칙을 만들면 그 지점은 지점 규칙만 쓴다", async () => {
     const t = await seedTwoBranches();
     await expect(upsertPenaltyRule(t.mentorCtx1, { name: "x", points: 1, sort: 1, active: true })).rejects.toThrow(ForbiddenError);

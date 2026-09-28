@@ -70,7 +70,10 @@ test("해 주세요: 맡긴 일을 다음 사람이 해 놓으면 내려가고, 
   const ctx2 = await browser.newContext();
   const p2 = await ctx2.newPage();
   await login(p2, "assistant");
-  await p2.goto("/handover");
+  // 올리면 지점 사람들에게 알림이 가고, 누르면 그 부탁으로 간다
+  await p2.goto("/notifications");
+  await p2.getByText(/해 주세요 · 이투이 복사기 토너/).first().click();
+  await expect(p2).toHaveURL(/\/handover#/);
   const item = p2.locator("#requests li").filter({ hasText: "이투이 복사기 토너 주문해 주세요" });
   await item.getByRole("button", { name: /했어요/ }).click();
   await expect(p2.locator("#requests li").filter({ hasText: "이투이 복사기 토너 주문해 주세요" }).getByRole("button", { name: /했어요/ })).toHaveCount(0);
@@ -81,6 +84,15 @@ test("해 주세요: 맡긴 일을 다음 사람이 해 놓으면 내려가고, 
   // 부탁한 사람에게 알림이 간다
   await page.goto("/notifications");
   await expect(page.getByText(/해 놓았어요 · 이투이 복사기 토너/)).toBeVisible();
+
+  // 잘못 올린 부탁은 쓴 사람이 지운다
+  await page.goto("/handover");
+  await box.getByLabel("무엇을 해 주면 되나요?").fill("잘못 올린 부탁");
+  await box.getByRole("button", { name: "맡기기" }).click();
+  const wrong = box.locator("li").filter({ hasText: "잘못 올린 부탁" });
+  await expect(wrong).toHaveCount(1);
+  await wrong.getByRole("button", { name: "삭제" }).click();
+  await expect(box.locator("li").filter({ hasText: "잘못 올린 부탁" })).toHaveCount(0);
 });
 
 test("결제 대상: 요금표를 만들고 좌석 등급을 지정하면 금액이 계산된다", async ({ page }) => {

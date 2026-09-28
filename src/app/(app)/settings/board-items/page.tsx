@@ -19,6 +19,8 @@ async function BoardItemsPage() {
   ]);
   const own = effective.filter((i) => i.branchId !== null);
   const isHq = ctx.role === "hq_admin";
+  // 새 항목은 지금 보이는 항목 뒤에 온다(첫 항목이면 본사 기본 항목이 함께 옮겨지므로 그 뒤)
+  const nextSort = Math.max(0, ...effective.map((i) => i.sort)) + 1;
 
   return (
     <div className="space-y-4">
@@ -38,7 +40,7 @@ async function BoardItemsPage() {
                 <option value="daily">일별 항목</option>
                 <option value="round">라운딩(회차별)</option>
               </select>
-              <Input name="sort" type="number" placeholder="순서" className="w-20" defaultValue={own.length + 1} />
+              <Input name="sort" type="number" placeholder="순서" className="w-20" defaultValue={nextSort} />
             </InlineForm>
           </div>
         </CardContent>

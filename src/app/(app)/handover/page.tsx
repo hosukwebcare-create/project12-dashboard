@@ -47,7 +47,7 @@ async function HandoverPage() {
           <CardTitle>
             해 주세요 <span className="ml-1 text-sm font-normal text-muted-foreground">남은 일 {requests.open.length}건</span>
           </CardTitle>
-          <CardDescription>다음 사람에게 맡길 일을 적습니다. 누가 해 놓고 &lsquo;했어요&rsquo;를 누르면 부탁한 사람에게 알림이 가고, 아래로 내려갑니다.</CardDescription>
+          <CardDescription>다음 사람에게 맡길 일을 적습니다. 적으면 지점 사람 모두에게 알림이 가고, 누가 해 놓고 &lsquo;했어요&rsquo;를 누르면 부탁한 사람에게 알림이 가며 아래로 내려갑니다.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <InlineForm action={upsertNoteAction} submitLabel="맡기기" className="flex-wrap items-end gap-2">
@@ -57,24 +57,13 @@ async function HandoverPage() {
               <Label htmlFor="request-body">무엇을 해 주면 되나요?</Label>
               <Input id="request-body" name="body" required placeholder="예: 3층 정수기 필터 교체 업체에 전화해 주세요" />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="request-slot">누구에게 (근무 타임)</Label>
-              <select id="request-slot" name="slotKey" className={cn(SELECT, "w-40")} defaultValue="">
-                <option value="">다음 사람 누구나</option>
-                {slots.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
           </InlineForm>
           {requests.open.length === 0 ? (
             <p className="text-sm text-muted-foreground">남은 일이 없습니다</p>
           ) : (
             <ul className="divide-y divide-border rounded-md border border-border">
               {requests.open.map((r) => (
-                <li key={r.id} className="flex items-start gap-3 px-3 py-2.5">
+                <li key={r.id} id={r.id} className="flex items-start gap-3 px-3 py-2.5">
                   <form action={setRequestDoneAction}>
                     <input type="hidden" name="id" value={r.id} />
                     <input type="hidden" name="done" value="1" />
@@ -89,6 +78,12 @@ async function HandoverPage() {
                       {r.slotName ? ` · ${r.slotName}에게` : ""}
                     </p>
                   </div>
+                  {/* 잘못 올린 부탁은 쓴 사람(과 지점장)이 지운다 */}
+                  {r.authorId === ctx.userId || canNotice ? (
+                    <InlineForm action={deleteNoteAction} submitLabel="삭제">
+                      <input type="hidden" name="id" value={r.id} />
+                    </InlineForm>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -98,7 +93,7 @@ async function HandoverPage() {
               <summary className="cursor-pointer text-muted-foreground">최근 해 놓은 일 {requests.done.length}건</summary>
               <ul className="mt-2 divide-y divide-border rounded-md border border-border">
                 {requests.done.map((r) => (
-                  <li key={r.id} className="flex items-start gap-3 px-3 py-2">
+                  <li key={r.id} id={r.id} className="flex items-start gap-3 px-3 py-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-muted-foreground line-through">{r.body}</p>
                       <p className="text-xs text-muted-foreground">

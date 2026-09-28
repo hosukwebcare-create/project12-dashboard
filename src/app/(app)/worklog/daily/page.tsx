@@ -3,8 +3,8 @@ import { WorkDayGrid, type GridRow } from "@/components/app/work-day-grid";
 import { getCtx, MANAGER_ROLES, requireRole } from "@/lib/auth/ctx";
 import { fmtShortDate, fmtTime } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
-import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { confirmWorkLogAction, patchStaffProfileAction, patchWorkLogAction } from "@/modules/worklog/actions";
+import { addDays, toDate, toDateKey, todayKey } from "@/lib/rules/week";
+import { patchStaffProfileAction, patchWorkLogAction, setWorkLogConfirmedAction } from "@/modules/worklog/actions";
 import { listShiftSlots, workDay } from "@/modules/worklog/repo";
 
 export const metadata = { title: "근무 일별 현황" };
@@ -16,7 +16,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayKey();
   const [day, slots] = await Promise.all([workDay(ctx, date), listShiftSlots(ctx, undefined, true)]);
   const dates = [-3, -2, -1, 0].map((d) => toDateKey(addDays(todayKey(), d)));
-  const dow = new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))).getDay();
+  const dow = toDate(date).getDay();
   const rows: GridRow[] = day.map((r) => ({
     userId: r.userId,
     name: r.name,
@@ -30,6 +30,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
     hoursX100: r.log?.hoursX100 ?? 0,
     overtimeX100: r.log?.overtimeX100 ?? 0,
     overtimeReason: r.log?.overtimeReason ?? null,
+    note: r.log?.note ?? null,
     clock: r.log?.clockInAt ? `${fmtTime(r.log.clockInAt)}${r.log.clockOutAt ? ` ~ ${fmtTime(r.log.clockOutAt)}` : " · 근무 중"}` : null,
     confirmedBy: r.log?.hqConfirmedAt ? (r.hqConfirmedByName ?? "본사") : null,
   }));
@@ -59,7 +60,7 @@ async function DailyWorklogPage({ searchParams }: { searchParams: Promise<{ date
         isHq={ctx.role === "hq_admin"}
         patchLog={patchWorkLogAction}
         patchStaff={patchStaffProfileAction}
-        confirm={confirmWorkLogAction}
+        confirm={setWorkLogConfirmedAction}
       />
       <p className="text-xs text-muted-foreground">
         타임의 이름·인정 시간(분)·시각은 자주 바꾸지 않아서 <Link href="/worklog/settings" className="underline underline-offset-2">타임·직원 설정</Link>에 있습니다. 시급은 <Link href="/worklog/monthly" className="underline underline-offset-2">월 집계</Link> 표에서 바로 고칩니다.

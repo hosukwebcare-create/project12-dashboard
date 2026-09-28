@@ -5,7 +5,8 @@ import { boardItems, checks, issues, roundingSessions } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createMember } from "@/modules/members/repo";
 import { listNotifications } from "@/modules/notifications/repo";
-import { clearCheck, completeRound, completeSession, copyPreviousRound, daySheet, fillRemaining, saveCell, sheetRows, startSession, todaySessions, upsertCheck } from "@/modules/rounding/repo";
+import { clearCheck, completeRound, completeSession, copyPreviousRound, dayCells, daySheet, fillRemaining, saveCell, sheetRows, startSession, todaySessions, upsertCheck } from "@/modules/rounding/repo";
+import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { seedTwoBranches } from "./helpers";
 import { resetDb } from "./setup";
 
@@ -242,16 +243,135 @@ describe("라운딩과 일별 체크를 한 번에", () => {
 
   it("나머지 a 채우기: 미입력만 채우고, 출석·라운딩·없는 항목은 거부한다", async () => {
     const t = await seedItems();
+    // 아무것도 적지 않은 항목은 채우지 않는다(아무도 보지 않고 모두 a 가 되지 않게)
+    await expect(fillRemaining(t.asstCtx1, DAY, "planner")).rejects.toThrow(/한 칸 이상/);
     await upsertCheck(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "planner", roundNo: 0, grade: "b" });
-    expect(await fillRemaining(t.asstCtx1, DAY, "planner")).toBe(1);
+    const patch = await fillRemaining(t.asstCtx1, DAY, "planner");
+    expect(Object.keys(patch)).toEqual([`${t.b}|planner|0`]);
     const planner = await db.select().from(checks).where(eq(checks.itemKey, "planner"));
     expect(planner.map((c) => c.grade).sort()).toEqual(["a", "b"]);
     expect(planner.every((c) => c.branchId === t.asstCtx1.branchId)).toBe(true);
-    expect(await fillRemaining(t.asstCtx1, DAY, "planner")).toBe(0);
+    expect(await fillRemaining(t.asstCtx1, DAY, "planner")).toEqual({});
 
     await expect(fillRemaining(t.asstCtx1, DAY, "attendance")).rejects.toThrow(/한꺼번에/);
     await expect(fillRemaining(t.asstCtx1, DAY, "round")).rejects.toThrow(/한꺼번에/);
     await expect(fillRemaining(t.asstCtx1, DAY, "nope")).rejects.toThrow(NotFoundError);
     await expect(fillRemaining(t.mentorCtx1, DAY, "vocab")).rejects.toThrow(ForbiddenError);
+  });
+});
+
+describe("하루 표 점검에서 고친 것", () => {
+  beforeEach(resetDb);
+
+  async function seedItems() {
+    const t = await seedMembers();
+    await db.insert(boardItems).values([
+      { key: "attendance", label: "출석", kind: "daily", sort: 1 },
+      { key: "planner", label: "플래너", kind: "daily", sort: 2 },
+      { key: "round", label: "라운딩", kind: "round", sort: 3 },
+    ]);
+    return t;
+  }
+
+  it("펜으로 등급만 바꾸면 다른 기기(PC)가 적은 메모·이슈 표시는 그대로 둔다", async () => {
+    const t = await seedItems();
+    const late = t.rules.find((r) => r.name === "지각")!;
+    // PC: 벌점 + 메모 + 이슈
+    await saveCell(t.mgrCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "p", penaltyRuleId: late.id, note: "학원 일정으로 조퇴", isIssue: true });
+    // 태블릿: 메모를 모르는 채 b 펜
+    const patch = await saveCell(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "b", penaltyRuleId: null });
+    expect(patch[`${t.a}|round|1`]).toMatchObject({ grade: "b", points: 0, note: "학원 일정으로 조퇴", isIssue: true });
+    // 비우려면 null·false 를 보낸다(자세히 창)
+    await saveCell(t.mgrCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "b", penaltyRuleId: null, note: null, isIssue: false });
+    const [row] = await db.select().from(checks).where(eq(checks.itemKey, "round"));
+    expect(row).toMatchObject({ note: null, isIssue: false });
+  });
+
+  it("앞으로의 날짜에는 적거나 지우거나 완료할 수 없다", async () => {
+    const t = await seedItems();
+    const tomorrow = toDateKey(addDays(todayKey(), 1));
+    const cell = { memberId: t.a, date: tomorrow, itemKey: "round", roundNo: 1 };
+    await expect(saveCell(t.asstCtx1, { ...cell, grade: "a" })).rejects.toThrow(/앞으로의 날짜/);
+    await expect(clearCheck(t.asstCtx1, cell)).rejects.toThrow(/앞으로의 날짜/);
+    await expect(completeRound(t.asstCtx1, tomorrow, 1)).rejects.toThrow(/앞으로의 날짜/);
+    await expect(copyPreviousRound(t.asstCtx1, tomorrow, 2)).rejects.toThrow(/앞으로의 날짜/);
+    await expect(fillRemaining(t.asstCtx1, tomorrow, "planner")).rejects.toThrow(/앞으로의 날짜/);
+    expect(await db.select().from(roundingSessions)).toHaveLength(0);
+  });
+
+  it("멘토는 하루 표를 읽기만 한다", async () => {
+    const t = await seedItems();
+    const cell = { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1 };
+    await expect(saveCell(t.mentorCtx1, { ...cell, grade: "a" })).rejects.toThrow(ForbiddenError);
+    await expect(clearCheck(t.mentorCtx1, cell)).rejects.toThrow(ForbiddenError);
+    await expect(completeRound(t.mentorCtx1, DAY, 1)).rejects.toThrow(ForbiddenError);
+    await expect(copyPreviousRound(t.mentorCtx1, DAY, 2)).rejects.toThrow(ForbiddenError);
+    await expect(daySheet(t.mentorCtx1, DAY)).resolves.toMatchObject({ date: DAY });
+  });
+
+  it("시트에서 옮긴 R12 처럼 하루 회차 수보다 큰 회차도 보이고 고칠 수 있다. 새로 여는 것만 회차 수 안에서", async () => {
+    const t = await seedItems();
+    const n = t.asstCtx1.settings.roundsPerDay;
+    const [imported] = await db.insert(roundingSessions).values({ branchId: t.b1.id, date: DAY, roundNo: n + 1, startedBy: t.users.asst1.id }).returning();
+    await db.insert(checks).values({ branchId: t.b1.id, memberId: t.a, date: DAY, itemKey: "round", roundNo: n + 1, sessionId: imported.id, grade: "b", points: 0 });
+    const sheet = await daySheet(t.asstCtx1, DAY);
+    expect(sheet.columns.filter((c) => c.kind === "round").map((c) => c.roundNo)).toContain(n + 1);
+    const patch = await saveCell(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: n + 1, grade: "a" });
+    expect(patch[`${t.a}|round|${n + 1}`]).toMatchObject({ grade: "a" });
+    await expect(saveCell(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: n + 2, grade: "a" })).rejects.toThrow(/회차는 1~/);
+  });
+
+  it("예전 메모가 붙은 출석이라도 사람이 벌점·등원 시각을 적어 둔 것은 라운딩이 덮지 않는다", async () => {
+    const t = await seedItems();
+    const late = t.rules.find((r) => r.name === "지각")!;
+    await db.insert(checks).values([
+      { branchId: t.b1.id, memberId: t.a, date: DAY, itemKey: "attendance", roundNo: 0, grade: "p", points: 4, penaltyRuleId: late.id, note: "R2 라운딩에서 확인" },
+      { branchId: t.b1.id, memberId: t.b, date: DAY, itemKey: "attendance", roundNo: 0, grade: "a", points: 0, note: "R1 라운딩에서 확인" },
+    ]);
+    await saveCell(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "b" });
+    await saveCell(t.asstCtx1, { memberId: t.b, date: DAY, itemKey: "round", roundNo: 1, grade: "b" });
+    const att = await db.select().from(checks).where(eq(checks.itemKey, "attendance"));
+    // 지각 4점은 사람이 적은 것 — 그대로
+    expect(att.find((c) => c.memberId === t.a)).toMatchObject({ grade: "p", points: 4, note: "R2 라운딩에서 확인" });
+    // 예전 자동 입력 모양 그대로인 줄은 새 규칙으로 맞춘다
+    expect(att.find((c) => c.memberId === t.b)).toMatchObject({ grade: "b", points: 0, note: "라운딩에서 자동" });
+  });
+
+  it("이슈로 보고한 칸을 지웠다가 되돌려도 이슈는 하나", async () => {
+    const t = await seedItems();
+    const rule = t.rules.find((r) => r.name === "이동금지 위반")!;
+    const input = { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "p" as const, penaltyRuleId: rule.id, note: "자리 비움", isIssue: true };
+    await saveCell(t.asstCtx1, input);
+    await clearCheck(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1 });
+    expect((await db.select().from(issues))[0].checkId).toBeNull();
+    await saveCell(t.asstCtx1, input);
+    const list = await db.select().from(issues);
+    expect(list).toHaveLength(1);
+    expect(list[0].checkId).not.toBeNull();
+  });
+
+  it("고벌점 알림은 고벌점이 새로 생길 때만 쌓인다", async () => {
+    const t = await seedItems();
+    const { eventOutbox, webhookEndpoints } = await import("@/db/schema");
+    await db.insert(webhookEndpoints).values({ branchId: t.b1.id, name: "채널", url: "https://hooks.example/dt", events: ["penalty.high"] });
+    const high = t.rules.find((r) => r.name === "이동금지 위반")!;
+    const input = { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "p" as const, penaltyRuleId: high.id };
+    await saveCell(t.asstCtx1, input);
+    expect(await db.select().from(eventOutbox)).toHaveLength(1);
+    await saveCell(t.asstCtx1, { ...input, note: "메모만 고침" });
+    expect(await db.select().from(eventOutbox)).toHaveLength(1);
+  });
+
+  it("다른 기기가 적은 것을 따라가도록 그날 칸과 완료 회차를 다시 준다", async () => {
+    const t = await seedItems();
+    await saveCell(t.asstCtx1, { memberId: t.a, date: DAY, itemKey: "round", roundNo: 1, grade: "b" });
+    await completeRound(t.asstCtx1, DAY, 1);
+    const day = await dayCells(t.mentorCtx1, DAY);
+    expect(day.completedRounds).toEqual([1]);
+    expect(day.cells[`${t.a}|round|1`]).toMatchObject({ grade: "b" });
+    expect(day.cells[`${t.b}|round|1`]).toMatchObject({ grade: "a" });
+    expect(day.cells[`${t.a}|attendance|0`]).toMatchObject({ grade: "b", auto: true });
+    // 다른 지점 것은 없다
+    expect(Object.keys((await dayCells(t.mgrCtx2, DAY)).cells)).toHaveLength(0);
   });
 });

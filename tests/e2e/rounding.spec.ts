@@ -49,6 +49,32 @@ test.describe("태블릿", () => {
     await pen(page, "지우개").click();
     await cell(page, "고은별", "R3").click();
     await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 빈 칸");
+
+    // 두 번 눌러도 자세히 창이 열리지 않는다(펜 값만 적힌다)
+    await pen(page, "b").click();
+    await cell(page, "고은별", "R3").dblclick();
+    await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 b");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await pen(page, "지우개").click();
+    await cell(page, "고은별", "R3").click();
+    await expect(cell(page, "고은별", "R3")).toHaveAccessibleName("고은별 R3 빈 칸");
+  });
+
+  test("태블릿에서 펜으로 등급만 바꿔도 PC 에서 적은 메모는 남는다", async ({ page }) => {
+    await login(page, "assistant");
+    // 구민재 R3: 앞 테스트에서 PC(자세히 창)로 메모 '10분 지각'과 이슈를 적어 두었다
+    await pen(page, "b").click();
+    await cell(page, "구민재", "R3").click();
+    await expect(cell(page, "구민재", "R3")).toHaveAccessibleName("구민재 R3 b");
+    await page.reload();
+    await pen(page, "메모·자세히").click();
+    await cell(page, "구민재", "R3").click();
+    await expect(page.getByRole("dialog").getByLabel("메모")).toHaveValue("10분 지각");
+    await page.keyboard.press("Escape");
+    // 되돌려 둔다(뒤 테스트가 지각 4점을 본다)
+    await pen(page, /^지각/).click();
+    await cell(page, "구민재", "R3").click();
+    await expect(cell(page, "구민재", "R3")).toHaveAccessibleName("구민재 R3 지각 4점");
   });
 
   test("직전 회차 값을 가져와 달라진 학생만 고치고, 회차를 완료한다", async ({ page }) => {
@@ -110,23 +136,60 @@ test("이슈 보고는 지점장 이슈함·알림에 도달한다", async ({ pa
   await expect(page.getByText(/구민재 · 지각/)).toBeVisible();
 });
 
-test("PC: 시트처럼 화살표와 글쇠 하나로 적고 아래 칸으로 내려간다", async ({ page }) => {
+test("PC: 칸을 먼저 누르지 않고 화살표로 시작해, 글쇠 하나로 적고 아래 칸으로 내려간다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, "manager");
   await page.goto("/rounding");
-  await pen(page, "a").click();
-  await cell(page, "강하늘", "R5").click();
-  await expect(cell(page, "강하늘", "R5")).toHaveAccessibleName("강하늘 R5 a");
-  // 커서가 강하늘 R5 에 있다: B 는 그 칸을 b 로 고치고 다음 줄로
+  const cursor = page.locator('[data-day-grid] [data-cursor="true"]');
+  // 처음 화살표는 오늘 돌 회차 맨 위 칸에 커서만 놓는다 — 아무것도 적지 않는다
+  await page.keyboard.press("ArrowDown");
+  await expect(cursor).toHaveCount(1);
+  // R3 → R5 로 옮긴다
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  const top = (await cursor.getAttribute("aria-label"))!.replace(/ R5 .*$/, "");
+  await expect(cursor).toHaveAccessibleName(`${top} R5 빈 칸`);
+  await expect(page.getByRole("button", { name: / R5 (a|b|부재)$/ })).toHaveCount(0);
+
+  // B 는 그 칸을 b 로 적고 다음 줄로, 0 은 부재
   await page.keyboard.press("KeyB");
-  await expect(cell(page, "강하늘", "R5")).toHaveAccessibleName("강하늘 R5 b");
+  await expect(cell(page, top, "R5")).toHaveAccessibleName(`${top} R5 b`);
   await page.keyboard.press("Digit0");
-  const next = page.locator("tbody tr").filter({ has: page.getByRole("button", { name: /R5 부재$/ }) });
-  await expect(next).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /R5 부재$/ })).toHaveCount(1);
   // 잘못 적은 칸은 Delete
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Delete");
   await expect(page.getByRole("button", { name: /R5 부재$/ })).toHaveCount(0);
+
+  // 펜 버튼 위에서 누른 Backspace·Enter 는 표가 가로채지 않는다
+  await pen(page, "a").focus();
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, top, "R5")).toHaveAccessibleName(`${top} R5 b`);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("졸음 펜: 같은 날 앞 회차에 졸음이 있으면 연속 졸음으로 적는다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page, "manager");
+  await page.goto("/rounding");
+  await pen(page, /^졸음/).click();
+  await cell(page, "나윤서", "R6").click();
+  await expect(cell(page, "나윤서", "R6")).toHaveAccessibleName(/^나윤서 R6 (연속 )?졸음 \d점$/);
+  await cell(page, "나윤서", "R7").click();
+  await expect(cell(page, "나윤서", "R7")).toHaveAccessibleName("나윤서 R7 연속 졸음 6점");
+  await expect(page.getByRole("status")).toContainText("앞 회차에 졸음이 있어");
+});
+
+test("앞으로의 날짜는 열어 볼 수만 있다", async ({ page }) => {
+  await login(page, "assistant");
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  await page.goto(`/rounding?date=${key}`);
+  await expect(page.getByRole("toolbar", { name: "펜" })).toHaveCount(0);
+  await expect(page.getByText("앞으로의 날짜라 적을 수 없습니다")).toBeVisible();
+  await expect(page.getByRole("link", { name: "다음 날" })).toHaveCount(0);
 });
 
 test("예전 주소(일별 체크·라운딩 조회)는 하루 표로 넘어간다", async ({ page }) => {
@@ -139,11 +202,14 @@ test("예전 주소(일별 체크·라운딩 조회)는 하루 표로 넘어간�
   await expect(page.getByRole("link", { name: "일별 체크" })).toHaveCount(0);
 });
 
-test("멘토는 라운딩 표를 읽기만 한다", async ({ page }) => {
+test("멘토는 라운딩 표를 읽기만 하고, 칸을 누르면 메모를 본다", async ({ page }) => {
   await login(page, "mentor");
   await page.goto("/rounding");
   await expect(page.getByRole("heading", { name: "라운딩" })).toBeVisible();
   await expect(page.getByRole("toolbar", { name: "펜" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^\S+ R1 / })).toHaveCount(0);
   await expect(page.getByText("읽기 전용")).toBeVisible();
+  // 시드: 사유(b) 칸에는 '학원 일정' 메모가 있다. 태블릿에는 마우스를 올려 보는 풍선말이 없으니 눌러서 본다
+  await page.locator("td").filter({ hasText: /R[12] b · 메모: 학원 일정/ }).first().click();
+  await expect(page.getByRole("status")).toContainText("학원 일정");
 });

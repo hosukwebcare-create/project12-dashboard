@@ -6,8 +6,8 @@ import { Label } from "@/components/ui/label";
 import { getCtx } from "@/lib/auth/ctx";
 import { fmtShortDate } from "@/lib/format";
 import { guarded } from "@/lib/page-guard";
-import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
-import { employmentLabel, formatHours, slotsForAudience } from "@/lib/rules/worklog";
+import { addDays, toDate, toDateKey, todayKey } from "@/lib/rules/week";
+import { employmentLabel, formatHours, isWorkedDay, slotsForAudience } from "@/lib/rules/worklog";
 import { WorkClock } from "@/components/app/work-clock";
 import { clockInAction, clockOutAction, saveWorkLogAction } from "@/modules/worklog/actions";
 import { listShiftSlots, monthLogsForUser, myWorkClock, myWorkLog, myWorkProfile } from "@/modules/worklog/repo";
@@ -26,15 +26,16 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
     myWorkClock(ctx, date),
   ]);
   const dates = [-2, -1, 0].map((d) => toDateKey(addDays(todayKey(), d)));
-  const dow = new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))).getDay();
   // 시트는 토요일에도 평일 타임을 쓰고 일요일에만 일1·일2타임을 쓴다
-  const isSunday = dow === 0;
+  const isSunday = toDate(date).getDay() === 0;
   const slots = allSlots.filter((s) => s.active);
   // 내 근무 형태의 타임만 보인다. 지난 날짜에 이미 체크해 둔 타임은 지금 안 쓰는 것이어도 남겨서, 다시 저장할 때 시간이 사라지지 않게 한다
   const checkedBefore = allSlots.filter((s) => mine?.slotKeys.includes(s.key));
   const visibleSlots = [...new Set([...slotsForAudience(slots, profile.employmentType, isSunday), ...checkedBefore])];
   const locked = Boolean(mine?.hqConfirmedAt);
   const totalX100 = monthLogs.reduce((a, l) => a + l.hoursX100 + l.overtimeX100, 0);
+  // 메모만 있는 날은 근무일로 세지 않는다(월 집계와 같은 기준)
+  const workedDays = monthLogs.filter(isWorkedDay).length;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
@@ -106,7 +107,7 @@ async function MyWorklogPage({ searchParams }: { searchParams: Promise<{ date?: 
         <CardHeader>
           <CardTitle>{date.slice(0, 7).replace("-", "년 ")}월 내 근무</CardTitle>
           <CardDescription>
-            {monthLogs.length}일 · 합계 {formatHours(totalX100)}h
+            {workedDays}일 · 합계 {formatHours(totalX100)}h
           </CardDescription>
         </CardHeader>
         <CardContent>

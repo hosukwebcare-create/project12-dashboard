@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeHoursX100, elapsedToHoursX100, EMPLOYMENT_TYPES, employmentLabel, formatDuration, formatHours, minutesToHoursX100, parseHoursToX100, parseMinutes, SHEET_SLOT_PRESET, SLOT_AUDIENCES, slotsForAudience, STAFF_GROUPS, staffGroupOf } from "@/lib/rules/worklog";
+import { computeHoursX100, elapsedToHoursX100, EMPLOYMENT_TYPES, employmentLabel, formatDuration, formatHours, isEmptyWorkLog, isWorkedDay, minutesToHoursX100, parseHoursToX100, parseMinutes, SHEET_SLOT_PRESET, SLOT_AUDIENCES, slotsForAudience, STAFF_GROUPS, staffGroupOf } from "@/lib/rules/worklog";
 
 const slots = [
   { key: "t1", hoursX100: 50, minutes: null, weekend: false },
@@ -135,5 +135,19 @@ describe("직군별 타임", () => {
     expect(slotsForAudience(slots, "청소조교", false).map((s) => s.key)).toEqual(["n1", "t1"]);
     expect(slotsForAudience(slots, "컨설팅", false).map((s) => s.key)).toEqual(["c1", "t1"]);
     expect(slotsForAudience(slots, "주간조교", true).map((s) => s.key)).toEqual(["dsun1"]);
+    // 자기 타임이 따로 없는 형태(기타, 없어진 야간조교)는 그날 타임 전부에서 고른다
+    expect(slotsForAudience(slots, "기타", false).map((s) => s.key)).toEqual(["d1", "n1", "c1", "t1"]);
+    expect(slotsForAudience(slots, "야간조교", true).map((s) => s.key)).toEqual(["dsun1"]);
+  });
+
+  it("근무일은 체크·시간·출퇴근이 있는 날만 센다. 아무것도 없는 기록은 지운다", () => {
+    const empty = { slotKeys: [], hoursX100: 0, overtimeX100: 0, note: null, clockInAt: null, hqConfirmedAt: null };
+    expect(isWorkedDay(empty)).toBe(false);
+    expect(isEmptyWorkLog(empty)).toBe(true);
+    expect(isWorkedDay({ ...empty, overtimeX100: 50 })).toBe(true);
+    expect(isWorkedDay({ ...empty, clockInAt: new Date() })).toBe(true);
+    // 메모만 있는 날은 근무일은 아니지만 지우지 않는다
+    expect(isWorkedDay({ ...empty, note: "병원" })).toBe(false);
+    expect(isEmptyWorkLog({ ...empty, note: "병원" })).toBe(false);
   });
 });

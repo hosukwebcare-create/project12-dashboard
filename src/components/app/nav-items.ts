@@ -1,6 +1,6 @@
 import type { Role } from "@/lib/auth/ctx";
 
-export type NavItem = { href: string; label: string; roles: Role[]; icon: "home" | "users" | "book" | "walk" | "check" | "alert" | "bell" | "settings" | "exam" | "meal" | "clock" | "send" | "handover" | "won" };
+export type NavItem = { href: string; label: string; roles: Role[]; icon: "home" | "users" | "book" | "walk" | "alert" | "bell" | "settings" | "exam" | "meal" | "clock" | "send" | "handover" | "won" };
 
 const ALL: Role[] = ["hq_admin", "branch_manager", "mentor", "assistant"];
 const STAFF: Role[] = ["hq_admin", "branch_manager", "mentor"];

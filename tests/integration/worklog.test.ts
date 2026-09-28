@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/db/client";
-import { shiftSlots } from "@/db/schema";
+import { auditLogs, shiftSlots, workLogs } from "@/db/schema";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { applySheetSlotPreset, clockIn, clockOut, confirmWorkLog, dailyWorkLogs, listShiftSlots, listStaff, monthlySummary, myWorkClock, myWorkLog, myWorkProfile, patchStaffProfile, patchWorkLog, saveWorkLog, upsertShiftSlot, upsertStaffProfile, workDay } from "@/modules/worklog/repo";
 import { seedTwoBranches } from "./helpers";
@@ -144,6 +145,50 @@ describe("일별 현황 표에서 바로 고치기", () => {
   });
 });
 
+describe("일별 현황 표 점검에서 고친 것", () => {
+  beforeEach(resetDb);
+
+  it("시트에서 옮긴 사유 없는 초과근무가 있는 날도 타임 체크를 고칠 수 있다. 초과근무를 바꿀 때만 사유가 필요하다", async () => {
+    const t = await seedSlots();
+    await db.insert(workLogs).values({ branchId: t.b1.id, userId: t.users.asst1.id, date: "2026-09-03", slotKeys: ["t1"], hoursX100: 50, overtimeX100: 50, overtimeReason: null });
+    const log = await patchWorkLog(t.mgrCtx1, { userId: t.users.asst1.id, date: "2026-09-03", slotKeys: ["t1", "t2"] });
+    expect(log).toMatchObject({ slotKeys: ["t1", "t2"], hoursX100: 150, overtimeX100: 50, overtimeReason: null });
+    // 조교가 자기 화면에서 초과근무 칸을 그대로 두고 저장해도 된다
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1"], overtimeX100: 50, overtimeReason: null, note: "메모" });
+    await expect(patchWorkLog(t.mgrCtx1, { userId: t.users.asst1.id, date: "2026-09-03", overtimeX100: 100 })).rejects.toThrow(/사유/);
+  });
+
+  it("체크를 다 풀면 그날 기록이 지워지고, 메모만 있는 날은 남기되 근무일로 세지 않는다", async () => {
+    const t = await seedSlots();
+    const asst = t.users.asst1.id;
+    await patchWorkLog(t.mgrCtx1, { userId: asst, date: "2026-09-03", slotKeys: ["t1"] });
+    expect(await patchWorkLog(t.mgrCtx1, { userId: asst, date: "2026-09-03", slotKeys: [] })).toBeNull();
+    expect(await myWorkLog(t.asstCtx1, "2026-09-03")).toBeNull();
+    expect(await saveWorkLog(t.asstCtx1, { date: "2026-09-04", slotKeys: [], overtimeX100: 0, overtimeReason: null, note: "병원" })).not.toBeNull();
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-05", slotKeys: ["t1"], overtimeX100: 0, overtimeReason: null, note: null });
+    const row = (await monthlySummary(t.mgrCtx1, "2026-09")).find((r) => r.userId === asst)!;
+    expect(row).toMatchObject({ days: 1, hoursX100: 50 });
+    // 출근만 누른 날은 체크를 풀어도 남는다(시계가 잰 기록)
+    await clockIn(t.asstCtx1, "2026-09-06", new Date("2026-09-06T09:00:00+09:00"));
+    await saveWorkLog(t.asstCtx1, { date: "2026-09-06", slotKeys: [], overtimeX100: 0, overtimeReason: null, note: null });
+    expect(await myWorkLog(t.asstCtx1, "2026-09-06")).not.toBeNull();
+  });
+
+  it("근무 형태·시급·근무 요일을 바꾸면 바뀐 칸만 이전 값과 함께 감사 로그에 남는다", async () => {
+    const t = await seedSlots();
+    const staffAudit = () => db.select().from(auditLogs).where(eq(auditLogs.entity, "staff_profile"));
+    const before = (await staffAudit()).length;
+    await patchStaffProfile(t.mgrCtx1, t.users.asst1.id, { hourlyRate: 10500 });
+    const rows = await staffAudit();
+    expect(rows).toHaveLength(before + 1);
+    const last = rows.find((r) => r.action === "update")!;
+    expect(last).toMatchObject({ entityId: t.users.asst1.id, actorId: t.users.mgr1.id, before: { hourlyRate: 10000 }, after: { hourlyRate: 10500 } });
+    // 같은 값으로 다시 저장하면 남기지 않는다
+    await patchStaffProfile(t.mgrCtx1, t.users.asst1.id, { hourlyRate: 10500 });
+    expect(await staffAudit()).toHaveLength(before + 1);
+  });
+});
+
 describe("근무일지", () => {
   beforeEach(resetDb);
 
@@ -172,7 +217,7 @@ describe("근무일지", () => {
 
   it("본사 확인 후에는 잠기고, 월 집계에 확인 시간·예상 급여가 나온다", async () => {
     const t = await seedSlots();
-    const id = await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 50, overtimeReason: "마감 정리", note: null });
+    const id = (await saveWorkLog(t.asstCtx1, { date: "2026-09-03", slotKeys: ["t1", "t2"], overtimeX100: 50, overtimeReason: "마감 정리", note: null }))!;
     await saveWorkLog(t.asstCtx1, { date: "2026-09-04", slotKeys: ["t2"], overtimeX100: 0, overtimeReason: null, note: null });
     await expect(confirmWorkLog(t.mgrCtx1, id)).rejects.toThrow(ForbiddenError);
     await confirmWorkLog(t.hqCtx1, id);
