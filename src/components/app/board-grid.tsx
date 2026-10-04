@@ -75,6 +75,7 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
         .board .day { background: oklch(0.9553 0.0021 286); font-weight: 600; text-align: left; padding-left: 8px; color: oklch(0.3246 0.0027 286); }
         .board .pts { font-weight: 700; color: oklch(0.5 0.19 22); background: oklch(0.97 0.02 22); }
         .board .lbl { font-weight: 500; color: oklch(0.4387 0.0044 286); }
+        .board .att { font-weight: 700; color: oklch(0.38 0.09 158); }
       `}</style>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-border px-1 pb-2">
         <div>
@@ -100,6 +101,15 @@ export function BoardGrid({ branchId, token, initial, refreshMs = 60000 }: { bra
               {data.seats.map((s) => (
                 <td key={s.seatNo} className={`cell ${s.weeklyPoints > 0 ? "pts" : ""}`}>
                   {s.weeklyPoints || ""}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <th className="sticky-l" style={{ width: 40 }}></th>
+              <th className="sticky-l2" style={{ width: 72 }}>출석 합계</th>
+              {data.seats.map((s) => (
+                <td key={s.seatNo} className="cell att">
+                  {s.weeklyAttendance || ""}
                 </td>
               ))}
             </tr>

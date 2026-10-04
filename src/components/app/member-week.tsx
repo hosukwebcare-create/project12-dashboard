@@ -3,7 +3,7 @@ import Link from "next/link";
 import { GradeChip } from "@/components/app/grade-chip";
 import { Button } from "@/components/ui/button";
 import { fmtShortDate } from "@/lib/format";
-import { dayColumns } from "@/lib/rules/rounding";
+import { ATTENDANCE_KEY, dayColumns } from "@/lib/rules/rounding";
 import { addDays, toDateKey } from "@/lib/rules/week";
 import { cn } from "@/lib/utils";
 import type { MemberWeek } from "@/modules/rounding/repo";
@@ -14,6 +14,8 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
   const prev = toDateKey(addDays(week.weekStart, -7));
   const next = toDateKey(addDays(week.weekStart, 7));
   const penaltyCount = Object.values(week.cells).filter((c) => c?.grade === "p").length;
+  // 현황판·시트의 '출석 합계'와 같은 수: 출석이 a 인 날
+  const attended = week.days.filter((d) => week.cells[`${d}|${ATTENDANCE_KEY}|0`]?.grade === "a").length;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -30,7 +32,8 @@ export function MemberWeekView({ memberId, week }: { memberId: string; week: Mem
             </Link>
           </Button>
         </div>
-        <span className={cn("ml-auto inline-flex items-center gap-2 text-sm font-medium", week.totalPoints > 0 ? "text-rose-700" : "text-muted-foreground")}>
+        <span className="ml-auto text-sm font-medium text-muted-foreground">출석 {attended}일</span>
+        <span className={cn("inline-flex items-center gap-2 text-sm font-medium", week.totalPoints > 0 ? "text-rose-700" : "text-muted-foreground")}>
           주간 벌점 {week.totalPoints}점
           {penaltyCount > 0 ? <span className="text-xs font-normal opacity-80">{penaltyCount}건</span> : null}
         </span>

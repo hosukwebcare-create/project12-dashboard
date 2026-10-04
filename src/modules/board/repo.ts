@@ -6,7 +6,7 @@ import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError } from "@/lib/errors";
 import { maskName } from "@/lib/rules/masking";
 import { sumPoints } from "@/lib/rules/penalty";
-import { ROUND_KEY } from "@/lib/rules/rounding";
+import { ATTENDANCE_KEY, ROUND_KEY } from "@/lib/rules/rounding";
 import { toDateKey, weekDays, weekStart } from "@/lib/rules/week";
 import { penaltyRulesFor } from "@/modules/rounding/repo";
 import { boardItemsFor } from "@/modules/settings/repo";
@@ -18,7 +18,8 @@ export type BoardData = {
   rules: { name: string; points: number }[];
   items: { key: string; label: string; kind: "daily" | "round" }[];
   roundsPerDay: number;
-  seats: { seatNo: number; name: string; weeklyPoints: number }[];
+  /** weeklyAttendance: 이번 주 출석이 a 인 날 수. 시트 맨 아래 '출석 합계' 줄(=countif(그날 출석,"a") 을 날마다 더한 것)과 같다 */
+  seats: { seatNo: number; name: string; weeklyPoints: number; weeklyAttendance: number }[];
   /** `${seatNo}|${date}|${itemKey}|${roundNo}` */
   cells: Record<string, { grade: Grade; points: number }>;
   generatedAt: string;
@@ -66,11 +67,13 @@ export async function boardData(branchId: string, weekStartInput: string, db: Db
     : [];
   const cells: BoardData["cells"] = {};
   const pointsByMember = new Map<string, { grade: Grade; points: number }[]>();
+  const attendedByMember = new Map<string, number>();
   for (const c of checkRows) {
     const seatNo = seatByMember.get(c.memberId);
     if (seatNo === undefined) continue;
     cells[`${seatNo}|${c.date}|${c.itemKey}|${c.roundNo}`] = { grade: c.grade, points: c.points };
     pointsByMember.set(c.memberId, [...(pointsByMember.get(c.memberId) ?? []), { grade: c.grade, points: c.points }]);
+    if (c.itemKey === ATTENDANCE_KEY && c.roundNo === 0 && c.grade === "a") attendedByMember.set(c.memberId, (attendedByMember.get(c.memberId) ?? 0) + 1);
   }
   // 하루 표처럼, 이번 주에 하루 회차 수보다 많은 회차가 기록돼 있으면(시트에서 옮긴 R12 등) 그 줄까지 보여 준다
   const maxRound = checkRows.reduce((m, c) => (c.itemKey === ROUND_KEY ? Math.max(m, c.roundNo) : m), 0);
@@ -85,6 +88,7 @@ export async function boardData(branchId: string, weekStartInput: string, db: Db
       seatNo: m.seatNo,
       name: branch.settings.maskNames ? maskName(m.name) : m.name,
       weeklyPoints: sumPoints(pointsByMember.get(m.id) ?? []),
+      weeklyAttendance: attendedByMember.get(m.id) ?? 0,
     })),
     cells,
     generatedAt: new Date().toISOString(),

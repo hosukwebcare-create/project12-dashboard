@@ -423,7 +423,23 @@ export async function unconfirmWorkLog(ctx: Ctx, id: string, db: Db = defaultDb)
   await db.update(workLogs).set({ hqConfirmedBy: null, hqConfirmedAt: null }).where(and(eq(workLogs.id, id), eq(workLogs.branchId, ctx.branchId)));
 }
 
-export type MonthlyRow = { userId: string; userName: string; employmentType: string; group: StaffGroup; days: number; hoursX100: number; overtimeX100: number; confirmedX100: number; hourlyRate: number | null; estimatedPay: number | null };
+export type MonthlyRow = {
+  userId: string;
+  userName: string;
+  employmentType: string;
+  group: StaffGroup;
+  days: number;
+  hoursX100: number;
+  overtimeX100: number;
+  confirmedX100: number;
+  hourlyRate: number | null;
+  estimatedPay: number | null;
+  /**
+   * 날짜별 총 근무시간(근무시간 + 초과) ×100. 시트의 '근무통계_N월' 탭(근무자 × 날짜, 각 칸은 그날 탭의 총 근무시간)과 같다.
+   * 일하지 않은 날(메모만 있는 날)은 없다.
+   */
+  byDate: Record<string, { x100: number; confirmed: boolean }>;
+};
 
 export async function monthlySummary(ctx: Ctx, yearMonth: string, db: Db = defaultDb): Promise<MonthlyRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
@@ -438,9 +454,12 @@ export async function monthlySummary(ctx: Ctx, yearMonth: string, db: Db = defau
     .where(and(eq(workLogs.branchId, ctx.branchId), gte(workLogs.date, dates[0]), lte(workLogs.date, dates[dates.length - 1])));
   const map = new Map<string, MonthlyRow>();
   for (const r of rows) {
-    const cur = map.get(r.w.userId) ?? { userId: r.w.userId, userName: r.userName, employmentType: r.employmentType ?? "-", group: staffGroupOf(r.role ?? "", r.employmentType), days: 0, hoursX100: 0, overtimeX100: 0, confirmedX100: 0, hourlyRate: r.hourlyRate, estimatedPay: null };
+    const cur = map.get(r.w.userId) ?? { userId: r.w.userId, userName: r.userName, employmentType: r.employmentType ?? "-", group: staffGroupOf(r.role ?? "", r.employmentType), days: 0, hoursX100: 0, overtimeX100: 0, confirmedX100: 0, hourlyRate: r.hourlyRate, estimatedPay: null, byDate: {} };
     // 메모만 있거나 비어 있는 날은 근무일로 세지 않는다
-    if (isWorkedDay(r.w)) cur.days += 1;
+    if (isWorkedDay(r.w)) {
+      cur.days += 1;
+      cur.byDate[r.w.date] = { x100: r.w.hoursX100 + r.w.overtimeX100, confirmed: Boolean(r.w.hqConfirmedAt) };
+    }
     cur.hoursX100 += r.w.hoursX100;
     cur.overtimeX100 += r.w.overtimeX100;
     if (r.w.hqConfirmedAt) cur.confirmedX100 += r.w.hoursX100 + r.w.overtimeX100;

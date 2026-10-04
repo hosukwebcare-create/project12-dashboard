@@ -54,6 +54,9 @@ describe("현황판 데이터", () => {
     await upsertCheck(t.asstCtx1, { memberId: t.b, date: "2026-09-02", itemKey: "vocab", roundNo: 0, grade: "b" });
     // 다른 주의 벌점은 합계에 들어가지 않는다
     await upsertCheck(t.asstCtx1, { memberId: t.a, date: "2026-08-30", itemKey: "attendance", roundNo: 0, grade: "p", penaltyRuleId: sleepy.id });
+    // 출석 합계는 출석이 a 인 날만 센다(시트의 countif(출석,"a"))
+    await upsertCheck(t.asstCtx1, { memberId: t.a, date: "2026-09-02", itemKey: "attendance", roundNo: 0, grade: "a" });
+    await upsertCheck(t.asstCtx1, { memberId: t.a, date: "2026-09-03", itemKey: "attendance", roundNo: 0, grade: "b" });
 
     const data = await boardData(t.b1.id, WEEK);
     expect(data.branchName).toBe("지점1");
@@ -61,9 +64,9 @@ describe("현황판 데이터", () => {
     expect(data.items.map((i) => i.key)).toEqual(["attendance", "round", "vocab"]);
     expect(data.rules.map((r) => `${r.name}${r.points}`)).toEqual(["졸음3", "지각4", "이동금지 위반5"]);
     expect(data.roundsPerDay).toBe(12);
-    expect(data.seats.map((s) => [s.seatNo, s.name, s.weeklyPoints])).toEqual([
-      [1, "김지민", 3],
-      [3, "박서준", 0],
+    expect(data.seats.map((s) => [s.seatNo, s.name, s.weeklyPoints, s.weeklyAttendance])).toEqual([
+      [1, "김지민", 3, 2],
+      [3, "박서준", 0, 0],
     ]);
     expect(data.cells["1|2026-09-01|round|1"]).toEqual({ grade: "p", points: 3 });
     expect(data.cells["1|2026-09-01|attendance|0"]).toEqual({ grade: "a", points: 0 });

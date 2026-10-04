@@ -17,6 +17,9 @@ test("현황판 API는 토큰이 맞으면 개인정보 없는 데이터를 준�
   expect(data.branchName).toBe("동탄2");
   expect(data.seats.length).toBeGreaterThan(10);
   expect(data.items.map((i: { key: string }) => i.key)).toContain("round");
+  // 시트 맨 아래 '출석 합계' 줄: 이번 주 출석이 a 인 날 수(시드: 이번 주 지난 날들은 라운딩에서 출석이 채워져 있다)
+  expect(data.seats.every((s: { weeklyAttendance: number }) => Number.isInteger(s.weeklyAttendance) && s.weeklyAttendance >= 0 && s.weeklyAttendance <= 7)).toBe(true);
+  expect(data.seats.some((s: { weeklyAttendance: number }) => s.weeklyAttendance > 0)).toBe(true);
   expect(JSON.stringify(data)).not.toContain("010-0000");
 });
 
@@ -26,6 +29,7 @@ test("현황판 페이지는 로그인 없이 열리고 그리드를 그린다",
   await page.goto(`/board/${branchId}?t=${token}`);
   await expect(page.getByText("동탄2 생활관리 현황")).toBeVisible();
   await expect(page.getByText("벌점 합계")).toBeVisible();
+  await expect(page.getByText("출석 합계")).toBeVisible();
   await expect(page.getByRole("cell", { name: "R1", exact: true }).first()).toBeVisible();
   await page.goto(`/board/${branchId}?t=nope`);
   await expect(page.getByText("토큰이 올바르지 않습니다")).toBeVisible();

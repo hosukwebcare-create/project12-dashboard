@@ -225,6 +225,8 @@ describe("근무일지", () => {
     const sum = await monthlySummary(t.mgrCtx1, "2026-09");
     const row = sum.find((r) => r.userId === t.users.asst1.id)!;
     expect(row).toMatchObject({ userName: "조교1", employmentType: "주간조교", days: 2, hoursX100: 250, overtimeX100: 50, confirmedX100: 200, hourlyRate: 10000, estimatedPay: 30000 });
+    // 날짜별 총 근무시간(시트의 근무통계): 근무시간 + 초과, 본사 확인 여부
+    expect(row.byDate).toEqual({ "2026-09-03": { x100: 200, confirmed: true }, "2026-09-04": { x100: 100, confirmed: false } });
     await expect(monthlySummary(t.asstCtx1, "2026-09")).rejects.toThrow(ForbiddenError);
   });
 });

@@ -105,12 +105,26 @@ test.describe("근무일지", () => {
     await ctx3.close();
 
     await page.goto("/worklog/monthly");
-    const mrow = page.getByRole("row").filter({ hasText: "최조교" });
+    // 월 집계 줄(시급 칸이 있는 줄). 아래 날짜별 표에도 같은 이름 줄이 있다
+    const mrow = page.getByRole("row").filter({ has: page.getByLabel("최조교 시급") });
     await expect(page.getByLabel("최조교 시급")).toHaveValue("10500");
-    await expect(mrow).toContainText("본사운영".length ? /\d/ : /\d/);
+    await expect(mrow).toContainText(/\d+(\.\d+)?h/);
     const csv = await page.request.get(`/api/worklog/export?month=${todayKey().slice(0, 7)}`);
     expect(csv.status(), await csv.text()).toBe(200);
     expect(await csv.text()).toContain("최조교");
+
+    // 날짜별 근무시간(시트의 근무통계): 근무자 × 날짜, 오늘 칸은 근무시간 + 초과, 누르면 그날 일별 현황
+    const today = todayKey();
+    const day = Number(today.slice(8));
+    const cellLink = page.getByRole("link", { name: new RegExp(`^최조교 ${Number(today.slice(5, 7))}월 ${day}일 [\\d.]+시간 본사 확인$`) });
+    await expect(cellLink).toBeVisible();
+    await cellLink.click();
+    await expect(page).toHaveURL(new RegExp(`/worklog/daily\\?date=${today}`));
+    const dailyCsv = await page.request.get(`/api/worklog/export?month=${today.slice(0, 7)}&layout=daily`);
+    expect(dailyCsv.status()).toBe(200);
+    const head = (await dailyCsv.text()).split("\r\n")[0];
+    expect(head).toContain(`${Number(today.slice(5, 7))}.${day}`);
+    expect(head.endsWith("합계")).toBe(true);
   });
 
   test("시트 타임표는 근무 형태별로 나뉘고, 조교가 평일을 다 채우면 시트와 같은 2.5시간이 된다", async ({ page, browser }) => {
