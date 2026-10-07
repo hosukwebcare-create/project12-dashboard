@@ -28,8 +28,31 @@ function v6Kind(ip: string): IpKind {
   if (mapped) return v4Kind(mapped[1]);
   if (/^fe[89ab]/.test(ip)) return "link_local";
   if (/^f[cd]/.test(ip)) return "private";
+  // NAT64(64:ff9b::/96, RFC 6052): IPv6 전용 망에서 공개 IPv4 호스트가 이 모양으로 풀린다(맥·통신사 DNS64).
+  // 끝 32비트에 든 IPv4 로 판정한다 — 통째로 막으면 그런 망에서는 잔디·슬랙 주소가 전부 거부된다
+  const nat64 = nat64Embedded(ip);
+  if (nat64) return v4Kind(nat64);
   if (ip.startsWith("64:ff9b:")) return "special";
   return "public";
+}
+
+/** 64:ff9b::/96 주소에 박힌 IPv4. 아니면 null */
+function nat64Embedded(ip: string): string | null {
+  let s = ip;
+  const dq = s.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dq) {
+    const [a, b, c, d] = dq.slice(1).map(Number);
+    s = `${s.slice(0, dq.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, tail, extra] = s.split("::");
+  if (extra !== undefined) return null;
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = s.includes("::") ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t] : h;
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
+  const n = groups.map((g) => parseInt(g, 16));
+  if (n[0] !== 0x64 || n[1] !== 0xff9b || n[2] || n[3] || n[4] || n[5]) return null;
+  return `${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`;
 }
 
 const BLOCKED_HOSTS = ["localhost", "metadata.google.internal", "metadata"];

@@ -276,13 +276,38 @@ test.describe("3단계 연동", () => {
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("application/pdf");
 
+    // 잔디: 인커밍 웹훅 주소를 등록하면 잔디 형식으로 보내고, 아웃고잉 웹훅 토큰을 저장하면 '/해주세요 …' 글이 '해 주세요' 칸에 올라온다
+    await page.goto("/settings/webhooks");
+    const hook = page.locator("form").filter({ has: page.getByPlaceholder("채널 이름") });
+    await hook.getByPlaceholder("채널 이름").fill("잔디 동탄2");
+    await hook.getByPlaceholder(/wh\.jandi\.com/).fill("https://wh.jandi.com/connect-api/webhook/123/e2e-token");
+    await hook.getByLabel("해 주세요 올라옴").check();
+    await hook.getByRole("button", { name: "추가" }).click();
+    await expect(page.locator('input[value="잔디 동탄2"]')).toBeVisible();
+
+    await page.goto("/settings/branch");
+    await expect(page.getByText(/\/api\/integrations\/jandi\/DT2$/)).toBeVisible();
+    await page.getByLabel(/잔디 토큰/).fill("e2e-jandi-token-0001");
+    await page.getByRole("button", { name: "토큰 저장" }).click();
+    await expect(page.getByText("저장했습니다. 이제 잔디에서")).toBeVisible();
+    const jandi = await request.post("/api/integrations/jandi/DT2", { data: { token: "e2e-jandi-token-0001", teamName: "프로젝트12", roomName: "동탄2", writer: { name: "잔디조교" }, text: "/해주세요 3층 정수기 업체에 전화", data: "3층 정수기 업체에 전화", keyword: "해주세요" } });
+    expect(jandi.status()).toBe(200);
+    expect((await jandi.json()).body).toContain("'해 주세요'에 올렸습니다");
+    expect((await request.post("/api/integrations/jandi/DT2", { data: { token: "wrong", text: "/해주세요 x", data: "x", keyword: "해주세요" } })).status()).toBe(401);
+    await page.goto("/handover");
+    const fromJandi = page.locator("#requests li").filter({ hasText: "3층 정수기 업체에 전화" });
+    await expect(fromJandi).toContainText("— 잔디에서 잔디조교");
+    // 잔디에서 온 부탁은 잔디 채널로 다시 보내지 않는다(플랫폼에서 올린 것만 이벤트가 쌓인다)
+    await page.goto("/settings/webhooks");
+    await expect(page.getByText(/\[해 주세요\] 3층 정수기/)).toHaveCount(0);
+
     // HERO 웹훅: 서명 없이는 401, 시크릿 미설정 시 503
     const hero = await request.post("/api/integrations/hero", { data: { branchCode: "DT2", memberName: "강하늘", seatNo: 1, externalId: "e2e-1", summary: { type: "탐구형" } } });
     expect([401, 503]).toContain(hero.status());
 
     await page.goto("/settings/webhooks");
     await page.getByPlaceholder("채널 이름").fill("동탄2 채널");
-    await page.getByPlaceholder(/hooks/).fill("https://chat.example.com/hooks/abc");
+    await page.getByPlaceholder(/webhook/).fill("https://chat.example.com/hooks/abc");
     await page.getByRole("button", { name: "추가" }).click();
     await expect(page.locator('input[name="name"][value="동탄2 채널"]')).toBeVisible();
   });

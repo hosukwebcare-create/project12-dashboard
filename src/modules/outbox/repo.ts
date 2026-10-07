@@ -4,11 +4,14 @@ import { eventOutbox, webhookEndpoints } from "@/db/schema";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { assertResolvesSafe, assertSafeWebhookUrl } from "@/lib/net";
+import { buildWebhookRequest, webhookFormat } from "@/lib/rules/webhook";
 
 export const OUTBOX_EVENTS = [
   { key: "issue.created", label: "이슈 보고" },
   { key: "penalty.high", label: "고벌점 (5점 이상)" },
   { key: "session.completed", label: "라운딩 회차 완료" },
+  { key: "handover.request", label: "해 주세요 올라옴" },
+  { key: "handover.notice", label: "인수인계 공지" },
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENTS)[number]["key"];
 export const HIGH_PENALTY_THRESHOLD = 5;
@@ -46,16 +49,19 @@ export async function enqueueEvent(tx: Db | Tx, branchId: string, type: OutboxEv
   return true;
 }
 
-export type Sender = (url: string, body: string) => Promise<{ ok: boolean; status: number }>;
+export type Sender = (url: string, body: string, headers?: Record<string, string>) => Promise<{ ok: boolean; status: number }>;
 
-export const fetchSender: Sender = async (url, body) => {
+export const fetchSender: Sender = async (url, body, headers = { "Content-Type": "application/json" }) => {
   // 저장 시점 검증과 별개로, DNS 리바인딩에 대비해 전송 직전에도 해석 결과를 확인한다
   await assertResolvesSafe(new URL(url));
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(10_000) });
+  const res = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
   return { ok: res.ok, status: res.status };
 };
 
-/** 대기 이벤트를 구독 웹훅으로 전송한다. Slack/Mattermost/Rocket.Chat 인커밍 웹훅과 호환되는 { text } JSON */
+/**
+ * 대기 이벤트를 구독 웹훅으로 전송한다. 메신저는 주소로 알아낸다(webhookFormat):
+ * Slack/Mattermost/Rocket.Chat 은 { text } JSON, 잔디(wh.jandi.com)는 잔디 커넥트 형식.
+ */
 export async function dispatchOutbox(sender: Sender = fetchSender, limit = 50, db: Db = defaultDb): Promise<{ sent: number; failed: number }> {
   const pending = await db.select().from(eventOutbox).where(eq(eventOutbox.status, "pending")).orderBy(asc(eventOutbox.createdAt)).limit(limit);
   let sent = 0;
@@ -63,12 +69,12 @@ export async function dispatchOutbox(sender: Sender = fetchSender, limit = 50, d
   for (const ev of pending) {
     const endpoints = await db.select().from(webhookEndpoints).where(and(eq(webhookEndpoints.branchId, ev.branchId), eq(webhookEndpoints.active, true)));
     const targets = endpoints.filter((e) => e.events.includes(ev.type));
-    const body = JSON.stringify({ text: ev.text, event: ev.type, ...ev.payload });
     let allOk = true;
     let lastError: string | null = null;
     for (const t of targets) {
       try {
-        const r = await sender(t.url, body);
+        const req = buildWebhookRequest(webhookFormat(t.url), ev);
+        const r = await sender(t.url, req.body, req.headers);
         if (!r.ok) {
           allOk = false;
           lastError = `${t.name}: HTTP ${r.status}`;

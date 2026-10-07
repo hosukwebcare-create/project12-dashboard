@@ -68,6 +68,8 @@ export const branches = pgTable("branches", {
   ownerName: text("owner_name"),
   settings: jsonb("settings").$type<BranchSettings>().notNull().default(DEFAULT_BRANCH_SETTINGS),
   boardTokenHash: text("board_token_hash"),
+  /** 잔디 아웃고잉 웹훅이 보내는 토큰의 해시. 잔디에서 '/해주세요 …' 라고 쓴 글을 받을 때 검증한다 */
+  jandiTokenHash: text("jandi_token_hash"),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

@@ -7,7 +7,7 @@ import { toMessage, type ActionState } from "@/lib/action-utils";
 import { getCtx } from "@/lib/auth/ctx";
 import { issueBoardToken } from "@/modules/board/repo";
 import type { CustomFieldType } from "@/lib/rules/custom-fields";
-import { addUserToBranch, bulkCreateSeats, removeUserFromBranch, setUserPin, unlockUser, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertHqAdmin, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
+import { addUserToBranch, bulkCreateSeats, removeUserFromBranch, setJandiToken, setUserPin, unlockUser, updateBranchSettings, upsertBoardItem, upsertCustomFieldDef, upsertHqAdmin, upsertPenaltyRule, upsertSeat, upsertUser, type CustomFieldEntity } from "./repo";
 
 const num = (v: FormDataEntryValue | null, d = 0) => {
   const n = Number(v);
@@ -32,6 +32,20 @@ export async function updateBranchSettingsAction(_p: ActionState, fd: FormData):
       return { error: toMessage(e) };
     }
     revalidatePath("/", "layout");
+    return { ok: true };
+  });
+}
+
+/** 잔디 아웃고잉 웹훅 토큰 저장(clear=1 이면 연동 해제) */
+export async function setJandiTokenAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  return withRequestRls(async () => {
+    const ctx = await getCtx();
+    try {
+      await setJandiToken(ctx, fd.get("clear") === "1" ? null : String(fd.get("token") ?? ""));
+    } catch (e) {
+      return { error: toMessage(e) };
+    }
+    revalidatePath("/settings/branch");
     return { ok: true };
   });
 }

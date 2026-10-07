@@ -1,11 +1,12 @@
 import { BoardTokenPanel } from "@/components/app/board-token-panel";
 import { InlineForm } from "@/components/app/inline-form";
+import { JandiPanel } from "@/components/app/jandi-panel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getCtx } from "@/lib/auth/ctx";
-import { updateBranchSettingsAction } from "@/modules/settings/actions";
+import { setJandiTokenAction, updateBranchSettingsAction } from "@/modules/settings/actions";
 import { boardItemsFor, getBranch } from "@/modules/settings/repo";
 import { guarded } from "@/lib/page-guard";
 
@@ -50,6 +51,15 @@ async function BranchSettingsPage() {
         </CardHeader>
         <CardContent>
           <BoardTokenPanel branchId={ctx.branchId} hasToken={Boolean(branch.boardTokenHash)} />
+        </CardContent>
+      </Card>
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <CardTitle>잔디에서 &lsquo;해 주세요&rsquo; 올리기</CardTitle>
+          <CardDescription>잔디 대화방에 &lsquo;/해주세요 내용&rsquo; 이라고 쓰면 인수인계의 &lsquo;해 주세요&rsquo; 칸에 올라옵니다. 플랫폼 → 잔디 알림은 설정 › 메신저 연동에서 잔디 인커밍 웹훅 주소를 등록하면 됩니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <JandiPanel branchCode={branch.code} hasToken={Boolean(branch.jandiTokenHash)} save={setJandiTokenAction} />
         </CardContent>
       </Card>
     </div>

@@ -21,6 +21,12 @@ describe("웹훅 SSRF 차단", () => {
     expect(ipKind("fd00::1")).toBe("private");
     expect(ipKind("::ffff:127.0.0.1")).toBe("loopback");
     expect(ipKind("2606:4700::1111")).toBe("public");
+    // NAT64(64:ff9b::/96): 박힌 IPv4 로 판정한다 — 13.230.129.78 은 공개, 127.0.0.1·10.0.0.1 은 여전히 막힌다
+    expect(ipKind("64:ff9b::de6:814e")).toBe("public");
+    expect(ipKind("64:ff9b::13.230.129.78")).toBe("public");
+    expect(ipKind("64:ff9b::7f00:1")).toBe("loopback");
+    expect(ipKind("64:ff9b::a00:1")).toBe("private");
+    expect(ipKind("64:ff9b:1::de6:814e")).toBe("special");
   });
 
   it("로컬·메타데이터·사설 주소와 잘못된 스킴을 거부한다", () => {

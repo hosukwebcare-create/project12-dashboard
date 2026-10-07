@@ -65,6 +65,39 @@ describe("메신저 웹훅 아웃박스", () => {
     expect(await dispatchOutbox(sender, 10)).toEqual({ sent: 0, failed: 0 });
   });
 
+  it("잔디 주소에는 잔디 커넥트 형식(body·connectInfo + Accept 헤더)으로, 다른 주소에는 { text } 로 보낸다", async () => {
+    const t = await seedTwoBranches();
+    await upsertWebhookEndpoint(t.mgrCtx1, { name: "잔디 동탄", url: "https://wh.jandi.com/connect-api/webhook/123/abc", events: ["issue.created"], active: true });
+    await upsertWebhookEndpoint(t.mgrCtx1, { name: "슬랙", url: "https://hooks.example/dt", events: ["issue.created"], active: true });
+    await createIssue(t.asstCtx1, { memberId: null, title: "가나 · 휴대폰 사용", body: "R3", severity: "high", source: "manual" });
+    const calls: { url: string; body: string; headers?: Record<string, string> }[] = [];
+    const r = await dispatchOutbox(async (url, body, headers) => {
+      calls.push({ url, body, headers });
+      return { ok: true, status: 200 };
+    }, 10);
+    expect(r).toEqual({ sent: 1, failed: 0 });
+    const jandi = calls.find((c) => c.url.includes("wh.jandi.com"))!;
+    expect(jandi.headers).toMatchObject({ Accept: "application/vnd.tosslab.jandi-v2+json" });
+    expect(JSON.parse(jandi.body)).toMatchObject({ body: expect.stringContaining("[이슈 보고] 가나 · 휴대폰 사용"), connectInfo: [{ title: "보고", description: "조교1" }, { title: "긴급도", description: "긴급" }] });
+    const slack = calls.find((c) => c.url.includes("hooks.example"))!;
+    expect(JSON.parse(slack.body)).toHaveProperty("text");
+    expect(JSON.parse(slack.body)).not.toHaveProperty("connectInfo");
+  });
+
+  it("'해 주세요'와 공지는 구독한 채널에 이벤트로 올라간다", async () => {
+    const t = await seedTwoBranches();
+    const { upsertNote } = await import("@/modules/handover/repo");
+    await upsertWebhookEndpoint(t.mgrCtx1, { name: "잔디", url: "https://wh.jandi.com/connect-api/webhook/1/a", events: ["handover.request", "handover.notice"], active: true });
+    await upsertNote(t.asstCtx1, { date: "2026-10-08", kind: "request", body: "3층 정수기 업체에 전화해 주세요" });
+    await upsertNote(t.mgrCtx1, { date: "2026-10-08", kind: "notice", body: "내일 10시 소방 점검" });
+    await upsertNote(t.asstCtx1, { date: "2026-10-08", kind: "handover", body: "일반 인수인계는 올리지 않는다" });
+    const rows = await db.select().from(eventOutbox);
+    expect(rows.map((r) => [r.type, r.text]).sort()).toEqual([
+      ["handover.notice", "[공지] 내일 10시 소방 점검 (지점장1)"],
+      ["handover.request", "[해 주세요] 3층 정수기 업체에 전화해 주세요 (조교1)"],
+    ]);
+  });
+
   it("웹훅이 없으면 이벤트를 쌓지 않는다", async () => {
     const t = await seedTwoBranches();
     await createIssue(t.asstCtx1, { memberId: null, title: "x", body: null, severity: "low", source: "manual" });

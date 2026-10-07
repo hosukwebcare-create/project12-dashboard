@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ForbiddenError, ValidationError } from "@/lib/errors";
-import { addComment, deleteNote, listComments, listNotes, listRequests, markAllRead, markRead, openRequestCount, setRequestDone, slotOptions, unreadNoteCount, upsertNote } from "@/modules/handover/repo";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { addComment, createRequestFromJandi, deleteNote, listComments, listNotes, listRequests, markAllRead, markRead, openRequestCount, setRequestDone, slotOptions, unreadNoteCount, upsertNote } from "@/modules/handover/repo";
+import { setJandiToken } from "@/modules/settings/repo";
 import { upsertShiftSlot } from "@/modules/worklog/repo";
 import { listNotifications } from "@/modules/notifications/repo";
 import { seedTwoBranches } from "./helpers";
@@ -180,5 +181,39 @@ describe("해 주세요", () => {
     await upsertShiftSlot(t.mgrCtx1, { key: "m1", label: "1타임", startTime: "16:00", endTime: "23:00", minutes: 360, weekend: false, audience: "원장", sort: 2, active: true });
     await upsertShiftSlot(t.mgrCtx1, { key: "c1", label: "1타임", startTime: "", endTime: "", minutes: 240, weekend: false, audience: "컨설팅", sort: 3, active: false });
     expect((await slotOptions(t.mgrCtx1)).map((o) => o.name)).toEqual(["주간조교 1타임", "원장 1타임"]);
+  });
+});
+
+describe("잔디에서 '해 주세요' 올리기", () => {
+  beforeEach(resetDb);
+  const TOKEN = "YE1ronbbuoZkq7h3J5KMI4Tn";
+  const msg = (over: Record<string, unknown> = {}) => ({ token: TOKEN, teamName: "프로젝트12", roomName: "동탄2", writer: { name: "최조교" }, text: "/해주세요 3층 정수기 업체에 전화", data: "3층 정수기 업체에 전화", keyword: "해주세요", ...over });
+
+  it("지점장이 저장한 토큰이 맞는 글만 받아 '해 주세요'에 올리고 지점 사람들에게 알린다", async () => {
+    const t = await seedTwoBranches();
+    await expect(setJandiToken(t.asstCtx1, TOKEN)).rejects.toThrow(ForbiddenError);
+    await expect(setJandiToken(t.mgrCtx1, "short")).rejects.toThrow(ValidationError);
+    // 설정 전에는 받지 않는다
+    await expect(createRequestFromJandi("B1", msg())).rejects.toThrow(ForbiddenError);
+    await setJandiToken(t.mgrCtx1, TOKEN);
+    const r = await createRequestFromJandi("B1", msg());
+    expect(r.body).toBe("3층 정수기 업체에 전화\n— 잔디에서 최조교");
+    const list = await listRequests(t.mgrCtx1, TODAY);
+    expect(list.open.map((n) => [n.body, n.authorName])).toEqual([["3층 정수기 업체에 전화\n— 잔디에서 최조교", null]]);
+    for (const ctx of [t.mgrCtx1, t.asstCtx1, t.mentorCtx1]) expect((await listNotifications(ctx)).map((n) => String((n.payload as { title?: string }).title))).toEqual(["해 주세요 · 3층 정수기 업체에 전화"]);
+    // 다른 지점에는 없다
+    expect(await openRequestCount(t.mgrCtx2)).toBe(0);
+  });
+
+  it("토큰이 틀리거나 내용이 비었거나 지점 코드가 없으면 거절한다", async () => {
+    const t = await seedTwoBranches();
+    await setJandiToken(t.mgrCtx1, TOKEN);
+    await expect(createRequestFromJandi("B1", msg({ token: "wrong-token-xxx" }))).rejects.toThrow(ForbiddenError);
+    await expect(createRequestFromJandi("B1", msg({ token: undefined }))).rejects.toThrow(ForbiddenError);
+    await expect(createRequestFromJandi("B1", msg({ text: "/해주세요", data: "" }))).rejects.toThrow(ValidationError);
+    await expect(createRequestFromJandi("NOPE", msg())).rejects.toThrow(NotFoundError);
+    // 연동을 끊으면 더 받지 않는다
+    await setJandiToken(t.mgrCtx1, null);
+    await expect(createRequestFromJandi("B1", msg())).rejects.toThrow(ForbiddenError);
   });
 });

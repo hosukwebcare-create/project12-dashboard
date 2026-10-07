@@ -1,0 +1,1 @@
+ALTER TABLE "branches" ADD COLUMN "jandi_token_hash" text;

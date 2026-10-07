@@ -7,7 +7,8 @@ test.describe("설정", () => {
     await page.goto("/settings/branch");
     await page.getByLabel("하루 회차 수").fill("11");
     await page.getByLabel("현황판에 이름을 마스킹해서 표시 (김*민)").check();
-    await page.getByRole("button", { name: "저장" }).click();
+    // 같은 화면 아래 잔디 카드에도 '토큰 저장' 버튼이 있다
+    await page.getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByText("저장됨")).toBeVisible();
     await page.goto("/rounding");
     await expect(page.getByText(/\/11회차/)).toBeVisible();
@@ -16,7 +17,7 @@ test.describe("설정", () => {
 
     await page.goto("/settings/branch");
     await page.getByRole("button", { name: /링크 (재)?발급/ }).click();
-    const code = page.locator("code");
+    const code = page.locator("code", { hasText: "/board/" });
     await expect(code).toContainText("/board/");
     const url = (await code.textContent())!.trim();
     await page.goto(url);
@@ -28,7 +29,7 @@ test.describe("설정", () => {
     await page.goto("/settings/branch");
     await page.getByLabel("하루 회차 수").fill("12");
     await page.getByLabel("현황판에 이름을 마스킹해서 표시 (김*민)").uncheck();
-    await page.getByRole("button", { name: "저장" }).click();
+    await page.getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByText("저장됨")).toBeVisible();
   });
 

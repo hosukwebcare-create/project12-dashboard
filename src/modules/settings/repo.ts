@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db as defaultDb, type Db, type Tx } from "@/db/client";
 import { auditLogs, boardItems, branches, customFieldDefs, memberships, penaltyRules, seats, users, type BoardItemKind, type BranchRole, type BranchSettings } from "@/db/schema";
@@ -16,6 +17,23 @@ export async function boardItemsFor(scope: Pick<Ctx, "branchId">, db: Db | Tx = 
   const rows = await db.select().from(boardItems).where(and(...conds)).orderBy(asc(boardItems.sort), asc(boardItems.label));
   const own = rows.filter((r) => r.branchId === scope.branchId);
   return own.length ? own : rows.filter((r) => r.branchId === null);
+}
+
+/**
+ * 잔디 아웃고잉 웹훅 토큰을 저장한다(해시만). 잔디가 '/해주세요 …' 글을 보낼 때 이 토큰으로 우리 지점 글인지 확인한다.
+ * null 이면 연동을 끊는다. 토큰 자체는 잔디 커넥트 화면에만 있고 여기서는 다시 보여 주지 않는다.
+ */
+export async function setJandiToken(ctx: Ctx, token: string | null, db: Db = defaultDb): Promise<void> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  const t = token?.trim() ?? "";
+  if (token !== null && t.length < 8) throw new ValidationError("잔디 커넥트 화면의 토큰을 그대로 붙여 넣으세요");
+  const hash = token === null ? null : createHash("sha256").update(t).digest("hex");
+  await db.transaction(async (tx) => {
+    const [b] = await tx.select({ had: branches.jandiTokenHash }).from(branches).where(eq(branches.id, ctx.branchId)).limit(1);
+    if (!b) throw new NotFoundError("지점을 찾을 수 없습니다");
+    await tx.update(branches).set({ jandiTokenHash: hash, updatedAt: new Date() }).where(eq(branches.id, ctx.branchId));
+    await writeAudit(tx, ctx, "branch", ctx.branchId, "update", { jandiOutgoing: Boolean(b.had) }, { jandiOutgoing: Boolean(hash) });
+  });
 }
 
 export async function getBranch(ctx: Ctx, db: Db = defaultDb) {

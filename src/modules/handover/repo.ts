@@ -1,11 +1,14 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
-import { handoverComments, handoverNotes, handoverReads, shiftSlots, users, type HandoverKind } from "@/db/schema";
+import { branches, handoverComments, handoverNotes, handoverReads, memberships, shiftSlots, users, type HandoverKind } from "@/db/schema";
 import { ALL_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
-import { NotFoundError, ValidationError } from "@/lib/errors";
-import { addDays, toDateKey } from "@/lib/rules/week";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { parseJandiOutgoing } from "@/lib/rules/webhook";
+import { addDays, toDateKey, todayKey } from "@/lib/rules/week";
 import { employmentLabel } from "@/lib/rules/worklog";
 import { notify } from "@/modules/notifications/repo";
+import { enqueueEvent } from "@/modules/outbox/repo";
 
 /**
  * 인수인계 노트.
@@ -180,18 +183,45 @@ export async function upsertNote(ctx: Ctx, input: NoteInput, db: Db = defaultDb)
     .insert(handoverNotes)
     .values({ ...vals, branchId: ctx.branchId, authorId: ctx.userId })
     .returning({ id: handoverNotes.id });
-  // 공지와 '해 주세요'는 지점 사람들에게 알림까지 보낸다 — 다음에 누가 근무할지 모르니 모두에게
+  // 공지와 '해 주세요'는 지점 사람들에게 알림까지 보낸다 — 다음에 누가 근무할지 모르니 모두에게.
+  // 메신저(잔디 등)를 구독해 두었으면 그 채널에도 올린다
   if (input.kind === "notice" || input.kind === "request") {
     const staff = await branchUserIds(ctx, db);
     await notify(db, staff.filter((u) => u !== ctx.userId), "handover", { title: `${KIND_LABEL[input.kind]} · ${body.slice(0, 40)}`, noteId: row.id }, ctx.branchId);
+    await enqueueEvent(db, ctx.branchId, input.kind === "notice" ? "handover.notice" : "handover.request", { noteId: row.id, body, author: ctx.userName, date: input.date }, `[${KIND_LABEL[input.kind]}] ${body.slice(0, 200)} (${ctx.userName})`);
   }
   return row.id;
 }
 
 async function branchUserIds(ctx: Ctx, db: Db): Promise<string[]> {
-  const { memberships } = await import("@/db/schema");
   const rows = await db.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.branchId, ctx.branchId));
   return rows.map((r) => r.userId);
+}
+
+/**
+ * 잔디에서 '/해주세요 3층 정수기 업체에 전화' 처럼 쓴 글을 '해 주세요' 칸에 올린다(잔디 아웃고잉 웹훅).
+ * 로그인한 사람이 없으므로 지점 설정에 저장한 토큰으로 우리 지점 글인지 확인하고, 쓴 사람은 잔디가 알려 준 이름을 본문 끝에 남긴다.
+ * 잔디 쪽 채널에 다시 올리는 메신저 이벤트는 쌓지 않는다 — 잔디에는 응답으로 바로 답한다.
+ */
+export async function createRequestFromJandi(branchCode: string, payload: Record<string, unknown>, db: Db = defaultDb): Promise<{ id: string; body: string }> {
+  const [branch] = await db.select({ id: branches.id, tokenHash: branches.jandiTokenHash }).from(branches).where(and(eq(branches.code, branchCode), eq(branches.active, true))).limit(1);
+  if (!branch) throw new NotFoundError("지점 코드를 찾을 수 없습니다");
+  const token = typeof payload.token === "string" ? payload.token.trim() : "";
+  if (!branch.tokenHash || !token) throw new ForbiddenError("잔디 연동이 설정되지 않았거나 토큰이 없습니다");
+  const given = Buffer.from(createHash("sha256").update(token).digest("hex"));
+  const stored = Buffer.from(branch.tokenHash);
+  if (given.length !== stored.length || !timingSafeEqual(given, stored)) throw new ForbiddenError("토큰이 올바르지 않습니다");
+
+  const { text, writerName } = parseJandiOutgoing(payload);
+  if (!text) throw new ValidationError("부탁할 내용을 키워드 뒤에 적어 주세요");
+  const body = `${text.slice(0, 2000)}\n— 잔디에서 ${writerName ?? "이름 없음"}`;
+  const [row] = await db
+    .insert(handoverNotes)
+    .values({ branchId: branch.id, authorId: null, date: todayKey(), kind: "request", body })
+    .returning({ id: handoverNotes.id });
+  const staff = await db.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.branchId, branch.id));
+  await notify(db, staff.map((r) => r.userId), "handover", { title: `해 주세요 · ${text.slice(0, 40)}`, noteId: row.id }, branch.id);
+  return { id: row.id, body };
 }
 
 export async function deleteNote(ctx: Ctx, id: string, db: Db = defaultDb): Promise<void> {

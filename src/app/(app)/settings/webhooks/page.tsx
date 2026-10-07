@@ -19,7 +19,10 @@ async function WebhooksPage() {
       <Card>
         <CardHeader>
           <CardTitle>메신저 웹훅</CardTitle>
-          <CardDescription>사내 메신저(Rocket.Chat·Mattermost·Slack 등)의 인커밍 웹훅 URL을 등록하면 이슈 보고·고벌점 같은 이벤트가 지점 채널로 자동 게시됩니다.</CardDescription>
+          <CardDescription>
+            메신저의 인커밍 웹훅 URL을 등록하면 이슈 보고·고벌점·해 주세요 같은 이벤트가 그 대화방에 자동으로 올라갑니다. <b>잔디</b>는 PC 화면의 대화방 › 잔디 커넥트 › Webhook 수신에서 만든 주소(wh.jandi.com)를 넣으면 잔디 형식으로 보내고,
+            Rocket.Chat·Mattermost·Slack 주소는 그 형식으로 보냅니다.
+          </CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
           {endpoints.map((w) => (
@@ -38,7 +41,7 @@ async function WebhooksPage() {
             <InlineForm action={upsertWebhookAction} submitLabel="추가">
               <input type="hidden" name="active" value="true" />
               <Input name="name" placeholder="채널 이름" className="w-36" required />
-              <Input name="url" placeholder="https://chat.example.com/hooks/…" className="w-80" required />
+              <Input name="url" placeholder="https://wh.jandi.com/connect-api/webhook/…" className="w-80" required />
               <EventChecks selected={["issue.created", "penalty.high"]} />
             </InlineForm>
           </div>
