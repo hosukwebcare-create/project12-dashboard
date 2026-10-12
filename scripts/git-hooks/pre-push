@@ -1,11 +1,11 @@
 #!/bin/sh
-# 이 저장소는 GitHub hamudo271/project12 로만 올라가고, 거기서 Railway(heroic-patience) 가 자동 배포한다.
+# 이 저장소는 GitHub hosukwebcare-create/project12-dashboard 로만 올라간다.
 # 다른 계정·다른 저장소로 밀려 다른 곳에 배포되는 일을 막는다. 끄려면 git config core.hooksPath 를 지운다.
-ALLOWED_REPO="github.com/hamudo271/project12"
-ALLOWED_ACCOUNT="hamudo271"
+ALLOWED_REPO="github.com/hosukwebcare-create/project12-dashboard"
+ALLOWED_ACCOUNT="hosukwebcare-create"
 remote_url="$2"
 case "$remote_url" in
-  https://github.com/hamudo271/project12|https://github.com/hamudo271/project12.git|git@github.com:hamudo271/project12|git@github.com:hamudo271/project12.git) ;;
+  https://github.com/hosukwebcare-create/project12-dashboard|https://github.com/hosukwebcare-create/project12-dashboard.git|git@github.com:hosukwebcare-create/project12-dashboard|git@github.com:hosukwebcare-create/project12-dashboard.git) ;;
   *)
     echo "[배포 보호] 허용된 저장소가 아닙니다: $remote_url" >&2
     echo "[배포 보호] 이 프로젝트는 $ALLOWED_REPO 로만 push 합니다." >&2
