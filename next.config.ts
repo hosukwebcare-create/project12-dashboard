@@ -30,12 +30,17 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // 다른 사이트가 연 창과 이 창이 서로 참조하지 못하게, 다른 사이트가 우리 응답(파일·JSON)을 끌어다 쓰지 못하게
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   ...(isProd ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }] : []),
 ];
 
 const nextConfig: NextConfig = {
   // Docker/Cloud Run 배포용 단일 실행 번들
   output: "standalone",
+  // 어떤 프레임워크로 만들었는지 알려 주는 X-Powered-By 를 빼서 공격자가 고를 취약점 목록을 줄인다
+  poweredByHeader: false,
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

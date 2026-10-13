@@ -100,7 +100,8 @@ export function computeHoursX100(slots: SlotSpec[], selected: string[]): number 
   const byKey = new Map(slots.map((s) => [s.key, s]));
   let minutes = 0;
   let x100 = 0;
-  for (const key of selected) {
+  // 같은 타임을 여러 번 보내도 한 번만 센다 (요청을 조작해 시간을 부풀리는 것 방지)
+  for (const key of new Set(selected)) {
     const slot = byKey.get(key);
     if (!slot) continue;
     if (slot.minutes === null) x100 += slot.hoursX100;

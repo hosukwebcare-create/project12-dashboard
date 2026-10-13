@@ -113,6 +113,13 @@
       "when": 1791397365467,
       "tag": "0015_jandi_outgoing_token",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791879891412,
+      "tag": "0016_security_sessions",
+      "breakpoints": true
     }
   ]
 }

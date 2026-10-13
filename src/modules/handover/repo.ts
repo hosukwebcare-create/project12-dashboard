@@ -204,13 +204,12 @@ async function branchUserIds(ctx: Ctx, db: Db): Promise<string[]> {
  * 잔디 쪽 채널에 다시 올리는 메신저 이벤트는 쌓지 않는다 — 잔디에는 응답으로 바로 답한다.
  */
 export async function createRequestFromJandi(branchCode: string, payload: Record<string, unknown>, db: Db = defaultDb): Promise<{ id: string; body: string }> {
+  // 없는 지점·연동 안 된 지점·틀린 토큰에 모두 같은 답을 한다. 답이 다르면 밖에서 지점 코드를 하나씩 찔러 볼 수 있다
   const [branch] = await db.select({ id: branches.id, tokenHash: branches.jandiTokenHash }).from(branches).where(and(eq(branches.code, branchCode), eq(branches.active, true))).limit(1);
-  if (!branch) throw new NotFoundError("지점 코드를 찾을 수 없습니다");
   const token = typeof payload.token === "string" ? payload.token.trim() : "";
-  if (!branch.tokenHash || !token) throw new ForbiddenError("잔디 연동이 설정되지 않았거나 토큰이 없습니다");
   const given = Buffer.from(createHash("sha256").update(token).digest("hex"));
-  const stored = Buffer.from(branch.tokenHash);
-  if (given.length !== stored.length || !timingSafeEqual(given, stored)) throw new ForbiddenError("토큰이 올바르지 않습니다");
+  const stored = Buffer.from(branch?.tokenHash ?? "");
+  if (!branch || !token || given.length !== stored.length || !timingSafeEqual(given, stored)) throw new ForbiddenError("토큰이 올바르지 않습니다");
 
   const { text, writerName } = parseJandiOutgoing(payload);
   if (!text) throw new ValidationError("부탁할 내용을 키워드 뒤에 적어 주세요");

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
 import { boardItems, branches, mealSettings, memberships, penaltyRules, seats, users } from "@/db/schema";
 import { hashPassword, validatePassword } from "@/lib/auth/password";
@@ -79,6 +79,9 @@ export async function runSetup(input: SetupInput, db: Db = defaultDb): Promise<{
   const hqHash = await hashPassword(input.hqPassword);
   const mgrHash = b?.managerLoginId ? await hashPassword(b.managerPassword ?? "") : null;
   return db.transaction(async (tx) => {
+    // 처음 설정 화면이 열려 있는 동안 두 요청이 동시에 오면 본사 계정이 둘 생길 수 있다. 잠금을 잡고 다시 확인한다
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('byeolha.setup'))`);
+    if (!(await needsSetup(tx))) throw new ValidationError("이미 설정이 끝났습니다. 로그인 화면으로 이동하세요");
     const [hq] = await tx.insert(users).values({ loginId: hqLoginId, name: input.hqName.trim(), passwordHash: hqHash, isHqAdmin: true }).returning({ id: users.id });
     await ensureDefaults(tx);
     let branchId: string | null = null;

@@ -345,3 +345,58 @@ describe("출퇴근 시계", () => {
     ).rejects.toThrow(/0~24시간/);
   });
 });
+
+describe("근무시간 부풀리기 방지", () => {
+  beforeEach(resetDb);
+  const D = "2026-09-09"; // 수요일
+  const at = (h: number, m = 0, day = D) => new Date(`${day}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+09:00`);
+
+  it("같은 타임을 여러 번 보내도 한 번만 센다", async () => {
+    const t = await seedSlots();
+    await saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["t2", "t2", "t2", "t2"], overtimeX100: 0, overtimeReason: null, note: null });
+    const log = (await myWorkLog(t.asstCtx1, D))!;
+    expect(log.slotKeys).toEqual(["t2"]);
+    expect(log.hoursX100).toBe(100);
+  });
+
+  it("직원은 자기 근무 형태의 타임만 체크할 수 있고, 없는 타임은 거부한다. 지점장은 남의 근무에 어느 타임이든 넣을 수 있다", async () => {
+    const t = await seedSlots();
+    await upsertShiftSlot(t.mgrCtx1, { key: "boss", label: "원장 타임", startTime: "16:00", endTime: "23:00", minutes: 360, weekend: false, audience: "원장", sort: 9, active: true });
+    await expect(saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["t1", "boss"], overtimeX100: 0, overtimeReason: null, note: null })).rejects.toThrow(/내 근무 형태의 타임만/);
+    await expect(saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["nope"], overtimeX100: 0, overtimeReason: null, note: null })).rejects.toThrow(/없는 타임/);
+    await saveWorkLog(t.mgrCtx1, { userId: t.users.asst1.id, date: D, slotKeys: ["t1", "boss"], overtimeX100: 0, overtimeReason: null, note: null });
+    // 지점장이 넣어 둔 칸은 본인이 다시 저장해도 남는다(화면에도 보인다)
+    await saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["t1", "boss"], overtimeX100: 0, overtimeReason: null, note: "메모" });
+    expect((await myWorkLog(t.asstCtx1, D))!.slotKeys).toEqual(["t1", "boss"]);
+  });
+
+  it("초과근무는 하루 12시간까지", async () => {
+    const t = await seedSlots();
+    await expect(saveWorkLog(t.asstCtx1, { date: D, slotKeys: ["t1"], overtimeX100: 1300, overtimeReason: "정리", note: null })).rejects.toThrow(/12시간/);
+  });
+
+  it("출근은 오늘 날짜에만 누를 수 있다 — 지난 날을 다시 열어 며칠을 근무로 만들 수 없다", async () => {
+    const t = await seedSlots();
+    await expect(clockIn(t.asstCtx1, "2026-09-01", at(9))).rejects.toThrow(/오늘 날짜에만/);
+  });
+
+  it(`퇴근 후 30분 안에만 다시 출근으로 되돌릴 수 있다`, async () => {
+    const t = await seedSlots();
+    await clockIn(t.asstCtx1, D, at(9));
+    await clockOut(t.asstCtx1, D, at(12));
+    await expect(clockIn(t.asstCtx1, D, at(15))).rejects.toThrow(/이미 퇴근한 날/);
+    expect((await myWorkClock(t.asstCtx1, D))!.hoursX100).toBe(300);
+    await clockIn(t.asstCtx1, D, at(12, 20));
+    expect((await myWorkClock(t.asstCtx1, D))!.clockOutAt).toBeNull();
+  });
+
+  it("지점장은 자기 시급과 다른 지점장의 시급을 정할 수 없다", async () => {
+    const t = await seedSlots();
+    await expect(upsertStaffProfile(t.mgrCtx1, { userId: t.users.mgr1.id, employmentType: "원장", hourlyRate: 99999, workDays: null, direct: true })).rejects.toThrow(/본사에서/);
+    // 시급을 그대로 두고 다른 칸을 고치는 것은 된다
+    await upsertStaffProfile(t.mgrCtx1, { userId: t.users.mgr1.id, employmentType: "원장", hourlyRate: null, workDays: "월~금", direct: true });
+    await upsertStaffProfile(t.hqCtx1, { userId: t.users.mgr1.id, employmentType: "원장", hourlyRate: 15000, workDays: "월~금", direct: true });
+    // 조교 시급은 지점장이 정한다
+    await upsertStaffProfile(t.mgrCtx1, { userId: t.users.asst1.id, employmentType: "주간조교", hourlyRate: 11000, workDays: null, direct: true });
+  });
+});

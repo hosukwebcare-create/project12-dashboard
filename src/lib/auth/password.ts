@@ -1,9 +1,19 @@
 import bcrypt from "bcryptjs";
 
-const ROUNDS = 10;
+/** bcrypt 비용. 10 → 12 로 올렸다(2026-10). 예전 해시는 다음 로그인 때 다시 만든다(needsRehash) */
+const ROUNDS = 12;
 
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, ROUNDS);
+}
+
+/** 저장된 해시가 지금 기준보다 약하면 true. 로그인에 성공했을 때 새 기준으로 다시 저장한다 */
+export function needsRehash(hash: string): boolean {
+  try {
+    return bcrypt.getRounds(hash) < ROUNDS;
+  } catch {
+    return false;
+  }
 }
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {

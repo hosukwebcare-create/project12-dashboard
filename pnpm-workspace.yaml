@@ -2,3 +2,7 @@ allowBuilds:
   esbuild: true
   sharp: false
   unrs-resolver: false
+# 보안 패치 버전을 강제한다 (pnpm audit --prod 의 high 경고). 상위 패키지가 따라오면 지운다.
+overrides:
+  sharp: ^0.35.5
+  source-map-js: ^1.2.2

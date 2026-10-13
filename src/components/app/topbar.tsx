@@ -18,9 +18,9 @@ export function TopBar({ ctx, unread }: { ctx: Ctx; unread: number }) {
           <Bell className="size-[18px]" />
           {unread > 0 ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary-foreground" aria-hidden /> : null}
         </Link>
-        <span className="px-2 text-sm">
+        <Link href="/account" title="내 계정 — 비밀번호, 로그인된 기기" className="rounded-md px-2 py-1 text-sm transition-colors hover:bg-white/10">
           {ctx.userName} <span className="hidden text-chrome-muted sm:inline">{ROLE_LABEL[ctx.role]}</span>
-        </span>
+        </Link>
         <form action={logout}>
           <button type="submit" aria-label="로그아웃" className="flex size-8 items-center justify-center rounded-md text-chrome-muted transition-colors hover:bg-white/10 hover:text-chrome-foreground">
             <LogOut className="size-[18px]" />

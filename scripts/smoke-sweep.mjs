@@ -19,7 +19,8 @@ const ROUTES = [
   "/payments", "/handover", "/issues", "/alimtalk", "/notifications",
   "/settings/branch", "/settings/branches", "/settings/users", "/settings/seats",
   "/settings/fees", "/settings/penalty-rules", "/settings/board-items",
-  "/settings/custom-fields", "/settings/alimtalk-templates", "/settings/webhooks", "/settings/audit",
+  "/settings/custom-fields", "/settings/alimtalk-templates", "/settings/webhooks", "/settings/audit", "/settings/security",
+  "/account",
 ];
 const USERS = [
   ["hq", "hq1234", "본사 관리자"],

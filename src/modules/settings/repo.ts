@@ -7,6 +7,8 @@ import { writeAudit } from "@/lib/audit";
 import { hashPassword, validatePassword } from "@/lib/auth/password";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { recordSecurityEvent } from "@/modules/security/events";
+import { revokeUserSessions } from "@/modules/security/sessions";
 
 export type BoardItem = typeof boardItems.$inferSelect;
 
@@ -168,13 +170,18 @@ export type UserInput = { id?: string; loginId: string; name: string; password?:
 function stillLocked(until: Date | null): Date | null {
   return until && until.getTime() > Date.now() ? until : null;
 }
+function laterLock(a: Date | null, b: Date | null): Date | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a.getTime() >= b.getTime() ? a : b;
+}
 
 export type UserRow = { id: string; loginId: string; name: string; phone: string | null; role: BranchRole; active: boolean; hasPin: boolean; lockedUntil: Date | null; /** 이 사람이 함께 맡고 있는 다른 지점 이름 */ otherBranches: string[] };
 
 export async function listUsers(ctx: Ctx, db: Db = defaultDb): Promise<UserRow[]> {
   requireRole(ctx, ...MANAGER_ROLES);
   const rows = await db
-    .select({ id: users.id, loginId: users.loginId, name: users.name, phone: users.phone, role: memberships.role, active: users.active, pinHash: users.pinHash, lockedUntil: users.lockedUntil })
+    .select({ id: users.id, loginId: users.loginId, name: users.name, phone: users.phone, role: memberships.role, active: users.active, pinHash: users.pinHash, lockedUntil: users.lockedUntil, pinLockedUntil: users.pinLockedUntil })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(eq(memberships.branchId, ctx.branchId))
@@ -190,7 +197,8 @@ export async function listUsers(ctx: Ctx, db: Db = defaultDb): Promise<UserRow[]
     : [];
   const byUser = new Map<string, string[]>();
   for (const o of others) byUser.set(o.userId, [...(byUser.get(o.userId) ?? []), o.branchName]);
-  return rows.map(({ pinHash, ...r }) => ({ ...r, hasPin: Boolean(pinHash), lockedUntil: stillLocked(r.lockedUntil), otherBranches: byUser.get(r.id) ?? [] }));
+  // 비밀번호 잠금과 PIN 잠금은 따로 세지만, 화면에는 더 늦게 풀리는 쪽 하나만 보여 준다(잠금 해제는 둘 다 푼다)
+  return rows.map(({ pinHash, pinLockedUntil, ...r }) => ({ ...r, hasPin: Boolean(pinHash), lockedUntil: laterLock(stillLocked(r.lockedUntil), stillLocked(pinLockedUntil)), otherBranches: byUser.get(r.id) ?? [] }));
 }
 
 /**
@@ -223,6 +231,31 @@ export async function removeUserFromBranch(ctx: Ctx, userId: string, db: Db = de
 
 const BM_ALLOWED: BranchRole[] = ["mentor", "assistant"];
 
+/**
+ * 지점장이 이 계정을 손대도 되는가. 계정(아이디·비밀번호·PIN·사용 여부)은 지점이 아니라 사람 하나에 붙어 있어서,
+ * 다른 지점에서 지점장인 사람이 우리 지점에선 멘토라면 그 비밀번호를 바꾸는 순간 그 지점의 지점장 권한을 갖게 된다.
+ * 그래서 지점장은 본사 계정, 어느 지점에서든 멘토·조교가 아닌 계정은 못 건드리고,
+ * 다른 지점에도 소속된 계정은 이 지점의 역할만 바꿀 수 있다(계정 자체는 본사가 고친다).
+ */
+async function bmTargetScope(ctx: Ctx, userId: string, db: Db | Tx): Promise<"none" | "role_only" | "full"> {
+  if (ctx.role !== "branch_manager") return "full";
+  const [u] = await db.select({ isHqAdmin: users.isHqAdmin }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!u || u.isHqAdmin) return "none";
+  const rows = await db.select({ branchId: memberships.branchId, role: memberships.role }).from(memberships).where(eq(memberships.userId, userId));
+  if (rows.some((r) => !BM_ALLOWED.includes(r.role))) return "none";
+  return rows.some((r) => r.branchId !== ctx.branchId) ? "role_only" : "full";
+}
+/** 비밀번호를 바꾸거나 계정을 끄면 그 사람의 로그인된 기기를 모두 끊고, 비밀번호 변경은 보안 기록에 남긴다 */
+async function afterAccountChange(tx: Db | Tx, ctx: Ctx, userId: string, change: { passwordChanged: boolean; deactivated: boolean }): Promise<void> {
+  if (!change.passwordChanged && !change.deactivated) return;
+  const n = await revokeUserSessions(userId, {}, tx);
+  if (change.passwordChanged) await recordSecurityEvent({ kind: "password.changed", userId, actorId: ctx.userId, detail: { by: "admin", sessionsRevoked: n } }, tx);
+  else if (n > 0) await recordSecurityEvent({ kind: "sessions.revoked", userId, actorId: ctx.userId, detail: { reason: "deactivated", count: n } }, tx);
+}
+
+const BM_DENIED = "지점장은 멘토·조교 계정만 관리할 수 있습니다";
+const BM_ROLE_ONLY = "다른 지점에도 소속된 계정입니다. 아이디·이름·비밀번호·사용 여부는 본사에서 바꿀 수 있습니다";
+
 export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb): Promise<string> {
   requireRole(ctx, ...MANAGER_ROLES);
   if (ctx.role === "branch_manager" && !BM_ALLOWED.includes(input.role)) throw new ForbiddenError("지점장은 멘토·조교 계정만 관리할 수 있습니다");
@@ -243,8 +276,16 @@ export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb)
     if (input.id) {
       const [ms] = await tx.select().from(memberships).where(and(eq(memberships.userId, input.id), eq(memberships.branchId, ctx.branchId))).limit(1);
       if (!ms) throw new NotFoundError("사용자를 찾을 수 없습니다");
-      if (ctx.role === "branch_manager" && !BM_ALLOWED.includes(ms.role)) throw new ForbiddenError("지점장은 멘토·조교 계정만 관리할 수 있습니다");
-      const set: Partial<typeof users.$inferInsert> = { loginId, name: input.name.trim(), active: input.active, phone: input.phone ?? null };
+      const scope = await bmTargetScope(ctx, input.id, tx);
+      if (scope === "none") throw new ForbiddenError(BM_DENIED);
+      if (scope === "role_only") {
+        const [cur] = await tx.select({ loginId: users.loginId, name: users.name, active: users.active, phone: users.phone }).from(users).where(eq(users.id, input.id)).limit(1);
+        const phoneChanged = input.phone !== undefined && (cur.phone ?? null) !== (input.phone ?? null);
+        const changed = cur.loginId !== loginId || cur.name !== input.name.trim() || cur.active !== input.active || phoneChanged || Boolean(input.password);
+        if (changed) throw new ForbiddenError(BM_ROLE_ONLY);
+      }
+      // 연락처 칸이 없는 폼(사용자 목록)에서 저장해도 연락처가 지워지지 않게, 보낸 경우에만 바꾼다
+      const set: Partial<typeof users.$inferInsert> = { loginId, name: input.name.trim(), active: input.active, ...(input.phone !== undefined ? { phone: input.phone } : {}) };
       if (input.password) {
         // 비밀번호를 바꾸면 그 계정으로 로그인된 기기의 세션이 모두 끊긴다 (buildCtx 가 발급 시각을 본다)
         set.passwordHash = await hashPassword(input.password);
@@ -254,6 +295,7 @@ export async function upsertUser(ctx: Ctx, input: UserInput, db: Db = defaultDb)
       }
       await tx.update(users).set(set).where(eq(users.id, input.id));
       await tx.update(memberships).set({ role: input.role }).where(and(eq(memberships.userId, input.id), eq(memberships.branchId, ctx.branchId)));
+      await afterAccountChange(tx, ctx, input.id, { passwordChanged: Boolean(input.password), deactivated: !input.active });
       await writeAudit(tx, ctx, "user", input.id, "update", { role: ms.role }, { role: input.role, active: input.active });
       return input.id;
     }
@@ -329,6 +371,7 @@ export async function upsertHqAdmin(ctx: Ctx, input: HqAdminInput, db: Db = defa
       set.lockedUntil = null;
     }
     await tx.update(users).set(set).where(eq(users.id, input.id));
+    await afterAccountChange(tx, ctx, input.id, { passwordChanged: Boolean(input.password), deactivated: !input.active });
     await writeAudit(tx, ctx, "user", input.id, "update", { loginId: before.loginId, active: before.active }, { loginId, active: input.active, passwordChanged: Boolean(input.password) });
     return input.id;
   });
@@ -337,7 +380,25 @@ export async function upsertHqAdmin(ctx: Ctx, input: HqAdminInput, db: Db = defa
 /** 잠긴 계정을 즉시 풀어 준다 (본사 관리자만) */
 export async function unlockUser(ctx: Ctx, userId: string, db: Db = defaultDb): Promise<void> {
   requireRole(ctx, "hq_admin");
-  await db.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, userId));
+  await db.update(users).set({ failedLogins: 0, lockedUntil: null, failedPins: 0, pinLockedUntil: null }).where(eq(users.id, userId));
+}
+
+/**
+ * 그 사람의 로그인된 기기를 모두 로그아웃시킨다(휴대폰 분실, 퇴사, 계정이 의심될 때).
+ * 본사는 누구나, 지점장은 비밀번호를 바꿀 수 있는 계정(이 지점에만 속한 멘토·조교)만.
+ */
+export async function forceLogoutUser(ctx: Ctx, userId: string, meta: { ip: string | null; userAgent: string | null }, db: Db = defaultDb): Promise<number> {
+  requireRole(ctx, ...MANAGER_ROLES);
+  if (ctx.role !== "hq_admin") {
+    const [ms] = await db.select({ userId: memberships.userId }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId))).limit(1);
+    if (!ms) throw new NotFoundError("사용자를 찾을 수 없습니다");
+    const scope = await bmTargetScope(ctx, userId, db);
+    if (scope === "none") throw new ForbiddenError(BM_DENIED);
+    if (scope === "role_only") throw new ForbiddenError(BM_ROLE_ONLY);
+  }
+  const n = await revokeUserSessions(userId, {}, db);
+  await recordSecurityEvent({ kind: "sessions.revoked", userId, actorId: ctx.userId, ...meta, detail: { count: n } }, db);
+  return n;
 }
 
 export async function setUserPin(ctx: Ctx, userId: string, pin: string | null, db: Db = defaultDb): Promise<void> {
@@ -345,6 +406,10 @@ export async function setUserPin(ctx: Ctx, userId: string, pin: string | null, d
   if (pin !== null && !/^\d{4,6}$/.test(pin)) throw new ValidationError("PIN은 숫자 4~6자리");
   const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) throw new NotFoundError("사용자를 찾을 수 없습니다");
+  // PIN 으로 그 사람 계정에 들어갈 수 있으므로 비밀번호와 같은 기준을 쓴다
+  const scope = await bmTargetScope(ctx, userId, db);
+  if (scope === "none") throw new ForbiddenError(BM_DENIED);
+  if (scope === "role_only") throw new ForbiddenError(BM_ROLE_ONLY);
   await db.update(users).set({ pinHash: pin ? await hashPassword(pin) : null }).where(eq(users.id, userId));
 }
 

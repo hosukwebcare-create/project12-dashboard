@@ -10,7 +10,8 @@ test.describe("설정", () => {
     // 같은 화면 아래 잔디 카드에도 '토큰 저장' 버튼이 있다
     await page.getByRole("button", { name: "저장", exact: true }).click();
     await expect(page.getByText("저장됨")).toBeVisible();
-    await page.goto("/rounding");
+    // 오늘 표는 다른 E2E 가 12회차에 적어 둔 기록이 있으면 설정보다 회차가 많게 보인다(적힌 회차까지 보여 준다). 기록 없는 날로 본다
+    await page.goto("/rounding?date=2020-01-06");
     await expect(page.getByText(/\/11회차/)).toBeVisible();
     await expect(page.getByRole("button", { name: "R11 열 메뉴" })).toBeVisible();
     await expect(page.getByRole("button", { name: "R12 열 메뉴" })).toHaveCount(0);

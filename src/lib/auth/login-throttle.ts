@@ -12,12 +12,6 @@ const MAX_KEYS = 10_000;
 type Bucket = { failures: number[]; blockedUntil: number };
 const buckets = new Map<string, Bucket>();
 
-/** x-forwarded-for 는 프록시가 덧붙이므로 맨 앞(클라이언트)만 본다 */
-export function clientIp(headers: Headers): string {
-  const fwd = headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return headers.get("x-real-ip")?.trim() || "unknown";
-}
 
 function prune(now: number): void {
   for (const [ip, b] of buckets) {

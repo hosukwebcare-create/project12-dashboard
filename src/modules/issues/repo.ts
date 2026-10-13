@@ -5,6 +5,7 @@ import { issueComments, issues, members, memberships, users, type IssueStatus } 
 import { writeAudit } from "@/lib/audit";
 import { ALL_ROLES, MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError } from "@/lib/errors";
+import { assertBranchStaff } from "@/lib/branch-guards";
 import { notify } from "@/modules/notifications/repo";
 import { enqueueEvent } from "@/modules/outbox/repo";
 import { validateCustomValues } from "@/lib/rules/custom-fields";
@@ -121,6 +122,7 @@ export async function updateIssue(ctx: Ctx, id: string, patch: { status?: IssueS
       set.status = patch.status;
       set.resolvedAt = patch.status === "resolved" ? new Date() : null;
     }
+    if (patch.assignedTo) await assertBranchStaff(tx, ctx.branchId, patch.assignedTo);
     if (patch.assignedTo !== undefined) set.assignedTo = patch.assignedTo;
     await tx.update(issues).set(set).where(eq(issues.id, id));
     await writeAudit(tx, ctx, "issue", id, "update", { status: before.status, assignedTo: before.assignedTo }, set);

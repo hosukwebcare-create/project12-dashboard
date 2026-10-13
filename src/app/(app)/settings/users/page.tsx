@@ -5,6 +5,7 @@ import type { BranchRole } from "@/db/schema";
 import { getCtx, ROLE_LABEL } from "@/lib/auth/ctx";
 import { fmtDateTime } from "@/lib/format";
 import { addUserToBranchAction, removeUserFromBranchAction, unlockUserAction, upsertHqAdminAction, upsertUserAction } from "@/modules/settings/actions";
+import { forceLogoutUserAction } from "@/modules/security/actions";
 import { listHqAdmins, listUsers } from "@/modules/settings/repo";
 import { guarded } from "@/lib/page-guard";
 
@@ -64,15 +65,17 @@ async function UsersSettingsPage() {
         </CardHeader>
         <CardContent className="divide-y">
           {users.map((u) => {
-            const editable = isHq || roles.includes(u.role);
+            // 다른 지점에도 소속된 계정은 지점장이 이 지점 역할만 바꿀 수 있다(계정 자체는 본사가 고친다)
+            const roleEditable = isHq || roles.includes(u.role);
+            const editable = isHq || (roleEditable && u.otherBranches.length === 0);
             return (
               <div key={u.id} className="flex flex-wrap items-end gap-x-3 py-2">
                 <InlineForm action={upsertUserAction}>
                   <input type="hidden" name="id" value={u.id} />
                   <Input name="loginId" defaultValue={u.loginId} className="w-32" readOnly={!editable} />
                   <Input name="name" defaultValue={u.name} className="w-28" readOnly={!editable} />
-                  <select name="role" defaultValue={u.role} className={selectClass} disabled={!editable}>
-                    {(editable ? roles : [u.role]).map((r) => (
+                  <select name="role" defaultValue={u.role} className={selectClass} disabled={!roleEditable}>
+                    {(roleEditable ? roles : [u.role]).map((r) => (
                       <option key={r} value={r}>
                         {ROLE_LABEL[r]}
                       </option>
@@ -83,7 +86,14 @@ async function UsersSettingsPage() {
                   <label className="flex items-center gap-1 text-sm">
                     <input type="checkbox" name="active" defaultChecked={u.active} className="size-4" disabled={!editable} /> 활성
                   </label>
+                  {/* 끈 체크박스는 값이 안 가므로, 바꿀 수 없는 칸은 지금 값을 그대로 보낸다 */}
+                  {!editable && u.active ? <input type="hidden" name="active" value="on" /> : null}
                 </InlineForm>
+                {editable && u.active ? (
+                  <InlineForm action={forceLogoutUserAction} submitLabel="모든 기기 로그아웃">
+                    <input type="hidden" name="userId" value={u.id} />
+                  </InlineForm>
+                ) : null}
                 {u.otherBranches.length ? <span className="pb-1.5 text-xs text-muted-foreground">함께 맡는 지점 {u.otherBranches.join(" · ")}</span> : null}
                 {isHq && u.otherBranches.length ? (
                   <InlineForm action={removeUserFromBranchAction} submitLabel="이 지점에서 제외">
@@ -147,6 +157,11 @@ async function UsersSettingsPage() {
                     </label>
                     {a.isSelf ? <span className="pb-1.5 text-xs text-muted-foreground">내 계정</span> : null}
                   </InlineForm>
+                  {!a.isSelf && a.active ? (
+                    <InlineForm action={forceLogoutUserAction} submitLabel="모든 기기 로그아웃">
+                      <input type="hidden" name="userId" value={a.id} />
+                    </InlineForm>
+                  ) : null}
                   {a.lockedUntil ? <LockNotice id={a.id} until={a.lockedUntil} /> : null}
                 </div>
               );

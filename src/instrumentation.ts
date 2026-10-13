@@ -6,6 +6,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { autoMigrate } = await import("./instrumentation-node");
   await autoMigrate();
+  const { warnIfDbRoleUnsafe } = await import("./lib/db-role");
+  await warnIfDbRoleUnsafe();
   const { startScheduler } = await import("./lib/scheduler");
   startScheduler();
 }

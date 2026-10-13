@@ -140,7 +140,7 @@ export async function upsertUserAction(_p: ActionState, fd: FormData): Promise<A
         id: String(fd.get("id") ?? "") || undefined,
         loginId: String(fd.get("loginId") ?? ""),
         name: String(fd.get("name") ?? ""),
-        phone: String(fd.get("phone") ?? "") || null,
+        phone: fd.has("phone") ? String(fd.get("phone") ?? "") || null : undefined,
         password: password || undefined,
         role: String(fd.get("role") ?? "assistant") as BranchRole,
         active: bool(fd.get("active")),

@@ -14,6 +14,7 @@ const ITEMS: { href: string; label: string; hqOnly?: boolean }[] = [
   { href: "/settings/alimtalk-templates", label: "알림톡 템플릿", hqOnly: true },
   { href: "/settings/webhooks", label: "메신저 연동" },
   { href: "/settings/audit", label: "감사 로그" },
+  { href: "/settings/security", label: "보안 기록", hqOnly: true },
 ];
 
 export function SettingsNav({ isHq }: { isHq: boolean }) {

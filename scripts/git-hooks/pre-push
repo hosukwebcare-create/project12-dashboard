@@ -19,4 +19,46 @@ if command -v gh >/dev/null 2>&1; then
     exit 1
   fi
 fi
+
+# ---- 공개 저장소 보호: 비밀정보·실데이터가 섞인 커밋은 올리지 않는다 ----
+# 이 저장소는 공개라서 한 번 올라간 비밀번호·토큰·회원 자료는 지워도 남는다(복제·캐시).
+# 오탐이면 해당 줄을 고치거나(예: 예시 값을 <비밀번호> 로) 파일을 .gitignore 로 뺀다. 훅을 끄지 않는다.
+EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+ZERO=0000000000000000000000000000000000000000
+blocked=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue # 브랜치 삭제
+  if [ "$remote_sha" = "$ZERO" ]; then
+    base=$(git merge-base "$local_sha" refs/remotes/origin/main 2>/dev/null || echo "$EMPTY_TREE")
+  else
+    base="$remote_sha"
+  fi
+
+  # 1) 실데이터·비밀 파일 (시트 내보내기, 대사 결과, 환경변수, 개인키)
+  files=$(git -c core.quotePath=false diff --name-only --diff-filter=AMR "$base" "$local_sha" -- \
+    | grep -iE '\.(xlsx|xls|csv|tsv|numbers|pem|p12|pfx|key)$|(^|/)\.env($|\.)|(^|/)id_(rsa|ed25519)|대사결과|reconcile-out' \
+    | grep -viE '(^|/)\.env\.example$')
+  if [ -n "$files" ]; then
+    echo "[공개 저장소 보호] 올리면 안 되는 파일이 커밋에 들어 있습니다:" >&2
+    echo "$files" | sed 's/^/  - /' >&2
+    blocked=1
+  fi
+
+  # 2) 비밀정보 모양의 줄 (추가된 줄만 본다). 로컬 테스트 DB 주소(localhost)와 <자리표시자> 는 통과
+  secrets=$(git diff -U0 --diff-filter=AM "$base" "$local_sha" -- . ':(exclude)pnpm-lock.yaml' ':(exclude)scripts/git-hooks/pre-push' \
+    | grep -E '^\+' | grep -vE '^\+\+\+ ' \
+    | grep -nE 'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|hooks\.slack\.com/services/T[A-Z0-9]+/|wh\.jandi\.com/connect-api/webhook/[0-9]+/[0-9a-f]{16,}|postgres(ql)?://[^:@/[:space:]]+:[^@[:space:]<$]{4,}@' \
+    | grep -vE 'postgres(ql)?://[^@]*@(localhost|127\.0\.0\.1|db|postgres)[:/]' \
+    | cut -c1-160)
+  if [ -n "$secrets" ]; then
+    echo "[공개 저장소 보호] 비밀정보로 보이는 줄이 있습니다 (앞 160자):" >&2
+    echo "$secrets" | sed 's/^/  /' >&2
+    blocked=1
+  fi
+done
+
+if [ "$blocked" -ne 0 ]; then
+  echo "[공개 저장소 보호] push 를 멈췄습니다. 커밋에서 빼고(git reset·git rm --cached) 다시 push 하세요. 이미 올라간 비밀은 즉시 교체해야 합니다." >&2
+  exit 1
+fi
 exit 0

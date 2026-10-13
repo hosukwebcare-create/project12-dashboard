@@ -48,6 +48,8 @@ const ROUTES = [
   ["/settings/alimtalk-templates", "manager"],
   ["/settings/webhooks", "manager"],
   ["/settings/audit", "manager"],
+  ["/settings/security", "hq"],
+  ["/account", "manager"],
   ["/settings/branches", "manager"],
   ["/members/new", "manager"],
   ["/meals/daily", "manager"],
@@ -172,7 +174,7 @@ function collect() {
 async function login(page, who) {
   await page.goto(`${base}/login`);
   await page.getByLabel("아이디").fill(who);
-  await page.getByLabel("비밀번호").fill("1234");
+  await page.getByLabel("비밀번호").fill(who === "hq" ? "hq1234" : "1234"); // 시드 테스트 계정
   await page.getByRole("button", { name: "로그인" }).click();
   await page.waitForURL((u) => !u.pathname.includes("/login"), { timeout: 15000 });
 }

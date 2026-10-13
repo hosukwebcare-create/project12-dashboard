@@ -7,8 +7,10 @@ import { withRequestRls } from "@/lib/rls";
 import { monthlySummary } from "@/modules/worklog/repo";
 
 function csvCell(v: string | number | null): string {
-  const s = v === null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+  // 엑셀은 =, +, -, @ 로 시작하는 칸을 수식으로 실행한다. 직원 이름 같은 글자 칸이 그렇게 시작하면 앞에 ' 를 붙인다(숫자는 그대로)
+  const raw = v === null ? "" : String(v);
+  const s = typeof v === "string" && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
 export async function GET(req: NextRequest) {

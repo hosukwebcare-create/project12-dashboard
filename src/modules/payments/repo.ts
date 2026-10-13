@@ -49,13 +49,22 @@ export async function setSeatFeePlan(ctx: Ctx, seatId: string, feePlanId: string
   requireRole(ctx, ...MANAGER_ROLES);
   const [seat] = await db.select({ id: seats.id }).from(seats).where(and(eq(seats.id, seatId), eq(seats.branchId, ctx.branchId))).limit(1);
   if (!seat) throw new NotFoundError("좌석을 찾을 수 없습니다");
+  await assertOwnFeePlan(ctx, feePlanId, db);
   await db.update(seats).set({ feePlanId }).where(eq(seats.id, seatId));
+}
+
+/** 요금 등급이 이 지점 것인지. 다른 지점 등급 id 를 넣으면 그 지점 요금으로 청구된다 */
+async function assertOwnFeePlan(ctx: Ctx, feePlanId: string | null, db: Db): Promise<void> {
+  if (!feePlanId) return;
+  const [plan] = await db.select({ id: feePlans.id }).from(feePlans).where(and(eq(feePlans.id, feePlanId), eq(feePlans.branchId, ctx.branchId))).limit(1);
+  if (!plan) throw new ValidationError("이 지점의 요금 등급 중에서 고르세요");
 }
 
 /** 좌석 등급 일괄 지정 (예: 1~10번을 원목으로) */
 export async function bulkSetSeatFeePlan(ctx: Ctx, from: number, to: number, feePlanId: string | null, db: Db = defaultDb): Promise<number> {
   requireRole(ctx, ...MANAGER_ROLES);
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) throw new ValidationError("좌석 번호 범위를 확인하세요");
+  await assertOwnFeePlan(ctx, feePlanId, db);
   const rows = await db
     .update(seats)
     .set({ feePlanId })
@@ -211,6 +220,14 @@ export async function saveSeatPayment(ctx: Ctx, input: PaymentInput, db: Db = de
     await writeAudit(db, ctx, "seat_payment", input.id, "update", null, { amount, status, paidAt });
     return input.id;
   }
+  // 등록 기간과 회원이 이 지점 것이고 서로 맞는지. member_enrollments 에는 지점 열이 없어 RLS 가 막아 주지 않는다
+  const [own] = await db
+    .select({ id: memberEnrollments.id })
+    .from(memberEnrollments)
+    .innerJoin(members, eq(members.id, memberEnrollments.memberId))
+    .where(and(eq(memberEnrollments.id, input.enrollmentId), eq(memberEnrollments.memberId, input.memberId), eq(members.branchId, ctx.branchId)))
+    .limit(1);
+  if (!own) throw new NotFoundError("이 지점 회원의 등록 기간을 찾을 수 없습니다");
   const [row] = await db
     .insert(seatPayments)
     .values({ ...vals, branchId: ctx.branchId, memberId: input.memberId, enrollmentId: input.enrollmentId })

@@ -70,11 +70,12 @@ const JOBS: Job[] = [
     everyMs: 30 * 60 * 1000,
     due: (now) => now.getHours() === RETENTION_HOUR && retentionRanOn !== dayKey(now),
     run: async () => {
-      const { anonymizeWithdrawnMembers, DEFAULT_RETENTION_DAYS } = await import("@/modules/retention/repo");
+      const [{ anonymizeWithdrawnMembers, DEFAULT_RETENTION_DAYS }, { purgeSecurityRecords }] = await Promise.all([import("@/modules/retention/repo"), import("@/modules/security/retention")]);
       const days = Number(process.env.RETENTION_DAYS ?? DEFAULT_RETENTION_DAYS);
       const result = await anonymizeWithdrawnMembers({ retentionDays: Number.isFinite(days) && days > 0 ? days : DEFAULT_RETENTION_DAYS });
+      const security = await purgeSecurityRecords();
       retentionRanOn = dayKey(new Date());
-      return result;
+      return { ...result, security };
     },
   },
 ];

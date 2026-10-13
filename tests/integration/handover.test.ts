@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { addComment, createRequestFromJandi, deleteNote, listComments, listNotes, listRequests, markAllRead, markRead, openRequestCount, setRequestDone, slotOptions, unreadNoteCount, upsertNote } from "@/modules/handover/repo";
 import { setJandiToken } from "@/modules/settings/repo";
 import { upsertShiftSlot } from "@/modules/worklog/repo";
@@ -211,7 +211,8 @@ describe("잔디에서 '해 주세요' 올리기", () => {
     await expect(createRequestFromJandi("B1", msg({ token: "wrong-token-xxx" }))).rejects.toThrow(ForbiddenError);
     await expect(createRequestFromJandi("B1", msg({ token: undefined }))).rejects.toThrow(ForbiddenError);
     await expect(createRequestFromJandi("B1", msg({ text: "/해주세요", data: "" }))).rejects.toThrow(ValidationError);
-    await expect(createRequestFromJandi("NOPE", msg())).rejects.toThrow(NotFoundError);
+    // 없는 지점도 틀린 토큰과 같은 답 — 지점 코드를 찔러 볼 수 없다
+    await expect(createRequestFromJandi("NOPE", msg())).rejects.toThrow(ForbiddenError);
     // 연동을 끊으면 더 받지 않는다
     await setJandiToken(t.mgrCtx1, null);
     await expect(createRequestFromJandi("B1", msg())).rejects.toThrow(ForbiddenError);

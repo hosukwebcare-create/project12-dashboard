@@ -84,6 +84,9 @@ export const users = pgTable("users", {
   pinHash: text("pin_hash"),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  /** PIN 실패는 비밀번호 잠금과 따로 센다. 같이 세면 태블릿에서 PIN 을 몇 번 틀리는 것만으로 그 사람의 비밀번호 로그인까지 막힌다 */
+  failedPins: integer("failed_pins").notNull().default(0),
+  pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
   /** 이 시각보다 먼저 발급된 세션 토큰은 무효로 본다 (비밀번호를 바꾸면 로그인된 기기가 모두 풀린다) */
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   isHqAdmin: boolean("is_hq_admin").notNull().default(false),
@@ -104,6 +107,67 @@ export const memberships = pgTable(
     role: text("role").$type<BranchRole>().notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.branchId] })],
+);
+
+/**
+ * 로그인 세션. 쿠키(JWT)에는 이 행의 id 만 더 실린다. 매 요청에서 폐기·만료를 확인하므로
+ * 로그아웃·강제 로그아웃·비밀번호 변경이 그 즉시 효력을 갖는다 (쿠키를 훔쳐 둔 사람도 그때부터 못 쓴다).
+ */
+export type SessionMethod = "password" | "pin";
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    method: text("method").$type<SessionMethod>().notNull().default("password"),
+    /** PIN 으로 들어온 세션은 그 지점에만 묶는다. 공용 태블릿에서 PIN 을 알아낸 사람이 다른 지점 권한까지 쓰지 못하게 */
+    branchId: uuid("branch_id").references(() => branches.id, { onDelete: "cascade" }),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: createdAt(),
+    /** 요청이 올 때마다가 아니라 몇 분에 한 번만 갱신한다 (기기 목록에 '마지막 사용'으로 보인다) */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [index("auth_sessions_user_idx").on(t.userId)],
+);
+
+/**
+ * 보안 기록. 로그인 성공·실패·잠김, PIN 전환, 로그아웃, 강제 로그아웃, 비밀번호 변경.
+ * 본사만 본다. 지점 열이 없어 RLS 대상이 아니므로 저장소 함수가 역할을 확인한다.
+ * 비밀번호·PIN 은 어떤 형태로도 남기지 않는다.
+ */
+export type SecurityEventKind =
+  | "login.success"
+  | "login.failure"
+  | "login.locked"
+  | "login.ip_blocked"
+  | "pin.success"
+  | "pin.failure"
+  | "pin.locked"
+  | "logout"
+  | "sessions.revoked"
+  | "password.changed";
+export const securityEvents = pgTable(
+  "security_events",
+  {
+    id: id(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").$type<SecurityEventKind>().notNull(),
+    /** 대상 계정 (없는 아이디로 시도했으면 비어 있다) */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** 로그인 화면에 입력된 아이디 그대로. 없는 아이디를 찔러 보는 시도를 보려고 남긴다 */
+    loginId: text("login_id"),
+    /** 강제 로그아웃·비밀번호 변경처럼 남이 한 일이면 그 사람 */
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+  },
+  (t) => [index("security_events_at_idx").on(t.at), index("security_events_ip_idx").on(t.ip, t.at)],
 );
 
 export const seats = pgTable(

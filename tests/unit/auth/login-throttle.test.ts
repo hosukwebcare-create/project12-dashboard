@@ -1,14 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkLoginIp, clearLoginFailures, clientIp, LOGIN_THROTTLE, recordLoginFailure, resetLoginThrottle } from "@/lib/auth/login-throttle";
+import { checkLoginIp, clearLoginFailures, LOGIN_THROTTLE, recordLoginFailure, resetLoginThrottle } from "@/lib/auth/login-throttle";
 
 describe("IP 기준 로그인 제한", () => {
   beforeEach(resetLoginThrottle);
-
-  it("프록시를 거친 요청은 맨 앞 주소를 클라이언트로 본다", () => {
-    expect(clientIp(new Headers({ "x-forwarded-for": "203.0.113.9, 10.0.0.1" }))).toBe("203.0.113.9");
-    expect(clientIp(new Headers({ "x-real-ip": "203.0.113.9" }))).toBe("203.0.113.9");
-    expect(clientIp(new Headers())).toBe("unknown");
-  });
 
   it("한도 안에서는 계속 시도할 수 있다", () => {
     for (let i = 0; i < LOGIN_THROTTLE.MAX_FAILURES - 1; i++) recordLoginFailure("1.2.3.4");

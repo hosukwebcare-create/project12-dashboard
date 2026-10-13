@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db as defaultDb, type Db } from "@/db/client";
-import { counselAppointments, members, users, type AppointmentKind, type AppointmentStatus } from "@/db/schema";
+import { counselAppointments, members, memberships, users, type AppointmentKind, type AppointmentStatus } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { requireRole, STAFF_ROLES, type Ctx } from "@/lib/auth/ctx";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { assertBranchStaff } from "@/lib/branch-guards";
 import { addDays, toDateKey, weekDays, weekStart } from "@/lib/rules/week";
 import { notify } from "@/modules/notifications/repo";
 
@@ -132,6 +133,11 @@ export async function upsertAppointment(ctx: Ctx, input: AppointmentInput, db: D
   const memberId = input.kind === "new" ? null : (input.memberId ?? null);
   const personName = input.personName?.trim() || null;
   if (!memberId && !personName) throw new ValidationError("회원을 고르거나 이름을 입력하세요");
+  if (input.assignedTo) await assertBranchStaff(db, ctx.branchId, input.assignedTo);
+  if (memberId) {
+    const [m] = await db.select({ id: members.id }).from(members).where(and(eq(members.id, memberId), eq(members.branchId, ctx.branchId))).limit(1);
+    if (!m) throw new ValidationError("이 지점 회원 중에서 고르세요");
+  }
 
   const vals = {
     date: input.date,
@@ -183,7 +189,13 @@ export async function schedulePickers(ctx: Ctx, db: Db = defaultDb): Promise<{ m
       .where(eq(members.branchId, ctx.branchId))
       .orderBy(asc(members.name))
       .limit(500),
-    db.select({ id: users.id, name: users.name }).from(users).orderBy(asc(users.name)),
+    // 담당자는 이 지점의 활성 직원만. users 에는 지점 RLS 가 없어서 거르지 않으면 전 지점 직원·본사 계정이 다 보인다
+    db
+      .select({ id: users.id, name: users.name })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(and(eq(memberships.branchId, ctx.branchId), eq(users.active, true)))
+      .orderBy(asc(users.name)),
   ]);
   return { members: ms.map((m) => ({ id: m.id, name: m.name, seatNo: null })), staff: us };
 }

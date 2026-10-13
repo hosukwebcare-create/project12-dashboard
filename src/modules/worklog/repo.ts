@@ -5,8 +5,8 @@ import { writeAudit } from "@/lib/audit";
 import { MANAGER_ROLES, requireRole, type Ctx } from "@/lib/auth/ctx";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { monthDates } from "@/lib/rules/meals";
-import { addDays, toDateKey, weekStart } from "@/lib/rules/week";
-import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, EMPLOYMENT_TYPES, isEmptyWorkLog, isWorkedDay, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, staffGroupOf } from "@/lib/rules/worklog";
+import { addDays, toDate, toDateKey, weekStart } from "@/lib/rules/week";
+import { computeHoursX100, DEFAULT_TARGET_HOURS_X100, elapsedToHoursX100, EMPLOYMENT_TYPES, isEmptyWorkLog, isWorkedDay, LEGACY_SLOT_FIX, minutesToHoursX100, SHEET_SLOT_PRESET, SLOT_AUDIENCES, slotsForAudience, staffGroupOf } from "@/lib/rules/worklog";
 
 export type ShiftSlot = typeof shiftSlots.$inferSelect;
 export type ShiftSlotInput = { id?: string; key: string; label: string; startTime: string; endTime: string; minutes: number; weekend: boolean; audience?: SlotAudience | null; sort: number; active: boolean };
@@ -108,6 +108,11 @@ export async function upsertStaffProfile(ctx: Ctx, input: StaffProfileInput, db:
   if (input.targetHoursX100 !== null && input.targetHoursX100 !== undefined && (input.targetHoursX100 < 0 || input.targetHoursX100 > 2400)) throw new ValidationError("하루 근무 예정 시간은 0~24시간");
   if (input.weeklyTargetHoursX100 !== null && input.weeklyTargetHoursX100 !== undefined && (input.weeklyTargetHoursX100 < 0 || input.weeklyTargetHoursX100 > 16800)) throw new ValidationError("주 소정근로시간은 0~168시간");
   const vals = { branchId: ctx.branchId, employmentType: input.employmentType, hourlyRate: input.hourlyRate, workDays: input.workDays, direct: input.direct, targetHoursX100: input.targetHoursX100 ?? null, weeklyTargetHoursX100: input.weeklyTargetHoursX100 ?? null };
+  // 지점장은 자기 시급과 다른 지점장의 시급을 정할 수 없다(자기 급여를 스스로 올리는 일이 없게). 본사가 정한다
+  if (ctx.role === "branch_manager" && (input.userId === ctx.userId || ms.role === "branch_manager")) {
+    const [cur] = await db.select({ hourlyRate: staffProfiles.hourlyRate }).from(staffProfiles).where(eq(staffProfiles.userId, input.userId)).limit(1);
+    if ((cur?.hourlyRate ?? null) !== (input.hourlyRate ?? null)) throw new ForbiddenError("지점장 본인과 다른 지점장의 시급은 본사에서 정합니다");
+  }
   await db.transaction(async (tx) => {
     const [before] = await tx.select().from(staffProfiles).where(eq(staffProfiles.userId, input.userId)).limit(1);
     await tx
@@ -180,6 +185,7 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
   if (userId !== ctx.userId) requireRole(ctx, ...MANAGER_ROLES);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError("날짜 형식 오류");
   if (!Number.isInteger(input.overtimeX100) || input.overtimeX100 < 0) throw new ValidationError("초과근무 시간이 올바르지 않습니다");
+  if (input.overtimeX100 > MAX_OVERTIME_X100) throw new ValidationError(`초과근무는 하루 ${MAX_OVERTIME_X100 / 100}시간까지 적을 수 있습니다`);
   const [ms] = await db.select().from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.branchId, ctx.branchId))).limit(1);
   if (!ms) throw new NotFoundError("이 지점 소속 사용자가 아닙니다");
 
@@ -192,10 +198,11 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     if (input.overtimeX100 > 0 && !reason && !keepsImported) throw new ValidationError("초과근무는 사유를 입력해야 합니다");
     // 지난 날짜에는 지금은 쓰지 않는 타임이 체크돼 있을 수 있다. 그 시간도 계속 인정한다
     const slots = await listShiftSlots(ctx, db, true);
+    const slotKeys = await allowedSlotKeys(ctx, userId, input.date, input.slotKeys, slots, existing?.slotKeys ?? [], db);
     // 출근·퇴근을 모두 누른 날은 시계가 잰 시간이 사실이다. 타임 체크를 고쳐도 시간을 되돌리지 않는다.
     const clocked = existing?.clockInAt && existing?.clockOutAt;
-    const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, minutes: s.minutes, weekend: s.weekend })), input.slotKeys);
-    const vals = { slotKeys: input.slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? reason : null, note: input.note?.trim() || null };
+    const hoursX100 = clocked ? existing.hoursX100 : computeHoursX100(slots.map((s) => ({ key: s.key, hoursX100: s.hours, minutes: s.minutes, weekend: s.weekend })), slotKeys);
+    const vals = { slotKeys, hoursX100, overtimeX100: input.overtimeX100, overtimeReason: input.overtimeX100 > 0 ? reason : null, note: input.note?.trim() || null };
     const [row] = await tx
       .insert(workLogs)
       .values({ branchId: ctx.branchId, userId, date: input.date, ...vals })
@@ -208,6 +215,27 @@ export async function saveWorkLog(ctx: Ctx, input: WorkLogInput, db: Db = defaul
     }
     return row.id;
   });
+}
+
+/** 하루에 적을 수 있는 초과근무 상한(×100). 잘못 친 값이 급여로 넘어가지 않게 한다 */
+export const MAX_OVERTIME_X100 = 1200;
+
+/**
+ * 저장할 타임 키를 정리한다. 중복을 없애고, 이 지점에 없는 키는 거부한다.
+ * 직원이 자기 근무를 적을 때는 근무 체크 화면이 보여 주는 타임(자기 근무 형태 + 이미 체크해 둔 것)만 새로 체크할 수 있다.
+ * 조교가 요청을 조작해 원장 6시간 타임을 체크하는 식으로 근무시간을 부풀리는 것을 막는다. 남의 근무를 고치는 관리자는 제한하지 않는다.
+ */
+async function allowedSlotKeys(ctx: Ctx, userId: string, date: string, requested: string[], slots: ShiftSlot[], existingKeys: string[], db: Db): Promise<string[]> {
+  const keys = [...new Set(requested)];
+  const known = new Set(slots.map((s) => s.key));
+  const unknown = keys.filter((k) => !known.has(k));
+  if (unknown.length > 0) throw new ValidationError("없는 타임이 들어 있습니다. 화면을 새로 고친 뒤 다시 체크하세요");
+  if (userId !== ctx.userId || ctx.role === "hq_admin") return keys;
+  const profile = await myWorkProfile(ctx, db);
+  const sunday = toDate(date).getDay() === 0;
+  const visible = new Set([...slotsForAudience(slots.filter((s) => s.active), profile.employmentType, sunday).map((s) => s.key), ...existingKeys]);
+  if (keys.some((k) => !visible.has(k))) throw new ValidationError("내 근무 형태의 타임만 체크할 수 있습니다. 다른 타임은 지점장에게 요청하세요");
+  return keys;
 }
 
 /**
@@ -336,16 +364,24 @@ export async function myWorkClock(ctx: Ctx, date: string, db: Db = defaultDb): P
   };
 }
 
+/** 퇴근을 실수로 눌렀을 때 다시 출근해서 되돌릴 수 있는 시간 */
+export const CLOCK_REOPEN_MINUTES = 30;
+
 /** 출근. 이미 근무 중이면 아무 일도 하지 않는다(두 번 눌러도 시작 시각이 밀리지 않게) */
 export async function clockIn(ctx: Ctx, date: string, now = new Date(), db: Db = defaultDb): Promise<void> {
   await assertBranchMember(ctx, ctx.userId, db);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError("날짜 형식 오류");
+  // 출근은 오늘 날짜에만 누른다. 지난 날짜를 다시 열면 그 사이 며칠이 통째로 근무시간이 된다
+  if (date !== toDateKey(now)) throw new ValidationError("출근은 오늘 날짜에만 누를 수 있습니다");
   await db.transaction(async (tx) => {
     const [existing] = await tx.select().from(workLogs).where(and(eq(workLogs.branchId, ctx.branchId), eq(workLogs.userId, ctx.userId), eq(workLogs.date, date))).limit(1);
     if (existing?.hqConfirmedAt) throw new ValidationError("본사 확인이 완료된 근무는 고칠 수 없습니다");
     if (existing?.clockInAt && !existing.clockOutAt) return; // 이미 근무 중
-    // 퇴근을 눌렀다가 다시 출근하면 처음 출근 시각을 유지하고 퇴근만 지운다.
-    // 실수로 퇴근을 누른 경우이므로 총 근무 시간이 끊기지 않아야 한다.
+    // 퇴근을 눌렀다가 곧바로 다시 출근하면 처음 출근 시각을 유지하고 퇴근만 지운다(실수로 누른 퇴근).
+    // 한참 뒤라면 퇴근해 있던 시간까지 근무로 잡히므로 받지 않는다.
+    if (existing?.clockOutAt && now.getTime() - existing.clockOutAt.getTime() > CLOCK_REOPEN_MINUTES * 60_000) {
+      throw new ValidationError(`이미 퇴근한 날입니다. 퇴근 후 ${CLOCK_REOPEN_MINUTES}분이 지나 다시 열 수 없습니다 — 고칠 내용은 지점장에게 요청하세요`);
+    }
     const vals = existing?.clockInAt ? { clockOutAt: null } : { clockInAt: now, clockOutAt: null };
     await tx
       .insert(workLogs)

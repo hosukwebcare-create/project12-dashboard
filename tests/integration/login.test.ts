@@ -29,13 +29,13 @@ describe("로그인 잠금", () => {
   });
 
   it(`${MAX_FAILED_LOGINS}회 실패하면 ${LOCK_MINUTES}분 잠기고, 잠긴 동안은 맞는 비밀번호도 거부한다`, async () => {
-    await seedUser();
+    const { u } = await seedUser();
     for (let i = 0; i < MAX_FAILED_LOGINS - 1; i++) {
-      expect(await authenticate("mgr", "wrong", T0)).toEqual({ ok: false, reason: "invalid", remaining: MAX_FAILED_LOGINS - 1 - i });
+      expect(await authenticate("mgr", "wrong", T0)).toEqual({ ok: false, reason: "invalid", remaining: MAX_FAILED_LOGINS - 1 - i, userId: u.id });
     }
     const locked = await authenticate("mgr", "wrong", T0);
-    expect(locked).toEqual({ ok: false, reason: "locked", until: min(LOCK_MINUTES) });
-    expect(await authenticate("mgr", "secret12", min(1))).toEqual({ ok: false, reason: "locked", until: min(LOCK_MINUTES) });
+    expect(locked).toEqual({ ok: false, reason: "locked", until: min(LOCK_MINUTES), userId: u.id, justLocked: true });
+    expect(await authenticate("mgr", "secret12", min(1))).toEqual({ ok: false, reason: "locked", until: min(LOCK_MINUTES), userId: u.id, justLocked: false });
     // 잠금이 풀리면 정상 로그인
     const r = await authenticate("mgr", "secret12", min(LOCK_MINUTES + 1));
     expect(r.ok).toBe(true);

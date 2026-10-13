@@ -28,7 +28,9 @@ describe("조교 PIN 전환", () => {
 
   it("지점장·멘토 계정으로는 전환할 수 없다 (조교 전용)", async () => {
     const t = await seedTwoBranches();
-    await setUserPin(t.mgrCtx1, t.users.mgr1.id, "9999");
+    // 지점장은 지점장 계정(자기 포함)에 PIN 을 걸 수 없다 — PIN 도 그 계정으로 들어가는 열쇠라서
+    await expect(setUserPin(t.mgrCtx1, t.users.mgr1.id, "9999")).rejects.toThrow(ForbiddenError);
+    await setUserPin(t.hqCtx1, t.users.mgr1.id, "9999");
     expect((await listPinUsers(t.asstCtx1)).map((u) => u.name)).toEqual([]);
     await expect(switchByPin(t.asstCtx1, t.users.mgr1.id, "9999")).rejects.toThrow(ValidationError);
   });
